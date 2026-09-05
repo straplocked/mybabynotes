@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Device-local visual effects: dark mode + tilt parallax.
 // These are per-phone preferences (localStorage), unlike the household theme
 // (accent/background), which syncs to both parents through settings.

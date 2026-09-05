@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // The api module's contract with the server: headers, auth, error shaping.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 

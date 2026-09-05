@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Web Push, per device. Permission + the PushManager subscription live in the
 // browser; the server keeps one row per endpoint. What actually gets sent is
 // governed by the per-user prefs that sync through /state.

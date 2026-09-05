@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
 # The Home Assistant add-on is the AIO image plus a ~50-line mode switch:
 # local mode boots the whole app (nginx+fpm+reverb+scheduler+mqtt-listen via
 # supervisord, state in the add-on's /data like any other add-on), remote

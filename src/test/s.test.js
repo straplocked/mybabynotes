@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // S() is what lets App.jsx carry the design comp's inline CSS verbatim — if
 // parsing or the palette rewrite drifts, every screen quietly loses theming.
 import { describe, it, expect } from 'vitest'

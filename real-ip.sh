@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
+
 # Generates nginx realip config from TRUSTED_PROXIES: comma/space-separated
 # IPs or CIDRs of reverse proxies allowed to speak for clients via
 # X-Forwarded-For. With it set, the rate-limit zones key on the real client

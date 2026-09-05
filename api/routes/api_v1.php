@@ -1,5 +1,8 @@
 <?php
 
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
+
 // The public, versioned API surface (see docs/integrations.md and the
 // committed docs/openapi.v1.json). The unversioned routes/api.php is the
 // PWA's private contract; this one is frozen/additive-only for third

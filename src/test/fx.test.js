@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // fx.js keeps module-level state (mql, sensorDark, listeners), so every test
 // re-imports a fresh copy via resetModules instead of sharing one instance.
 import { describe, it, expect, vi, beforeEach } from 'vitest'

@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
+
 # mybabynotes — Unraid install/update script.
 #
 # First run:  installs to /mnt/user/appdata/baby-log, generates secrets, starts the stack.

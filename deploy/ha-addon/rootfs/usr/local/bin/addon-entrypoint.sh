@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
+
 # MyBabyNotes add-on entrypoint: pick local or remote mode from the add-on
 # options, then get out of the way.
 set -e

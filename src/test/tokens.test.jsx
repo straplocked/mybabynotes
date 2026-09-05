@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // The API access settings card: personal access tokens are deliberately not in
 // /state — the card lazy-pulls GET /tokens on first expand, creation reveals
 // the plaintext exactly once, and revoke is the same two-tap arm pattern as

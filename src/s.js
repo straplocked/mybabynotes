@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Parses the design comp's inline CSS strings into React style objects,
 // so markup can be carried over from design/Baby Log.dc.html verbatim.
 const cache = new Map()

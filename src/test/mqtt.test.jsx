@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // The Home Assistant settings card: MQTT broker config is deliberately not in
 // /state — the card lazy-pulls GET /integrations/mqtt on first expand, an
 // untouched password field means "keep the stored one" on save, and the whole

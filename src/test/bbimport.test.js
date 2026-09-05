@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Baby Buddy importer guard, ported from scripts/check-bbimport.mjs.
 // Fixtures and expected values are HAND-WRITTEN (120 ml → 4.06 oz was worked
 // out on paper: 120 / 29.5735 = 4.0577 → 4.06), never derived from the

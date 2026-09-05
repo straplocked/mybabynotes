@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // ── Baby Buddy CSV import ────────────────────────────────────────────────────
 // Pure parsing + mapping (no DOM, no React) so src/test/bbimport.test.js can
 // exercise it against hand-written fixtures.

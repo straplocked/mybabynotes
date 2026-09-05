@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // The device-language layer: English-key fallback, {param} interpolation,
 // per-device persistence (babylog:lang), and the RTL document flip for
 // Arabic/Urdu. Catalog CONTENT is spot-checked only for shape elsewhere —

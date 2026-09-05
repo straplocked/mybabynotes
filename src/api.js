@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Thin client for the Laravel API. Same-origin api/ under the app base
 // (nginx proxies to the api container; base ≠ '/' only under HA ingress).
 import { socketId } from './echo'

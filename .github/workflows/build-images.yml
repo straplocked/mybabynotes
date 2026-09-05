@@ -1,11 +1,17 @@
 # Publishes app + api images to GHCR on every push to main, tagged :main +
 # commit sha. :latest belongs to tagged releases (see release.yml), so
 # image consumers who don't opt into tracking main never see it.
+#
+# Pull requests run the same two test jobs but never reach `build` — a fork's
+# GITHUB_TOKEN can't push packages anyway, and an unreviewed PR must not
+# publish an image. That's what makes "CI must be green before review" (see
+# CONTRIBUTING.md) mean something for contributors.
 name: build-images
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -57,6 +63,7 @@ jobs:
 
   build:
     needs: [test, test-app]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

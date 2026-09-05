@@ -1,0 +1,41 @@
+# Dependency updates for a family-data app that people self-host and forget
+# about: security patches should arrive as PRs, not as a thing the maintainer
+# has to remember. Weekly and grouped, so a solo project doesn't drown.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: composer
+    directory: /api
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      api:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # base images for the app, api, and all-in-one builds
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /api
+      - /deploy/aio
+    schedule:
+      interval: monthly

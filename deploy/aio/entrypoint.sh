@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
+
 # All-in-one boot: self-generate secrets on first run (Community Apps
 # templates can't generate secrets, so the container must), wire Laravel to
 # /data/.env, migrate, stamp the instance's Reverb key into the PWA bundle,

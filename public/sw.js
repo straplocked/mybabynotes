@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 /* mybabynotes service worker — local-first app shell.
    Navigations: network-first, cache fallback (3am logging never waits on signal).
    Assets + fonts: cache-first with background fill. */

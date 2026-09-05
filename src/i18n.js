@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Device-local UI language, in the same register as fx.js: a per-phone
 // preference (babylog:lang), never a synced household setting — the night
 // shift being in Spanish shouldn't flip the partner's phone.

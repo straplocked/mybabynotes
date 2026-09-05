@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
 FROM composer:2 AS deps
 WORKDIR /app
 COPY composer.json composer.lock ./

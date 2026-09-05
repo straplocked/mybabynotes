@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // The multi-timer Now screen: every running timer is a card at the top and a
 // row holding its place in the Today list, and its owner can stop it in one
 // tap from either surface. The device-local timerSpot pref picks the surface:

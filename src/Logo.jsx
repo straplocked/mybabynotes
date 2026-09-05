@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 import React from 'react'
 
 // The baby-face mark from the marketing comp (Landing.dc.html) — fixed brand

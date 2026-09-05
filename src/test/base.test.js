@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // APP_BASE/UNDER_INGRESS read the document URL at import time, so each case
 // rewrites the jsdom path (replaceState — same trick App uses) and re-imports.
 import { describe, it, expect, vi, afterEach } from 'vitest'

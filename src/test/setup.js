@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 import '@testing-library/jest-dom/vitest'
 
 // jsdom has no matchMedia; fx.js and App both probe it. Default to "light,

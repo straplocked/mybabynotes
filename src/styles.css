@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   Copyright (C) 2026 Chris Carvache */
 /* theme variables — light defaults here; html.dark flips the neutrals, and
    applyTheme() in App.jsx layers the household accent/background on top as
    inline properties. S() (src/s.js) maps the comp's fixed palette onto these

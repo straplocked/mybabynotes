@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Where the app is mounted. The build is base-path-relative (vite `base: ''`)
 // so one bundle serves both the origin root (every current deployment) and
 // Home Assistant ingress at /api/hassio_ingress/<token>/ — ingress strips the

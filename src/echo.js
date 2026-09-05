@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Realtime layer: Laravel Echo over Reverb (Pusher protocol), same-origin
 // through the nginx /app websocket proxy. The server broadcasts a lightweight
 // HouseholdTouched poke; the client reacts by pulling /api/state — one sync
