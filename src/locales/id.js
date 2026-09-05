@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Bahasa Indonesia (Indonesian) — hangat, santai, pakai "kamu".
 export default {
   '(you)': '(kamu)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'sufor',
   'Formula': 'Sufor',
   'four': 'empat',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'Perangkat lunak bebas di bawah AGPL-3.0 — baca, ubah, jalankan milikmu.',
   'From': 'Dari',
   'from the usual rhythm': 'dari ritme biasanya',
   'Full log': 'Catatan lengkap',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'Supaya catatan bisa berpikir dalam minggu usianya — minum susu, tidur siang, dan jendela bangun semuanya berubah seiring umur.',
   'Someone': 'Seseorang',
   'Something went wrong — try again.': 'Ada yang salah — coba lagi.',
+  'Source code': 'Kode sumber',
   'stamped now': 'waktu: sekarang',
   'Start logging': 'Mulai mencatat',
   'Start nursing': 'Mulai menyusui',

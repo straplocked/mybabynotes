@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // 日本語 (Japanese)
 export default {
   '(you)': '（あなた）',
@@ -162,6 +164,7 @@ export default {
   'formula': 'ミルク',
   'Formula': 'ミルク',
   'four': '四',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'AGPL-3.0 のフリーソフトウェアです — 読んで、変えて、自分で動かせます。',
   'From': '開始',
   'from the usual rhythm': 'いつものリズムより',
   'Full log': 'すべての記録',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': '記録が週齢ベースで考えられるように — 授乳もお昼寝も活動時間も、月齢とともに変わっていきます。',
   'Someone': 'だれか',
   'Something went wrong — try again.': 'うまくいきませんでした — もう一度どうぞ。',
+  'Source code': 'ソースコード',
   'stamped now': '今の時刻で記録',
   'Start logging': '記録を始める',
   'Start nursing': '直接授乳を開始',

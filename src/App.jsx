@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 import React from 'react'
 import { S } from './s'
 import Logo, { Wordmark } from './Logo'
@@ -59,6 +61,11 @@ const FEED_NORMS = [
   [999, '3 meals plus snacks, milk alongside'],
 ]
 const normFor = (norms, weeks) => (norms.find(([max]) => weeks < max) || norms[norms.length - 1])[1]
+// ── AGPL §13: an app served over a network must offer its users the source ───
+// Settings' About footer links here. Anyone deploying a MODIFIED build must
+// point this at THEIR source, not ours — hence the build-time override
+// (`VITE_SOURCE_URL=… npm run build`) rather than a hardcoded constant.
+const SOURCE_URL = import.meta.env?.VITE_SOURCE_URL || 'https://github.com/straplocked/mybabynotes'
 // feeds closer together than this are one cluster-feeding session, not a new rhythm beat
 const CLUSTER_GAP = 45 * 60000
 const sessionStarts = ts => { // ts ascending → first feed of each session
@@ -3591,6 +3598,17 @@ export default class App extends React.Component {
 
               <div style={S('text-align:center;padding:16px 0 0')}>
                 <button type="button" onClick={v.logout} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:8px 15px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Log out')}</button>
+              </div>
+
+              {/* the AGPL's network clause: everyone using this instance gets an
+                  offer of the source it's running. Deliberately the last thing
+                  on the last screen — present, never in the way. */}
+              <div style={S('text-align:center;padding:22px 0 0;display:flex;flex-direction:column;align-items:center;gap:6px')}>
+                <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer" className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:8px 15px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;text-decoration:none;display:inline-flex;align-items:center;gap:6px")}>
+                  <Sym style={{ fontSize: 14, color: 'var(--soft)' }}>code</Sym>
+                  {t('Source code')}
+                </a>
+                <div style={S('font-size:11px;color:#B5AC98;text-wrap:pretty;max-width:280px;line-height:1.45')}>{t('Free software under the AGPL-3.0 — read it, change it, run your own.')}</div>
               </div>
             </div>
           </div>

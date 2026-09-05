@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // मराठी (Marathi) — mybabynotes UI string catalog
 export default {
   '(you)': '(तुम्ही)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'फॉर्म्युला',
   'Formula': 'फॉर्म्युला',
   'four': 'चार',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'AGPL-3.0 अंतर्गत मुक्त सॉफ्टवेअर — वाचा, बदला, स्वतःचे चालवा.',
   'From': 'पासून',
   'from the usual rhythm': 'नेहमीच्या तालापेक्षा',
   'Full log': 'पूर्ण लॉग',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'म्हणजे लॉग त्यांच्या आठवड्यांत विचार करू शकतो — फीड, डुलक्या आणि जागेपणाच्या वेळा, सगळे वयानुसार बदलते.',
   'Someone': 'कोणीतरी',
   'Something went wrong — try again.': 'काहीतरी चुकले — पुन्हा प्रयत्न करा.',
+  'Source code': 'सोर्स कोड',
   'stamped now': 'वेळ: आत्ता',
   'Start logging': 'लॉगिंग सुरू करा',
   'Start nursing': 'स्तनपान सुरू करा',

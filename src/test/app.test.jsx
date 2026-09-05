@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Integration tests for the app shell: auth flows, boot-from-cache, the
 // offline signal, and the outbox flush — the client half of the sync rules.
 // The server is a route-table fetch mock speaking /state's real shape;
@@ -229,6 +231,20 @@ describe('sleep tags and tummy time', () => {
 
     await waitFor(() => expect(pushed).toBeTruthy())
     expect(pushed.entries[0].detail).toBe('45') // detail is stringified for the wire
+  })
+})
+
+describe('source offer (AGPL §13)', () => {
+  it('settings links to the running source, opening in a new tab', async () => {
+    seedSignedIn({ screen: 'settings' })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    const link = await screen.findByRole('link', { name: /Source code/ })
+    expect(link).toHaveAttribute('href', 'https://github.com/straplocked/mybabynotes')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    expect(screen.getByText(/AGPL-3\.0/)).toBeInTheDocument()
   })
 })
 

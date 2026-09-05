@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // English reference catalog — the canonical key list for every locale.
 // Keys ARE the English strings (t() falls back to the key, so this file is
 // documentation + the translators' source, not something the app must load).
@@ -165,6 +167,7 @@ export default {
   'formula': 'formula',
   'Formula': 'Formula',
   'four': 'four',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'Free software under the AGPL-3.0 — read it, change it, run your own.',
   'From': 'From',
   'from the usual rhythm': 'from the usual rhythm',
   'Full log': 'Full log',
@@ -328,6 +331,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'So the log can think in their weeks — feeds, naps, and wake windows all change with age.',
   'Someone': 'Someone',
   'Something went wrong — try again.': 'Something went wrong — try again.',
+  'Source code': 'Source code',
   'stamped now': 'stamped now',
   'Start logging': 'Start logging',
   'Start nursing': 'Start nursing',

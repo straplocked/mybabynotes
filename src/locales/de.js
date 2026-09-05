@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Deutsch (German) — warmes, informelles Du.
 export default {
   '(you)': '(du)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'Milchnahrung',
   'Formula': 'Milchnahrung',
   'four': 'vier',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'Freie Software unter der AGPL-3.0 — lies sie, ändere sie, betreibe deine eigene.',
   'From': 'Von',
   'from the usual rhythm': 'vom üblichen Rhythmus',
   'Full log': 'Ganzes Logbuch',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'Damit das Logbuch in Lebenswochen denken kann — Mahlzeiten, Nickerchen und Wachfenster ändern sich mit dem Alter.',
   'Someone': 'Jemand',
   'Something went wrong — try again.': 'Etwas ist schiefgelaufen — versuch’s nochmal.',
+  'Source code': 'Quellcode',
   'stamped now': 'Zeitstempel: jetzt',
   'Start logging': 'Loslegen',
   'Start nursing': 'Stillen starten',

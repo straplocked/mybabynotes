@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Urdu (اردو) — everyday app register. RTL; {param} placeholders stay verbatim.
 export default {
   '(you)': '(آپ)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'فارمولا دودھ',
   'Formula': 'فارمولا دودھ',
   'four': 'چار',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'AGPL-3.0 کے تحت آزاد سافٹ ویئر — اسے پڑھیں، بدلیں، اپنا چلائیں۔',
   'From': 'سے',
   'from the usual rhythm': 'معمول کے ردھم سے',
   'Full log': 'مکمل لاگ',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'تاکہ لاگ ان کے ہفتوں کے حساب سے سوچے — فیڈز، جھپکیاں اور جاگنے کے وقفے سب عمر کے ساتھ بدلتے ہیں۔',
   'Someone': 'کوئی',
   'Something went wrong — try again.': 'کچھ گڑبڑ ہو گئی — دوبارہ کوشش کریں۔',
+  'Source code': 'سورس کوڈ',
   'stamped now': 'وقت: ابھی',
   'Start logging': 'لاگ کرنا شروع کریں',
   'Start nursing': 'دودھ پلانا شروع کریں',

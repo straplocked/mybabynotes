@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Русский (Russian) — тёплое, неформальное «ты».
 export default {
   '(you)': '(ты)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'смесь',
   'Formula': 'Смесь',
   'four': 'четыре',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'Свободное ПО под AGPL-3.0 — читайте, изменяйте, разверните своё.',
   'From': 'С',
   'from the usual rhythm': 'от обычного ритма',
   'Full log': 'Весь дневник',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'Чтобы дневник думал в неделях малыша — кормления, сны и окна бодрствования меняются с возрастом.',
   'Someone': 'Кто-то',
   'Something went wrong — try again.': 'Что-то пошло не так — попробуй ещё раз.',
+  'Source code': 'Исходный код',
   'stamped now': 'время: сейчас',
   'Start logging': 'Начать записывать',
   'Start nursing': 'Начать кормление грудью',

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // 简体中文 (Simplified Chinese)
 export default {
   '(you)': '（你）',
@@ -162,6 +164,7 @@ export default {
   'formula': '配方奶',
   'Formula': '配方奶',
   'four': '四',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': '基于 AGPL-3.0 的自由软件——阅读它、修改它、运行你自己的版本。',
   'From': '从',
   'from the usual rhythm': '较平常的节奏',
   'Full log': '完整记录',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': '这样记录就能按宝宝的周龄来思考 — 喂奶、小睡和清醒窗口都会随月龄变化。',
   'Someone': '有人',
   'Something went wrong — try again.': '出了点问题 — 再试一次。',
+  'Source code': '源代码',
   'stamped now': '按当前时间记录',
   'Start logging': '开始记录',
   'Start nursing': '开始亲喂',

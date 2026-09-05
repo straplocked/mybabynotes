@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Português — Portuguese (neutral, leaning Brazilian) translation of the mybabynotes UI catalog (keys are the English source strings).
 export default {
   '(you)': '(você)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'fórmula',
   'Formula': 'Fórmula',
   'four': 'quatro',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'Software livre sob a AGPL-3.0 — leia, modifique, execute o seu.',
   'From': 'De',
   'from the usual rhythm': 'do ritmo habitual',
   'Full log': 'Registro completo',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'Para o registro pensar nas semanas do bebê — mamadas, sonecas e janelas de sono mudam com a idade.',
   'Someone': 'Alguém',
   'Something went wrong — try again.': 'Algo deu errado — tente de novo.',
+  'Source code': 'Código-fonte',
   'stamped now': 'com a hora de agora',
   'Start logging': 'Começar a registrar',
   'Start nursing': 'Iniciar peito',

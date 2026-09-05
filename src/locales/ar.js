@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Arabic (العربية) — Modern Standard Arabic, app register. RTL; {param} placeholders stay verbatim.
 export default {
   '(you)': '(أنت)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'حليب صناعي',
   'Formula': 'حليب صناعي',
   'four': 'أربعة',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'برمجية حرة بموجب رخصة AGPL-3.0 — اقرأها وعدّلها وشغّل نسختك الخاصة.',
   'From': 'من',
   'from the usual rhythm': 'عن الإيقاع المعتاد',
   'Full log': 'السجل الكامل',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'ليفكر السجل بأسابيعهم — فالرضعات والقيلولات وفترات الاستيقاظ كلها تتغير مع العمر.',
   'Someone': 'شخص ما',
   'Something went wrong — try again.': 'حدث خطأ ما — حاول مجددًا.',
+  'Source code': 'الكود المصدري',
   'stamped now': 'مؤرَّخ الآن',
   'Start logging': 'ابدأ التسجيل',
   'Start nursing': 'ابدأ الرضاعة',

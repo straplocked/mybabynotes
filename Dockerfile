@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
 # Build stage
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -8,6 +10,10 @@ COPY public ./public
 COPY src ./src
 ARG VITE_REVERB_APP_KEY=babylog-local-key
 ENV VITE_REVERB_APP_KEY=$VITE_REVERB_APP_KEY
+# AGPL §13: a modified build must offer ITS source, not ours — override with
+# --build-arg VITE_SOURCE_URL=https://your.host/your-fork
+ARG VITE_SOURCE_URL=
+ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 RUN npm run build
 
 # Serve stage

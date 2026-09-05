@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Chris Carvache
 // Bengali (বাংলা) — everyday app register. LTR; {param} placeholders stay verbatim.
 export default {
   '(you)': '(আপনি)',
@@ -162,6 +164,7 @@ export default {
   'formula': 'ফর্মুলা',
   'Formula': 'ফর্মুলা',
   'four': 'চার',
+  'Free software under the AGPL-3.0 — read it, change it, run your own.': 'AGPL-3.0 এর অধীনে মুক্ত সফটওয়্যার — পড়ুন, বদলান, নিজেরটা চালান।',
   'From': 'থেকে',
   'from the usual rhythm': 'স্বাভাবিক ছন্দ থেকে',
   'Full log': 'পুরো লগ',
@@ -325,6 +328,7 @@ export default {
   'So the log can think in their weeks — feeds, naps, and wake windows all change with age.': 'যাতে লগ ওর সপ্তাহের হিসাবে ভাবতে পারে — খাওয়ানো, ন্যাপ আর জেগে থাকার সময় সবই বয়সের সাথে বদলায়।',
   'Someone': 'কেউ',
   'Something went wrong — try again.': 'কিছু একটা গোলমাল হয়েছে — আবার চেষ্টা করুন।',
+  'Source code': 'সোর্স কোড',
   'stamped now': 'সময়: এখন',
   'Start logging': 'লগ করা শুরু করুন',
   'Start nursing': 'বুকের দুধ খাওয়ানো শুরু করুন',

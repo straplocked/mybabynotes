@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 Chris Carvache
 # All-in-one image for Unraid Community Apps: nginx (PWA + /api fastcgi +
 # /app ws proxy), the Laravel API (php-fpm), Reverb, and schedule:work — one
 # container, supervised by supervisord (one small, boring package; we don't
@@ -21,6 +23,10 @@ COPY src ./src
 # public by design — it ships in the JS of every Pusher-protocol app — but
 # per-instance keys keep strangers' clients from even handshaking).
 ENV VITE_REVERB_APP_KEY=__BABYLOG_REVERB_KEY__
+# AGPL §13: a modified build must offer ITS source, not ours — override with
+# --build-arg VITE_SOURCE_URL=https://your.host/your-fork
+ARG VITE_SOURCE_URL=
+ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 RUN npm run build
 
 # ---- API deps (mirrors api/Dockerfile) ----
