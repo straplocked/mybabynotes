@@ -6,6 +6,9 @@ import { startEcho, stopEcho, isEchoConnected } from './echo'
 import { pushSupported, pushSubscription, subscribePush, deviceTz } from './push'
 import { getFx, setFx, initFx, isDark, askTiltPermission, reduceMotion } from './fx'
 import { mapBabyBuddy, chunk } from './bbimport'
+// t() renders English keys in the device language (see src/i18n.js); labels
+// in the constants below stay canonical English and translate at render time
+import { t, lower, locale, getLang, setLang, LANGS } from './i18n'
 
 // ── domain constants (from design/Baby Log.dc.html) ──────────────────────────
 const TYPES = [
@@ -477,7 +480,7 @@ export default class App extends React.Component {
       this.setState({ screen: st.baby ? 'home' : 'onboard', nameField: st.baby ? st.baby.name : '' })
     } catch (e) {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
-      this.setState({ authBusy: false, authError: first || e.message || 'Something went wrong — try again.' })
+      this.setState({ authBusy: false, authError: first || e.message || t('Something went wrong — try again.') })
     }
   }
 
@@ -497,24 +500,24 @@ export default class App extends React.Component {
   submitReset = async () => {
     const s = this.state
     if (s.resetBusy) return
-    if ((s.resetPw || '').length < 8) return this.setState({ resetError: 'Pick a password with at least 8 characters.' })
+    if ((s.resetPw || '').length < 8) return this.setState({ resetError: t('Pick a password with at least 8 characters.') })
     this.setState({ resetBusy: true, resetError: null })
     try {
       await api.resetPassword({ token: s.resetToken, email: s.resetEmail, password: s.resetPw })
       this.setState({
         screen: 'auth', authMode: 'login', authEmail: s.resetEmail, authError: null,
         resetToken: null, resetPw: '', resetBusy: false,
-        toast: 'Password updated — log in with the new one', undoAction: null,
+        toast: t('Password updated — log in with the new one'), undoAction: null,
       })
       this.bumpToast()
     } catch (e) {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
-      this.setState({ resetBusy: false, resetError: first || e.message || 'Something went wrong — try again.' })
+      this.setState({ resetBusy: false, resetError: first || e.message || t('Something went wrong — try again.') })
     }
   }
 
   finishOnboard = async () => {
-    const name = (this.state.nameField || '').trim() || 'Baby'
+    const name = (this.state.nameField || '').trim() || t('Baby')
     const age = this.state.age
     const birthdate = this.state.dobField || undefined
     this.setState({ screen: 'home', babyName: name, babyBirthdate: birthdate || null })
@@ -542,13 +545,13 @@ export default class App extends React.Component {
           : [...s.invites, { email: email.toLowerCase(), role }],
         // a resend must not eat whatever's half-typed in the invite field
         inviteField: s.inviteField.trim() === email ? '' : s.inviteField,
-        toast: r.mailed ? 'Emailed ' + email + ' — their code is ' + r.code : 'Invited ' + email + ' — their code is ' + r.code,
+        toast: t(r.mailed ? 'Emailed {email} — their code is {code}' : 'Invited {email} — their code is {code}', { email, code: r.code }),
         undoAction: null,
       }))
       this.bumpToast()
     } catch (e) {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
-      this.setState({ toast: e.status ? (first || e.message || 'Invite failed — check the email') : 'No signal — try again later', undoAction: null })
+      this.setState({ toast: e.status ? (first || e.message || t('Invite failed — check the email')) : t('No signal — try again later'), undoAction: null })
       this.bumpToast()
     }
   }
@@ -560,7 +563,7 @@ export default class App extends React.Component {
       invitePending: s.invitePending === email ? null : s.invitePending,
       inviteCode: s.inviteCodeFor === email ? null : s.inviteCode,
       inviteCodeFor: s.inviteCodeFor === email ? null : s.inviteCodeFor,
-      toast: 'Invite revoked — that code no longer works', undoAction: null,
+      toast: t('Invite revoked — that code no longer works'), undoAction: null,
     }))
     this.bumpToast()
     api.revokeInvite(email).catch(() => this.setState({ offline: true }))
@@ -568,7 +571,7 @@ export default class App extends React.Component {
 
   copyInviteCode = code => {
     try { navigator.clipboard.writeText(code).catch(() => { /* stays on screen to copy by hand */ }) } catch { /* no clipboard API */ }
-    this.setState({ toast: 'Code copied — send it to them', undoAction: null })
+    this.setState({ toast: t('Code copied — send it to them'), undoAction: null })
     this.bumpToast()
   }
 
@@ -582,13 +585,13 @@ export default class App extends React.Component {
         removeConfirmId: null,
         members,
         partner: s.partner && s.partner.id === id ? (others.length ? { id: others[0].id, name: others[0].name } : null) : s.partner,
-        toast: (gone?.name || 'They') + ' can no longer open this log', undoAction: null,
+        toast: t('{name} can no longer open this log', { name: gone?.name || t('They') }), undoAction: null,
       }
     })
     this.bumpToast()
     api.removeMember(id).then(() => this.sync()).catch(e => {
       if (e.status) {
-        this.setState({ toast: e.message || 'That didn’t go through — try again', undoAction: null })
+        this.setState({ toast: e.message || t('That didn’t go through — try again'), undoAction: null })
         this.bumpToast()
         this.sync() // fall back to server truth
       } else this.setState({ offline: true })
@@ -665,18 +668,18 @@ export default class App extends React.Component {
           try { await api.pushUnsubscribe(sub.endpoint) } catch { /* row prunes itself on next push */ }
           await sub.unsubscribe()
         }
-        this.setState({ pushOn: false, toast: 'Notifications off for this phone', undoAction: null })
+        this.setState({ pushOn: false, toast: t('Notifications off for this phone'), undoAction: null })
       } else {
         const sub = await subscribePush(this.state.vapidKey)
         await api.pushSubscribe({ endpoint: sub.endpoint, keys: sub.toJSON().keys, tz: deviceTz() })
-        this.setState({ pushOn: true, toast: 'This phone will get pings', undoAction: null })
+        this.setState({ pushOn: true, toast: t('This phone will get pings'), undoAction: null })
         this.setNotify({}) // stamp the device tz into prefs right away
       }
     } catch (e) {
       this.setState({
         toast: e && e.message === 'denied'
-          ? 'Notifications are blocked — allow them in your browser settings'
-          : 'Couldn’t turn notifications on — try again',
+          ? t('Notifications are blocked — allow them in your browser settings')
+          : t('Couldn’t turn notifications on — try again'),
         undoAction: null,
       })
     }
@@ -776,13 +779,13 @@ export default class App extends React.Component {
       this.setState(s => ({
         childBusy: false, childAddOpen: false, childAddName: '', childAddDob: '',
         children: s.children.some(c => c.id === r.child.id) ? s.children : [...s.children, r.child],
-        toast: (r.child.name || 'Child') + ' added — the pills on Now switch between them', undoAction: null,
+        toast: t('{name} added — the pills on Now switch between them', { name: r.child.name || t('Child') }), undoAction: null,
       }))
     } catch (e) {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
       this.setState({
         childBusy: false,
-        toast: e.status ? (first || e.message || 'That didn’t go through — try again') : 'No signal — try again in a moment.',
+        toast: e.status ? (first || e.message || t('That didn’t go through — try again')) : t('No signal — try again in a moment.'),
         undoAction: null,
       })
     }
@@ -805,54 +808,55 @@ export default class App extends React.Component {
     h = h % 12 || 12
     return h + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap
   }
-  elapsed(t) {
-    const mins = Math.max(0, Math.round((Date.now() - t) / 60000))
-    if (mins < 60) return mins + 'm'
+  elapsed(t2) {
+    const mins = Math.max(0, Math.round((Date.now() - t2) / 60000))
+    if (mins < 60) return t('{n}m', { n: mins })
     const h = Math.floor(mins / 60), r = mins % 60
-    if (h < 24) return h + 'h ' + String(r).padStart(2, '0') + 'm'
-    return Math.floor(h / 24) + 'd ' + (h % 24) + 'h'
+    if (h < 24) return t('{h}h {m}m', { h, m: String(r).padStart(2, '0') })
+    return t('{d}d {h}h', { d: Math.floor(h / 24), h: h % 24 })
   }
-  dur(m) { m = m || 0; return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '') }
-  dayOf(t) {
-    const d = new Date(t), n = new Date()
+  dur(m) { m = m || 0; return m < 60 ? t('{n}m', { n: m }) : t('{n}h', { n: Math.floor(m / 60) }) + (m % 60 ? ' ' + t('{n}m', { n: m % 60 }) : '') }
+  dayOf(t2) {
+    const d = new Date(t2), n = new Date()
     const diff = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY)
-    return diff === 0 ? '' : diff === 1 ? 'Yesterday' : diff + ' days ago'
+    return diff === 0 ? '' : diff === 1 ? t('Yesterday') : t('{n} days ago', { n: diff })
   }
   unit() { return this.state.settings.unit ?? this.props.unit ?? 'oz' }
   // household-level like unit — what the daily meds dose is called everywhere it renders.
   // Read-side default: households that never saved the key still say Vitamin D.
-  medName() { return (this.state.settings.medName || '').trim() || 'Vitamin D' }
+  medName() { return (this.state.settings.medName || '').trim() || t('Vitamin D') }
   // stored oz → the display unit's number; oz passes through untouched so the
   // current formatting survives. Every place an amount RENDERS goes through here.
   amt(oz) { return oz == null ? oz : this.unit() === 'ml' ? ozToMl(oz) : oz }
   // sheet amount state lives in the display unit; the wire string stays oz
   amountKey() { return this.unit() === 'ml' ? 'ml' : 'oz' }
   fmtDetail(d) {
+    // wire strings stay canonical ('Left', 'breastmilk') — translate on the way out
     const { n, mins, side, milk } = dSplit(d), p = []
     if (n != null) p.push(this.amt(n) + ' ' + this.unit())
-    if (milk) p.push(milk)
-    if (side) p.push(side)
+    if (milk) p.push(t(milk))
+    if (side) p.push(t(side))
     if (mins != null) p.push(this.dur(mins))
     return p.join(' · ')
   }
   subFor(e, noDay) {
     const day = noDay ? '' : this.dayOf(e.t), p = []
     if ((e.type === 'bottle' || e.type === 'pump') && e.detail != null) p.push(this.fmtDetail(e.detail) || String(e.detail))
-    if (e.type === 'nurse') p.push(e.detail ? this.fmtDetail(e.detail) || String(e.detail) : 'either side')
+    if (e.type === 'nurse') p.push(e.detail ? this.fmtDetail(e.detail) || String(e.detail) : t('either side'))
     if (e.type === 'sleep') p.push(this.dur(e.detail))
-    if (DIAPERS.includes(e.type)) p.push(e.type === 'both' ? 'wet + dirty' : e.type)
+    if (DIAPERS.includes(e.type)) p.push(t(e.type === 'both' ? 'wet + dirty' : e.type))
     if (e.type === 'meds') p.push(this.medName())
     if (day) p.push(day)
-    return p.filter(Boolean).join(' · ') || 'logged'
+    return p.filter(Boolean).join(' · ') || t('logged')
   }
   // real DOB wins over the onboarding age bucket; weeks first, then months, then years
   ageInfoFor(bd, fallbackLabel) {
-    if (!bd) return { label: fallbackLabel, weeks: null }
+    if (!bd) return { label: fallbackLabel ? t(fallbackLabel) : fallbackLabel, weeks: null }
     const days = Math.max(0, Math.floor((Date.now() - new Date(bd + 'T00:00:00').getTime()) / DAY))
     const weeks = Math.floor(days / 7), mo = Math.floor(days / 30.4375)
-    const label = days < 183 ? weeks + (weeks === 1 ? ' wk' : ' wks')
-      : mo < 24 ? mo + ' mo'
-      : Math.floor(mo / 12) + 'y' + (mo % 12 ? ' ' + (mo % 12) + 'm' : '')
+    const label = days < 183 ? t(weeks === 1 ? '{n} wk' : '{n} wks', { n: weeks })
+      : mo < 24 ? t('{n} mo', { n: mo })
+      : (mo % 12 ? t('{y}y {m}m', { y: Math.floor(mo / 12), m: mo % 12 }) : t('{n}y', { n: Math.floor(mo / 12) }))
     return { label, weeks }
   }
   // the SELECTED child's age — headers and age-norm insights follow the pills;
@@ -890,7 +894,7 @@ export default class App extends React.Component {
     const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
     this.setState({
       acctBusy: false,
-      acctError: e.status ? (first || e.message || 'That didn’t go through — try again.') : 'No signal — try again in a moment.',
+      acctError: e.status ? (first || e.message || t('That didn’t go through — try again.')) : t('No signal — try again in a moment.'),
     })
   }
   submitAcctEmail = async () => {
@@ -903,7 +907,7 @@ export default class App extends React.Component {
       this.setState(st => ({
         acctBusy: false, acctOpen: null, acctEmail: '', acctEmailPw: '',
         me: st.me ? { ...st.me, email: r.email } : st.me,
-        toast: 'Email updated — log in with ' + r.email + ' next time', undoAction: null,
+        toast: t('Email updated — log in with {email} next time', { email: r.email }), undoAction: null,
       }))
       this.bumpToast()
     } catch (e) { this.acctFail(e) }
@@ -911,13 +915,13 @@ export default class App extends React.Component {
   submitAcctPassword = async () => {
     const s = this.state
     if (!s.acctPwCur || !s.acctPwNew || s.acctBusy) return
-    if (s.acctPwNew.length < 8) return this.setState({ acctError: 'Pick a password with at least 8 characters.' })
+    if (s.acctPwNew.length < 8) return this.setState({ acctError: t('Pick a password with at least 8 characters.') })
     this.setState({ acctBusy: true, acctError: null })
     try {
       await api.accountPassword({ current_password: s.acctPwCur, password: s.acctPwNew })
       this.setState({
         acctBusy: false, acctOpen: null, acctPwCur: '', acctPwNew: '',
-        toast: 'Password updated — other phones will need to log in again', undoAction: null,
+        toast: t('Password updated — other phones will need to log in again'), undoAction: null,
       })
       this.bumpToast()
     } catch (e) { this.acctFail(e) }
@@ -932,7 +936,7 @@ export default class App extends React.Component {
   }
   fetchTokens = () => api.tokens()
     .then(r => this.setState({ apiTokens: r.tokens, apiScopes: r.scopes }))
-    .catch(e => this.setState(e.status ? { tokenError: e.message || 'That didn’t go through — try again.' } : { offline: true }))
+    .catch(e => this.setState(e.status ? { tokenError: e.message || t('That didn’t go through — try again.') } : { offline: true }))
   createApiToken = async () => {
     const s = this.state
     const name = s.tokenName.trim()
@@ -949,22 +953,22 @@ export default class App extends React.Component {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
       this.setState({
         tokenBusy: false,
-        tokenError: e.status ? (first || e.message || 'That didn’t go through — try again.') : 'No signal — try again in a moment.',
+        tokenError: e.status ? (first || e.message || t('That didn’t go through — try again.')) : t('No signal — try again in a moment.'),
       })
     }
   }
   revokeApiToken = id => {
-    this.setState(s => ({ revokeTokenArmId: null, apiTokens: (s.apiTokens || []).filter(t => t.id !== id) }))
+    this.setState(s => ({ revokeTokenArmId: null, apiTokens: (s.apiTokens || []).filter(x => x.id !== id) }))
     api.revokeToken(id).then(() => this.fetchTokens()).catch(e => {
       if (e.status) {
-        this.setState({ tokenError: e.message || 'That didn’t go through — try again.' })
+        this.setState({ tokenError: e.message || t('That didn’t go through — try again.') })
         this.fetchTokens() // fall back to server truth
       } else this.setState({ offline: true })
     })
   }
   copyApiToken = () => {
     try { navigator.clipboard.writeText(this.state.newToken).catch(() => { /* stays on screen to copy by hand */ }) } catch { /* no clipboard API */ }
-    this.setState({ toast: 'Token copied — keep it somewhere safe', undoAction: null })
+    this.setState({ toast: t('Token copied — keep it somewhere safe'), undoAction: null })
     this.bumpToast()
   }
 
@@ -980,7 +984,7 @@ export default class App extends React.Component {
       mqttCfg: { ...r.config, heartbeatAt: r.status?.heartbeatAt ?? null },
       mqttForm: this.mqttFormFrom(r.config),
     }))
-    .catch(e => this.setState(e.status ? { mqttError: e.message || 'That didn’t go through — try again.' } : { offline: true }))
+    .catch(e => this.setState(e.status ? { mqttError: e.message || t('That didn’t go through — try again.') } : { offline: true }))
   mqttFormFrom(c) {
     // password stays blank — an empty field means “keep the stored one” on save
     return { enabled: !!c.enabled, host: c.host || '', port: c.port ?? 1883, username: c.username || '', password: '', tls: !!c.tls, tls_verify: c.tls_verify !== false }
@@ -1007,7 +1011,7 @@ export default class App extends React.Component {
     } catch (e) {
       this.setState({
         mqttBusy: false,
-        mqttError: e.status ? (e.message || 'That didn’t go through — try again.') : 'No signal — try again in a moment.',
+        mqttError: e.status ? (e.message || t('That didn’t go through — try again.')) : t('No signal — try again in a moment.'),
       })
     }
   }
@@ -1016,11 +1020,11 @@ export default class App extends React.Component {
     this.setState({ mqttBusy: true, mqttError: null, mqttTestResult: null })
     try {
       const r = await api.mqttTest(this.mqttBody())
-      this.setState({ mqttBusy: false, mqttTestResult: r.ok ? { ok: true } : { ok: false, message: r.message || 'Couldn’t reach the broker.' } })
+      this.setState({ mqttBusy: false, mqttTestResult: r.ok ? { ok: true } : { ok: false, message: r.message || t('Couldn’t reach the broker.') } })
     } catch (e) {
       this.setState({
         mqttBusy: false,
-        mqttError: e.status ? (e.message || 'That didn’t go through — try again.') : 'No signal — try again in a moment.',
+        mqttError: e.status ? (e.message || t('That didn’t go through — try again.')) : t('No signal — try again in a moment.'),
       })
     }
   }
@@ -1142,9 +1146,9 @@ export default class App extends React.Component {
       .finally(() => { this._timerBusy-- })
   }
   stopTimer = id => {
-    const t = this.state.activeTimers.find(x => x.id === id)
-    if (!t || t.user_id !== this.state.me?.id) return // only the parent who started can stop + log
-    const mins = Math.max(1, Math.round((Date.now() - t.started_at) / 60000))
+    const tm = this.state.activeTimers.find(x => x.id === id)
+    if (!tm || tm.user_id !== this.state.me?.id) return // only the parent who started can stop + log
+    const mins = Math.max(1, Math.round((Date.now() - tm.started_at) / 60000))
     const side = this.state.timerSides[id]
     this._timerBusy++
     this.setState(s => {
@@ -1155,29 +1159,29 @@ export default class App extends React.Component {
     api.timerStop(id).catch(() => this.setState({ offline: true })).finally(() => { this._timerBusy-- })
     // the entry belongs to the child the timer was started for — pill switches
     // mid-session must not redirect the log (null-era timers → primary child)
-    const timerBabyId = t.baby_id ?? this.primaryChildId()
-    if (t.type === 'nurse') {
+    const timerBabyId = tm.baby_id ?? this.primaryChildId()
+    if (tm.type === 'nurse') {
       // nursing: measured side + duration log straight away, undo available
       const detail = [side || this.defaultDetail('nurse'), mins + 'm'].filter(Boolean).join(' · ')
-      const entry = { id: uuid(), type: 'nurse', t: t.started_at, detail, by: this.state.me?.id, babyId: timerBabyId }
+      const entry = { id: uuid(), type: 'nurse', t: tm.started_at, detail, by: this.state.me?.id, babyId: timerBabyId }
       this.setState(s => ({
         entries: [entry, ...s.entries], outbox: [...s.outbox, entry.id],
-        toast: 'Nursing logged · ' + this.dur(mins), undoAction: { kind: 'add', id: entry.id },
+        toast: t('Nursing logged · {dur}', { dur: this.dur(mins) }), undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
       this.bumpToast()
-    } else if (t.type === 'sleep') {
+    } else if (tm.type === 'sleep') {
       // sleep: the entry stamps the wake-up moment, and the duration leads the
       // detail as bare minutes (the sleep format — the wake-window insight
       // subtracts it from t to find when the nap started)
       const entry = { id: uuid(), type: 'sleep', t: Date.now(), detail: mins, by: this.state.me?.id, babyId: timerBabyId }
       this.setState(s => ({
         entries: [entry, ...s.entries], outbox: [...s.outbox, entry.id],
-        toast: 'Sleep logged · ' + this.dur(mins), undoAction: { kind: 'add', id: entry.id },
+        toast: t('Sleep logged · {dur}', { dur: this.dur(mins) }), undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
       this.bumpToast()
     } else {
       // pumping needs the amount — open the sheet (manual mode) with the timed duration filled in
-      this._base = t.started_at
+      this._base = tm.started_at
       const last = this.lastOf(['pump'])
       this.mountSheet({
         editId: null, sel: 'pump', offset: 0, pickedT: null, manualDur: true, sheetChildId: timerBabyId,
@@ -1192,7 +1196,7 @@ export default class App extends React.Component {
   shiftFail = e => {
     if (e && e.status) {
       const first = e.errors ? Object.values(e.errors)[0]?.[0] : null
-      this.setState({ toast: first || e.message || 'That didn’t go through — try again', undoAction: null })
+      this.setState({ toast: first || e.message || t('That didn’t go through — try again'), undoAction: null })
       this.bumpToast()
       this.sync()
     } else this.setState({ offline: true })
@@ -1248,7 +1252,7 @@ export default class App extends React.Component {
         shift: undefined, handbackNote: '', plan, planDraft: null, planOff: [],
         onDutyUserId: st.me?.id ?? st.onDutyUserId,
         serverShift: { id: st.serverShift?.id ?? -1, state: 'active', user_id: st.me?.id, requester_id: st.serverShift?.state === 'requested' ? st.serverShift.requester_id : null, plan, until, until_at: untilAt, started_at: Date.now() },
-        toast: 'You’re on duty · ' + (this.memberName(fromId, st.partner?.name) || 'your partner') + ' notified', undoAction: null,
+        toast: t('You’re on duty · {name} notified', { name: this.memberName(fromId, st.partner?.name) || t('your partner') }), undoAction: null,
       }
     }, () => this.bumpToast())
     api.shiftAccept(plan, until, untilAt).then(r => this.setState({ serverShift: r.shift })).catch(this.shiftFail)
@@ -1284,7 +1288,7 @@ export default class App extends React.Component {
     this.closeShift()
     this.setState(s => ({
       serverShift: { id: -3, state: 'requested', requester_id: s.me?.id, note, requested_at: Date.now() },
-      toast: (others.length > 1 ? 'Everyone else' : (partner?.name || 'Your partner')) + ' will get your handoff ask', undoAction: null,
+      toast: t('{who} will get your handoff ask', { who: others.length > 1 ? t('Everyone else') : (partner?.name || t('Your partner')) }), undoAction: null,
     }), () => this.bumpToast())
     api.shiftRequest(note).catch(this.shiftFail)
   }
@@ -1336,10 +1340,10 @@ export default class App extends React.Component {
         key: e.type,
         date: dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()),
         time: pad(dt.getHours()) + ':' + pad(dt.getMinutes()),
-        type: T(e.type).label,
+        type: t(T(e.type).label),
         oz: ['bottle', 'pump'].includes(e.type) ? d.n : null,
         mins: e.type === 'sleep' ? d.n : d.mins, // sleep stores its minutes as the leading number
-        note: [d.side, d.milk].filter(Boolean).join(' · '),
+        note: [d.side && t(d.side), d.milk && t(d.milk)].filter(Boolean).join(' · '),
         by: who[e.by] || '',
       }
     })
@@ -1362,7 +1366,7 @@ export default class App extends React.Component {
   }
   exportLog = () => {
     this.shareCsv(this.exportName('full'), [
-      'Date,Time,Type,Amount (' + this.unit() + '),Duration (min),Detail,Logged by',
+      t('Date,Time,Type,Amount ({unit}),Duration (min),Detail,Logged by', { unit: this.unit() }),
       ...this.exportRows().map(r => [r.date, r.time, r.type, this.amt(r.oz) ?? '', r.mins ?? '', csvEsc(r.note), csvEsc(r.by)].join(',')),
     ])
   }
@@ -1382,7 +1386,7 @@ export default class App extends React.Component {
     }
     // day totals sum in oz and convert once at the end — no per-row rounding drift
     this.shareCsv(this.exportName('daily'), [
-      'Date,Feeds,Bottle (' + this.unit() + '),Nursing (min),Pumped (' + this.unit() + '),Wet diapers,Dirty diapers,Sleep (min),Baths,Meds',
+      t('Date,Feeds,Bottle ({unit}),Nursing (min),Pumped ({unit}),Wet diapers,Dirty diapers,Sleep (min),Baths,Meds', { unit: this.unit() }),
       ...[...days.entries()].map(([date, d]) =>
         [date, d.feeds, d.oz ? this.amt(d.oz) : '', d.nurseMin || '', d.pumpOz ? this.amt(d.pumpOz) : '', d.wet, d.dirty, d.sleepMin || '', d.baths || '', d.meds || ''].join(',')),
     ])
@@ -1402,7 +1406,7 @@ export default class App extends React.Component {
       result = mapBabyBuddy(await Promise.all(files.map(async f => ({ name: f.name, text: await f.text() }))))
     } catch { /* unreadable file — fall through to the empty-result toast */ }
     if (!result || (!result.entries.length && !result.skipped)) {
-      this.setState({ importBusy: false, toast: 'Nothing recognized — pick the CSV files Baby Buddy exports', undoAction: null })
+      this.setState({ importBusy: false, toast: t('Nothing recognized — pick the CSV files Baby Buddy exports'), undoAction: null })
       return this.bumpToast()
     }
     // imported history lands on the child being viewed when the import ran
@@ -1415,7 +1419,7 @@ export default class App extends React.Component {
         importBusy: false,
         entries: [...fresh, ...s.entries].sort((a, b) => b.t - a.t),
         outbox: [...s.outbox, ...fresh.map(e => e.id)],
-        toast: 'Imported ' + fresh.length + (fresh.length === 1 ? ' entry' : ' entries') + (skipped ? ' · ' + skipped + ' skipped' : ''),
+        toast: (fresh.length === 1 ? t('Imported 1 entry') : t('Imported {n} entries', { n: fresh.length })) + (skipped ? ' · ' + t('{n} skipped', { n: skipped }) : ''),
         undoAction: null,
       }
     }, () => this.flushSoon())
@@ -1557,7 +1561,7 @@ export default class App extends React.Component {
 
   save = () => {
     const key = this.state.sel || this.predict() || 'bottle'
-    const t = this.stamp(), detail = this.composeDetail(key)
+    const at = this.stamp(), detail = this.composeDetail(key)
     const babyId = this.state.sheetChildId ?? this.selChildId()
     this.closeSheet()
     if (this.state.editId) {
@@ -1566,19 +1570,19 @@ export default class App extends React.Component {
         // remember the pre-edit values so the toast's Undo can put them back
         const prev = s.entries.find(e => e.id === id)
         return {
-          entries: s.entries.map(e => e.id === id ? { ...e, type: key, t, detail, babyId } : e),
+          entries: s.entries.map(e => e.id === id ? { ...e, type: key, t: at, detail, babyId } : e),
           outbox: [...new Set([...s.outbox, id])],
-          toast: 'Entry updated',
+          toast: t('Entry updated'),
           undoAction: prev ? { kind: 'edit', id, prev: { type: prev.type, t: prev.t, detail: prev.detail, babyId: prev.babyId } } : null,
         }
       }, () => this.flushSoon())
     } else {
-      const entry = { id: uuid(), type: key, t, detail, by: this.state.me?.id, babyId }
+      const entry = { id: uuid(), type: key, t: at, detail, by: this.state.me?.id, babyId }
       this.setState(s => ({
         screen: 'home',
         entries: [entry, ...s.entries],
         outbox: [...s.outbox, entry.id],
-        toast: T(key).label + ' logged · ' + this.clock(t), undoAction: { kind: 'add', id: entry.id },
+        toast: t('{type} logged · {time}', { type: t(T(key).label), time: this.clock(at) }), undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
     }
     this.bumpToast()
@@ -1627,7 +1631,7 @@ export default class App extends React.Component {
   remove = () => {
     const id = this.state.editId
     this.closeSheet()
-    this.setState({ toast: 'Entry deleted', undoAction: id ? { kind: 'delete', id } : null })
+    this.setState({ toast: t('Entry deleted'), undoAction: id ? { kind: 'delete', id } : null })
     if (id) this.markDeleted(id)
     this.bumpToast()
   }
@@ -1657,7 +1661,7 @@ export default class App extends React.Component {
     for (let d = 6; d >= 0; d--) {
       const from = base.getTime() - d * DAY
       const n = live.filter(e => keys.includes(e.type) && e.t >= from && e.t < from + DAY).length
-      out.push({ n, key: dayKey(from), day: d === 0 ? 'Today' : new Date(from).toLocaleDateString(undefined, { weekday: 'short' }) })
+      out.push({ n, key: dayKey(from), day: d === 0 ? t('Today') : new Date(from).toLocaleDateString(locale(), { weekday: 'short' }) })
     }
     const max = Math.max(...out.map(o => o.n), 1)
     return out.map((o, i) => ({
@@ -1676,8 +1680,8 @@ export default class App extends React.Component {
     const backMin = s.sheet ? Math.max(0, Math.round((this._base - stampT) / 60000)) : 0
 
     const me = s.me, partner = s.partner, sh = s.serverShift
-    const myName = me?.name || 'You'
-    const partnerName = partner?.name || 'your partner'
+    const myName = me?.name || t('You')
+    const partnerName = partner?.name || t('your partner')
     const initial = n => (n || '?').trim()[0]?.toUpperCase() || '?'
     const iAmOnDuty = !me || !s.onDutyUserId || s.onDutyUserId === me.id
 
@@ -1707,17 +1711,17 @@ export default class App extends React.Component {
       const c = WIDGETS.find(w => w.key === k)
       const e = this.lastOf(c.keys)
       const day = e ? this.dayOf(e.t) : ''
-      return { label: c.label, icon: c.icon, color: c.color, elapsed: e ? this.elapsed(e.t) : '—',
-        at: e ? this.clock(e.t) + (day ? ', ' + day.toLowerCase() : '') + ' · ' + T(e.type).label : 'nothing logged yet' }
+      return { label: t(c.label), icon: c.icon, color: c.color, elapsed: e ? this.elapsed(e.t) : '—',
+        at: e ? this.clock(e.t) + (day ? ', ' + lower(day) : '') + ' · ' + t(T(e.type).label) : t('nothing logged yet') }
     })
 
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
     const td = live.filter(e => e.t >= midnight.getTime())
     const oz = td.filter(e => e.type === 'bottle').reduce((a, e) => a + (dSplit(e.detail).n || 0), 0)
     const todaySummary = [
-      td.filter(e => FEEDS.includes(e.type)).length + ' feeds',
+      t('{n} feeds', { n: td.filter(e => FEEDS.includes(e.type)).length }),
       this.amt(oz) + this.unit(),
-      this.trackOn('diapers') ? td.filter(e => DIAPERS.includes(e.type)).length + ' diapers' : null,
+      this.trackOn('diapers') ? t('{n} diapers', { n: td.filter(e => DIAPERS.includes(e.type)).length }) : null,
     ].filter(Boolean).join(' · ')
 
     // queued-but-unsynced rows get a dimmed dot until the outbox flushes
@@ -1730,44 +1734,44 @@ export default class App extends React.Component {
       return m ? { initial: initial(m.name), name: m.name, color: this.memberColor(m.id) } : null
     }
     const entryRows = [...live].sort((a, b) => b.t - a.t).slice(0, 12).map(e => ({
-      t: e.t, time: this.clock(e.t), label: T(e.type).label, sub: this.subFor(e),
+      t: e.t, time: this.clock(e.t), label: t(T(e.type).label), sub: this.subFor(e),
       icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
       pending: pendingIds.has(e.id), byChip: byChipFor(e),
     }))
     // running timers woven into the Today list at their start time (timerSpot
     // 'today' or 'both') — a live elapsed sub, and your own row carries its
     // one-tap Stop, same rule as the top cards
-    const feedTimerRows = (s.timerSpot || 'both') !== 'top' ? s.activeTimers.map(t => {
-      const tt = T(t.type)
-      const mine = !!(s.me && t.user_id === s.me.id)
+    const feedTimerRows = (s.timerSpot || 'both') !== 'top' ? s.activeTimers.map(tm => {
+      const tt = T(tm.type)
+      const mine = !!(s.me && tm.user_id === s.me.id)
       const child = kids.length > 1
-        ? ((s.children || []).find(c => c.id === (t.baby_id ?? this.primaryChildId()))?.name || '')
+        ? ((s.children || []).find(c => c.id === (tm.baby_id ?? this.primaryChildId()))?.name || '')
         : ''
       return {
-        timer: true, id: t.id, mine,
-        t: t.started_at, time: this.clock(t.started_at), label: tt.label,
-        sub: this.stopwatch(Date.now() - t.started_at)
+        timer: true, id: tm.id, mine,
+        t: tm.started_at, time: this.clock(tm.started_at), label: t(tt.label),
+        sub: this.stopwatch(Date.now() - tm.started_at)
           + (child ? ' · ' + child : '')
-          + (mine ? '' : ' · ' + this.memberName(t.user_id, 'your partner')),
+          + (mine ? '' : ' · ' + this.memberName(tm.user_id, t('your partner'))),
         icon: tt.icon, color: tt.color,
-        onStop: () => this.stopTimer(t.id),
+        onStop: () => this.stopTimer(tm.id),
       }
     }) : []
     const timeline = [...entryRows, ...feedTimerRows].sort((a, b) => b.t - a.t)
 
     // every day on the device, grouped for the History drill-down
-    const fmtDay = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) }
+    const fmtDay = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' }) }
     const byDay = new Map()
     for (const e of live) { const k = dayKey(e.t); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e) }
     const daySummary = evs => {
       const feeds = evs.filter(e => FEEDS.includes(e.type))
       const dOz = feeds.reduce((a, e) => a + (e.type === 'bottle' ? dSplit(e.detail).n || 0 : 0), 0)
-      const p = [feeds.length + ' feeds']
+      const p = [t('{n} feeds', { n: feeds.length })]
       if (dOz) p.push(this.amt(dOz) + ' ' + this.unit())
       const dSl = evs.filter(e => e.type === 'sleep').reduce((a, e) => a + (Number(e.detail) || 0), 0)
-      if (this.trackOn('sleep') && dSl) p.push(this.dur(dSl) + ' sleep')
+      if (this.trackOn('sleep') && dSl) p.push(t('{dur} sleep', { dur: this.dur(dSl) }))
       const dDia = evs.filter(e => DIAPERS.includes(e.type)).length
-      if (this.trackOn('diapers') && dDia) p.push(dDia + ' diapers')
+      if (this.trackOn('diapers') && dDia) p.push(t('{n} diapers', { n: dDia }))
       return p.join(' · ')
     }
     const historyDays = [...byDay.keys()].sort().reverse().map(k => ({
@@ -1780,9 +1784,9 @@ export default class App extends React.Component {
     const oldestKey = byDay.size ? [...byDay.keys()].sort()[0] : todayKey
     const dayEvs = s.historyDay ? byDay.get(s.historyDay) || [] : []
     const dayView = s.historyDay ? {
-      label: fmtDay(s.historyDay), sub: dayEvs.length ? daySummary(dayEvs) : 'nothing logged',
+      label: fmtDay(s.historyDay), sub: dayEvs.length ? daySummary(dayEvs) : t('nothing logged'),
       rows: [...dayEvs].sort((a, b) => a.t - b.t).map(e => ({
-        time: this.clock(e.t), label: T(e.type).label, sub: this.subFor(e, true),
+        time: this.clock(e.t), label: t(T(e.type).label), sub: this.subFor(e, true),
         icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
         pending: pendingIds.has(e.id), byChip: byChipFor(e),
       })),
@@ -1792,12 +1796,12 @@ export default class App extends React.Component {
     } : null
 
     // hidden trackers drop out of the sheet, except while editing an old entry of that type
-    const types = TYPES.filter(t => this.typeOn(t.key) || t.key === s.sel).map(t => {
-      const on = t.key === s.sel
-      return { label: t.label, icon: t.icon, color: t.color, on, tint: on ? 0.13 : 0.045, onTap: this.pick(t.key) }
+    const types = TYPES.filter(ty => this.typeOn(ty.key) || ty.key === s.sel).map(ty => {
+      const on = ty.key === s.sel
+      return { label: t(ty.label), icon: ty.icon, color: ty.color, on, tint: on ? 0.13 : 0.045, onTap: this.pick(ty.key) }
     })
 
-    const nudges = [{ n: 0, label: 'now' }, { n: -step, label: '−' + step }, { n: -step * 3, label: '−' + step * 3 }, { n: -60, label: '−1h' }]
+    const nudges = [{ n: 0, label: t('now') }, { n: -step, label: '−' + step }, { n: -step * 3, label: '−' + step * 3 }, { n: -60, label: '−1h' }]
       .map(d => ({ label: d.label, onTap: this.nudge(d.n), ...this.chip(s.pickedT == null && s.offset === d.n, OLIVE) }))
 
     const kind = st.detail
@@ -1817,16 +1821,16 @@ export default class App extends React.Component {
           onDown: this.scrubStart(field, key, dv), ...this.chip(on, st.color) }
       })
     }
-    const opts = kind === 'side' ? ['Left', 'Right', 'Both'].map(v => ({ v, label: v })) : []
+    const opts = kind === 'side' ? ['Left', 'Right', 'Both'].map(v => ({ v, label: t(v) })) : []
     const detailOptions = kind === 'dur' ? scrubChips('detail', 'dur')
       : kind === 'amount' ? scrubChips('detail', this.amountKey())
       : opts.map(o => ({ label: o.label, onTap: () => this.setState({ detail: o.v }), ...this.chip(s.detail === o.v, st.color) }))
     const kind2 = st.key === 'bottle' ? 'milk' : st.key === 'nurse' || st.key === 'pump' ? 'mins' : null
-    const opts2 = kind2 === 'milk' ? [{ v: 'breastmilk', label: 'Breast milk' }, { v: 'formula', label: 'Formula' }] : []
+    const opts2 = kind2 === 'milk' ? [{ v: 'breastmilk', label: t('Breast milk') }, { v: 'formula', label: t('Formula') }] : []
     const detail2Options = kind2 === 'mins' ? scrubChips('detail2', 'mins')
       : opts2.map(o => ({ label: o.label, onTap: () => this.setState(x => ({ detail2: x.detail2 === o.v ? null : o.v })), ...this.chip(s.detail2 === o.v, st.color) }))
-    const detailStr = (kind === 'amount' ? (s.detail != null ? ' ' + s.detail + ' ' + this.unit() : '') : kind === 'side' ? ' ' + (s.detail || '') : kind === 'dur' ? ' ' + this.dur(s.detail) : '')
-      + (s.detail2 != null ? (kind2 === 'milk' ? ' · ' + (s.detail2 === 'formula' ? 'formula' : 'breast milk') : ' · ' + this.dur(s.detail2)) : '')
+    const detailStr = (kind === 'amount' ? (s.detail != null ? ' ' + s.detail + ' ' + this.unit() : '') : kind === 'side' ? ' ' + (s.detail ? t(s.detail) : '') : kind === 'dur' ? ' ' + this.dur(s.detail) : '')
+      + (s.detail2 != null ? (kind2 === 'milk' ? ' · ' + t(s.detail2 === 'formula' ? 'formula' : 'breast milk') : ' · ' + this.dur(s.detail2)) : '')
 
     // nursing/pump/sleep default to the live timer; a manual toggle logs a past session
     const timerType = (st.key === 'nurse' || st.key === 'pump' || st.key === 'sleep') && !s.editId
@@ -1834,11 +1838,11 @@ export default class App extends React.Component {
 
     const feed = this.lastOf(FEEDS), dia = this.lastOf(DIAPERS), sleep = this.lastOf(['sleep'])
     const handoffRows = [
-      { label: 'Last fed', value: feed ? this.elapsed(feed.t) + ' ago' : '—' },
-      { label: 'That feed was', value: feed ? (feed.type === 'bottle' ? (this.fmtDetail(feed.detail) || feed.detail + ' ' + this.unit()) + ' bottle' : 'nursed, ' + (feed.detail ? this.fmtDetail(feed.detail) || feed.detail : 'either')) : '—' },
-      ...(this.trackOn('diapers') ? [{ label: 'Last diaper', value: dia ? this.elapsed(dia.t) + ' ago · ' + (dia.type === 'both' ? 'wet + dirty' : dia.type) : '—' }] : []),
-      ...(this.trackOn('sleep') ? [{ label: 'Last nap ended', value: sleep ? this.elapsed(sleep.t) + ' ago · ' + this.dur(sleep.detail) : '—' }] : []),
-      { label: 'Today so far', value: td.filter(e => FEEDS.includes(e.type)).length + ' feeds' + (this.trackOn('diapers') ? ' / ' + td.filter(e => DIAPERS.includes(e.type)).length + ' diapers' : '') },
+      { label: t('Last fed'), value: feed ? t('{x} ago', { x: this.elapsed(feed.t) }) : '—' },
+      { label: t('That feed was'), value: feed ? (feed.type === 'bottle' ? t('{amount} bottle', { amount: this.fmtDetail(feed.detail) || feed.detail + ' ' + this.unit() }) : t('nursed, {side}', { side: feed.detail ? this.fmtDetail(feed.detail) || feed.detail : t('either') })) : '—' },
+      ...(this.trackOn('diapers') ? [{ label: t('Last diaper'), value: dia ? t('{x} ago', { x: this.elapsed(dia.t) }) + ' · ' + t(dia.type === 'both' ? 'wet + dirty' : dia.type) : '—' }] : []),
+      ...(this.trackOn('sleep') ? [{ label: t('Last nap ended'), value: sleep ? t('{x} ago', { x: this.elapsed(sleep.t) }) + ' · ' + this.dur(sleep.detail) : '—' }] : []),
+      { label: t('Today so far'), value: t('{n} feeds', { n: td.filter(e => FEEDS.includes(e.type)).length }) + (this.trackOn('diapers') ? ' / ' + t('{n} diapers', { n: td.filter(e => DIAPERS.includes(e.type)).length }) : '') },
     ]
 
     const week = live.filter(e => e.t >= midnight.getTime() - 6 * DAY)
@@ -1862,12 +1866,12 @@ export default class App extends React.Component {
     const avgGap = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0
     const longest = gaps.length ? Math.max(...gaps) : 0
     const stats = [
-      { label: 'Feeds / day', value: (feedsWk.length / 7).toFixed(1), unit: 'avg' },
-      { label: this.unit() + ' / day', value: Math.round(this.amt(ozWk / 7)), unit: 'bottles only' },
-      ...(this.trackOn('diapers') ? [{ label: 'Diapers / day', value: (week.filter(e => DIAPERS.includes(e.type)).length / 7).toFixed(1), unit: 'avg' }] : []),
+      { label: t('Feeds / day'), value: (feedsWk.length / 7).toFixed(1), unit: t('avg') },
+      { label: t('{unit} / day', { unit: this.unit() }), value: Math.round(this.amt(ozWk / 7)), unit: t('bottles only') },
+      ...(this.trackOn('diapers') ? [{ label: t('Diapers / day'), value: (week.filter(e => DIAPERS.includes(e.type)).length / 7).toFixed(1), unit: t('avg') }] : []),
       ...(this.trackOn('sleep') ? [
-        { label: 'Sleep logged', value: this.dur(Math.round(naps.reduce((a, e) => a + (Number(e.detail) || 0), 0) / 7)), unit: '/ day' },
-        { label: 'Wake window', value: avgWake ? this.dur(avgWake) : '—', unit: 'avg' },
+        { label: t('Sleep logged'), value: this.dur(Math.round(naps.reduce((a, e) => a + (Number(e.detail) || 0), 0) / 7)), unit: t('/ day') },
+        { label: t('Wake window'), value: avgWake ? this.dur(avgWake) : '—', unit: t('avg') },
       ] : []),
     ]
 
@@ -1879,7 +1883,7 @@ export default class App extends React.Component {
         if (!['diapers', 'sleep', 'meds'].includes(tr.key)) continue // baths/pumping are legitimately occasional
         if (!this.trackOn(tr.key) || s.settings.dismissed.includes(tr.key)) continue
         const n = week.filter(e => tr.types.includes(e.type)).length
-        if (n / 7 < 0.5) { trackRec = { key: tr.key, label: tr.label, n }; break }
+        if (n / 7 < 0.5) { trackRec = { key: tr.key, label: t(tr.label), n }; break }
       }
     }
 
@@ -1917,22 +1921,22 @@ export default class App extends React.Component {
     })
     let nextSeen = false
     const planRows = plan.map(p => {
-      const t = T(p.type), done = !!p.hit, isNext = !done && !nextSeen; if (isNext) nextSeen = true
+      const ty = T(p.type), done = !!p.hit, isNext = !done && !nextSeen; if (isNext) nextSeen = true
       const late = !done && p.at < Date.now()
       const mins = Math.round(Math.abs(p.at - Date.now()) / 60000)
-      const rel = mins < 60 ? mins + 'm' : Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm'
+      const rel = mins < 60 ? t('{n}m', { n: mins }) : t('{h}h {m}m', { h: Math.floor(mins / 60), m: mins % 60 })
       return {
-        label: (t.key === 'bottle' ? 'Feed' : t.label) + ' · ' + this.clock(p.at).replace(':00', ''),
-        icon: t.icon, color: t.color,
-        sub: done ? 'logged ' + this.clock(p.hit.t) + (p.hit.detail && FEEDS.includes(p.hit.type) ? ' · ' + (this.fmtDetail(p.hit.detail) || p.hit.detail) : '') : isNext ? (late ? 'running ' + rel + ' late' : 'next up') : 'later',
-        when: done ? 'done' : late ? 'now' : 'in ' + rel,
+        label: t(ty.key === 'bottle' ? 'Feed' : ty.label) + ' · ' + this.clock(p.at).replace(':00', ''),
+        icon: ty.icon, color: ty.color,
+        sub: done ? t('logged {time}', { time: this.clock(p.hit.t) }) + (p.hit.detail && FEEDS.includes(p.hit.type) ? ' · ' + (this.fmtDetail(p.hit.detail) || p.hit.detail) : '') : isNext ? (late ? t('running {rel} late', { rel }) : t('next up')) : t('later'),
+        when: done ? t('done') : late ? t('now') : t('in {rel}', { rel }),
         stateIcon: done ? 'check_circle' : isNext ? 'schedule' : 'radio_button_unchecked',
         stateColor: done ? 'var(--accent)' : isNext ? (late ? 'var(--warn)' : 'var(--accent-deep)') : 'var(--dim)',
         textColor: done ? 'var(--soft)' : 'var(--ink)', whenColor: done ? 'var(--soft)' : late ? 'var(--warn)' : 'var(--accent-deep)',
       }
     })
     const nextRow = planRows.find(r => r.stateIcon === 'schedule')
-    const fmtPlanLabel = p => (p.type === 'bottle' ? 'Feed' : T(p.type).label)
+    const fmtPlanLabel = p => t(p.type === 'bottle' ? 'Feed' : T(p.type).label)
     const rhythm = this.draftPlan()
     // one source for the incoming card's predicted chips and the accept sheet's
     // toggle rows — the card must preview exactly the plan the sheet opens with
@@ -1949,11 +1953,11 @@ export default class App extends React.Component {
     const sf = shiftEntries.filter(e => FEEDS.includes(e.type)), sd = shiftEntries.filter(e => DIAPERS.includes(e.type)), ss = shiftEntries.filter(e => e.type === 'sleep')
     const sOz = sf.filter(e => e.type === 'bottle').reduce((a, e) => a + (dSplit(e.detail).n || 0), 0)
     const reportRows = [
-      { label: 'Feeds', value: sf.length ? sf.length + ' · ' + sf.map(e => this.clock(e.t)).join(', ') : 'none yet' },
-      { label: 'Total from bottles', value: this.amt(sOz) + ' ' + this.unit() },
-      ...(this.trackOn('diapers') ? [{ label: 'Diapers', value: sd.length ? sd.length + ' · ' + sd.map(e => e.type).join(', ') : 'none yet' }] : []),
-      ...(this.trackOn('sleep') ? [{ label: 'Sleep logged', value: ss.length ? this.dur(ss.reduce((a, e) => a + (Number(e.detail) || 0), 0)) : 'none yet' }] : []),
-      { label: 'Last thing', value: shiftEntries.length ? T(shiftEntries[shiftEntries.length - 1].type).label + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
+      { label: t('Feeds'), value: sf.length ? sf.length + ' · ' + sf.map(e => this.clock(e.t)).join(', ') : t('none yet') },
+      { label: t('Total from bottles'), value: this.amt(sOz) + ' ' + this.unit() },
+      ...(this.trackOn('diapers') ? [{ label: t('Diapers'), value: sd.length ? sd.length + ' · ' + sd.map(e => t(e.type === 'both' ? 'wet + dirty' : e.type)).join(', ') : t('none yet') }] : []),
+      ...(this.trackOn('sleep') ? [{ label: t('Sleep logged'), value: ss.length ? this.dur(ss.reduce((a, e) => a + (Number(e.detail) || 0), 0)) : t('none yet') }] : []),
+      { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
     ]
     const reqMins = sh?.requested_at ? Math.round((Date.now() - sh.requested_at) / 60000) : 0
 
@@ -1990,9 +1994,9 @@ export default class App extends React.Component {
       goLogin: () => this.setState({ screen: 'auth', authMode: 'login', authError: null }),
       goSignup: () => this.setState({ screen: 'auth', authMode: 'signup', authError: null }),
       authSubmit: this.authSubmit,
-      authTitle: s.authMode === 'login' ? 'Welcome back' : 'Let’s set up your log',
-      authBody: s.authMode === 'login' ? 'Your log is right where you left it — and whatever your partner added since.' : 'One account per grown-up. You’ll invite the other one in a second.',
-      authCta: s.authBusy ? 'One sec…' : (s.authMode === 'login' ? 'Log in' : 'Create account'),
+      authTitle: t(s.authMode === 'login' ? 'Welcome back' : 'Let’s set up your log'),
+      authBody: t(s.authMode === 'login' ? 'Your log is right where you left it — and whatever your partner added since.' : 'One account per grown-up. You’ll invite the other one in a second.'),
+      authCta: s.authBusy ? t('One sec…') : t(s.authMode === 'login' ? 'Log in' : 'Create account'),
       authError: s.authError,
       authName: s.authName, setAuthName: e => this.setState({ authName: e.target.value }),
       authInvite: s.authInvite, setAuthInvite: e => this.setState({ authInvite: e.target.value }),
@@ -2002,9 +2006,9 @@ export default class App extends React.Component {
       toggleForgot: () => this.setState(x => ({ forgotOpen: !x.forgotOpen, forgotResult: null, forgotEmail: x.forgotEmail || x.authEmail })),
       forgotEmail: s.forgotEmail, setForgotEmail: e => this.setState({ forgotEmail: e.target.value, forgotResult: null }),
       sendForgot: this.sendForgot, forgotBusy: s.forgotBusy, forgotResult: s.forgotResult,
-      forgotCopy: s.forgotResult === 'sent' ? 'If that email has a log here, a reset link is on its way — check spam too.'
+      forgotCopy: t(s.forgotResult === 'sent' ? 'If that email has a log here, a reset link is on its way — check spam too.'
         : s.forgotResult === 'unconfigured' ? 'This home server can’t send email yet — ask whoever runs it, or reset from the server.'
-          : 'No signal — try again in a moment.',
+          : 'No signal — try again in a moment.'),
       isReset: s.screen === 'reset',
       resetEmail: s.resetEmail,
       resetPw: s.resetPw, setResetPw: e => this.setState({ resetPw: e.target.value, resetError: null }),
@@ -2027,11 +2031,11 @@ export default class App extends React.Component {
 
       // headers follow the pills; the settings About card edits the primary
       // child (that's what /baby writes), so it names the primary explicitly
-      babyName: (selChild && selChild.name) || s.babyName || 'Baby',
-      primaryBabyName: s.babyName || 'Baby',
+      babyName: (selChild && selChild.name) || s.babyName || t('Baby'),
+      primaryBabyName: s.babyName || t('Baby'),
       ageLabel: this.ageInfo().label,
       childPills, sheetChildren,
-      dateLabel: new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+      dateLabel: new Date().toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' }),
       sinceCards: cards, todaySummary, timeline,
       offline: s.offline,
 
@@ -2041,45 +2045,45 @@ export default class App extends React.Component {
       sheetTranslate: s.sheetDragY > 0 ? s.sheetDragY : (s.sheetTall ? Math.max(s.sheetDragY / 4, -18) : Math.max(s.sheetDragY / 2, -46)),
       sheetDragging: s.sheetDragging, sheetTall: s.sheetTall,
       sheetDragStart: this.sheetDragStart, sheetDragMove: this.sheetDragMove, sheetDragEnd: this.sheetDragEnd,
-      sheetKicker: s.editId ? 'Editing entry'
-        : (backMin < 1 ? 'stamped now' : this.dur(backMin) + ' earlier'),
+      sheetKicker: s.editId ? t('Editing entry')
+        : (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
       stampTime: this.clock(stampT),
       stampHM: String(new Date(stampT).getHours()).padStart(2, '0') + ':' + String(new Date(stampT).getMinutes()).padStart(2, '0'),
       pickTime: this.pickTime,
       showTimePicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
       nudges, types,
-      hasDetail: !!kind && !timerFirst, detailLabel: kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration', detailOptions,
-      hasDetail2: !!kind2 && !timerFirst, detail2Label: kind2 === 'milk' ? 'Milk' : 'Duration', detail2Options,
+      hasDetail: !!kind && !timerFirst, detailLabel: t(kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
+      hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : 'Duration'), detail2Options,
       scrubMove: this.scrubMove, scrubEnd: this.scrubEnd,
       showStamp: !timerFirst,
       timerFirst,
-      startTimerLabel: 'Start ' + (st.key === 'nurse' ? 'nursing' : st.key === 'sleep' ? 'sleep timer' : 'pumping'),
+      startTimerLabel: t(st.key === 'nurse' ? 'Start nursing' : st.key === 'sleep' ? 'Start sleep timer' : 'Start pumping'),
       startTimer: () => this.startTimer(st.key),
       canManual: timerType,
       toManual: () => this.setState({ manualDur: true }),
       toTimer: () => this.setState({ manualDur: false }),
-      manualHint: st.key === 'nurse' ? 'Log a past feed' : st.key === 'sleep' ? 'Log a past sleep' : 'Log a past session',
+      manualHint: t(st.key === 'nurse' ? 'Log a past feed' : st.key === 'sleep' ? 'Log a past sleep' : 'Log a past session'),
       // running-timer cards at the top of Now (timerSpot 'top' or 'both') —
       // one per concurrent timer, in start order so cards stay put as new ones
       // append. With 2+ unarchived children each names its child (null baby_id
       // = primary, same rule as entries). Your own card stops in one tap —
       // same as your rows in the Today list.
-      timers: ((s.timerSpot || 'both') === 'today' ? [] : s.activeTimers).map(t => {
-        const tt = T(t.type)
+      timers: ((s.timerSpot || 'both') === 'today' ? [] : s.activeTimers).map(tm => {
+        const tt = T(tm.type)
         return {
-          id: t.id,
-          label: t.type === 'nurse' ? 'Nursing' : t.type === 'sleep' ? 'Sleep' : 'Pumping',
+          id: tm.id,
+          label: t(tm.type === 'nurse' ? 'Nursing' : tm.type === 'sleep' ? 'Sleep' : 'Pumping'),
           child: kids.length > 1
-            ? ((s.children || []).find(c => c.id === (t.baby_id ?? this.primaryChildId()))?.name || '')
+            ? ((s.children || []).find(c => c.id === (tm.baby_id ?? this.primaryChildId()))?.name || '')
             : '',
           icon: tt.icon, color: tt.color,
-          elapsed: this.stopwatch(Date.now() - t.started_at),
-          mine: !!(me && t.user_id === me.id),
-          who: t.user_id === me?.id ? 'You' : this.memberName(t.user_id, partnerName),
-          stop: () => this.stopTimer(t.id),
+          elapsed: this.stopwatch(Date.now() - tm.started_at),
+          mine: !!(me && tm.user_id === me.id),
+          who: tm.user_id === me?.id ? t('You') : this.memberName(tm.user_id, partnerName),
+          stop: () => this.stopTimer(tm.id),
         }
       }),
-      saveLabel: (s.editId ? 'Update ' : 'Save ') + st.label.toLowerCase() + detailStr,
+      saveLabel: t(s.editId ? 'Update {thing}' : 'Save {thing}', { thing: lower(t(st.label)) }) + detailStr,
       editing: !!s.editId, toast: !!s.toast, toastText: s.toast || '', toastLeaving: s.toastLeaving, canUndo: !!s.undoAction,
       openSheet: this.openSheet, closeSheet: this.closeSheet, save: this.save, undo: this.undo, remove: this.remove,
 
@@ -2094,65 +2098,67 @@ export default class App extends React.Component {
       relieveInitial: initial(dutyHolder?.name || partner?.name),
       relieveColor: !iAmOnDuty && s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR,
       hbName,
-      askLabel: s.members.length > 2 ? 'Ask for someone to take over — sends your note' : 'Ask ' + partnerName + ' to take over — sends your note',
+      askLabel: s.members.length > 2 ? t('Ask for someone to take over — sends your note') : t('Ask {name} to take over — sends your note', { name: partnerName }),
       incoming: incomingReq && s.screen === 'home',
       mine: iAmOnDuty && !!partner && activeMine,
       theirs: activeTheirs && !iAmOnDuty,
-      theirShiftSub: activeTheirs ? 'since ' + this.clock(shiftStart) + (sh.until ? ' · ' + sh.until.charAt(0).toLowerCase() + sh.until.slice(1) : '') : '',
+      theirShiftSub: activeTheirs ? t('since {time}', { time: this.clock(shiftStart) }) + (sh.until ? ' · ' + (getLang() === 'en' ? t(sh.until).charAt(0).toLowerCase() + t(sh.until).slice(1) : t(sh.until)) : '') : '',
       dutyInitial: iAmOnDuty ? initial(me?.name) : initial(dutyHolder?.name || partner?.name),
       dutyColor: iAmOnDuty ? ME_COLOR : (s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR),
-      dutyLabel: partner ? (iAmOnDuty ? 'You · on duty' : dutyName + ' · on duty') : 'Just you so far',
-      footerShiftLabel: iAmOnDuty ? 'Hand off' : 'Take over',
-      requestAgo: 'asked ' + (reqMins < 1 ? 'just now' : reqMins + ' min ago'),
-      requestNote: (sh && sh.note) || ('Can you take ' + (s.babyName || 'the baby') + '? Next feeds look like ' + t1 + ' and ' + t2 + ' — that’s the usual rhythm.'),
+      dutyLabel: partner ? (iAmOnDuty ? t('You · on duty') : t('{name} · on duty', { name: dutyName })) : t('Just you so far'),
+      footerShiftLabel: t(iAmOnDuty ? 'Hand off' : 'Take over'),
+      requestAgo: reqMins < 1 ? t('asked just now') : t('asked {n} min ago', { n: reqMins }),
+      requestNote: (sh && sh.note) || t('Can you take {name}? Next feeds look like {t1} and {t2} — that’s the usual rhythm.', { name: s.babyName || t('the baby'), t1, t2 }),
       requestPlan, requestPlanRows,
+      // the stored `until` stays canonical English — untilAt() regex-parses it
+      // and the partner's device re-translates it for display
       untilOptions: ['Until she wakes', 'Until 6 AM', 'Open-ended'].map(u => {
         const on = s.until === u
-        return { label: u, onTap: () => this.setState({ until: u }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
+        return { label: t(u), onTap: () => this.setState({ until: u }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
       }),
-      theirShiftLine: completed ? (dutyName + ' has been on since ' + this.clock(sh.ended_at)) : (dutyName + ' has ' + (s.babyName || 'the baby') + ' right now'),
+      theirShiftLine: completed ? t('{name} has been on since {time}', { name: dutyName, time: this.clock(sh.ended_at) }) : t('{name} has {baby} right now', { name: dutyName, baby: s.babyName || t('the baby') }),
       shiftMounted: shiftUp, shiftShown: s.shiftOpen && s.shiftIn,
       sheetTheirs: shiftUp && !iAmOnDuty && !showReport,
       sheetMine: shiftUp && iAmOnDuty && !showReport,
       sheetReport: showReport,
-      reportTitle: iHandedBack ? dutyName + '’s back on' : (shiftOwnerName + ' handed back'),
+      reportTitle: iHandedBack ? t('{name}’s back on', { name: dutyName }) : t('{name} handed back', { name: shiftOwnerName }),
       openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack, addPlanFeed: this.addPlanFeed,
       requestHandoff: this.requestHandoff,
       canRequest: iAmOnDuty && !!partner && !(sh && sh.state === 'requested'),
-      shiftSince: 'since ' + this.clock(shiftStart), shiftElapsed: this.elapsed(shiftStart),
-      nextUp: nextRow ? 'Next: ' + nextRow.label.split(' · ')[0].toLowerCase() + ' ' + nextRow.when : 'Plan done',
+      shiftSince: t('since {time}', { time: this.clock(shiftStart) }), shiftElapsed: this.elapsed(shiftStart),
+      nextUp: nextRow ? t('Next: {what} {when}', { what: lower(nextRow.label.split(' · ')[0]), when: nextRow.when }) : t('Plan done'),
       plan: planRows, reportRows,
-      reportRange: this.clock(shiftStart) + ' – ' + this.clock(shiftEnd || Date.now()) + ' · ' + this.elapsed(shiftStart) + ' on duty',
+      reportRange: this.clock(shiftStart) + ' – ' + this.clock(shiftEnd || Date.now()) + ' · ' + t('{dur} on duty', { dur: this.elapsed(shiftStart) }),
       handbackNote: s.handbackNote, reportNote: noteShown, hasHandbackNote: !!noteShown,
       setHandbackNote: e => this.setState({ handbackNote: e.target.value }),
 
-      historySubtitle: feedsWk.length + ' feeds' + (this.trackOn('diapers') ? ' · ' + week.filter(e => DIAPERS.includes(e.type)).length + ' diapers' : '') + ' logged',
+      historySubtitle: t('{summary} logged', { summary: t('{n} feeds', { n: feedsWk.length }) + (this.trackOn('diapers') ? ' · ' + t('{n} diapers', { n: week.filter(e => DIAPERS.includes(e.type)).length }) : '') }),
       historyDays, dayView,
       stats, feedBars: this.bars(FEEDS, 'oklch(0.60 0.075 130)'), diaperBars: this.bars(DIAPERS, 'oklch(0.60 0.075 210)'),
-      feedUnitLabel: 'feeds',
+      feedUnitLabel: t('feeds'),
       showDiaperChart: this.trackOn('diapers'),
-      patternTitle: avgGap ? 'Roughly every ' + this.dur(avgGap) + ' between feeds' : 'Patterns show up after a few feeds',
+      patternTitle: avgGap ? t('Roughly every {dur} between feeds', { dur: this.dur(avgGap) }) : t('Patterns show up after a few feeds'),
       patternBody: avgGap
-        ? 'Longest stretch this week was ' + this.dur(Math.round(longest)) + '.'
-          + (clustered ? ' Cluster feeds (' + clustered + ' within 45m of the one before) count as one feed here, so they don’t drag the average down.' : '')
-          + (ageI.weeks != null ? ' Typical at ' + ageI.label + ': ' + normFor(FEED_NORMS, ageI.weeks) + '.' : '')
-        : 'Keep logging — once there’s a rhythm, it shows up here.',
+        ? t('Longest stretch this week was {dur}.', { dur: this.dur(Math.round(longest)) })
+          + (clustered ? ' ' + t('Cluster feeds ({n} within 45m of the one before) count as one feed here, so they don’t drag the average down.', { n: clustered }) : '')
+          + (ageI.weeks != null ? ' ' + t('Typical at {age}: {norm}.', { age: ageI.label, norm: t(normFor(FEED_NORMS, ageI.weeks)) }) : '')
+        : t('Keep logging — once there’s a rhythm, it shows up here.'),
       wakeInsight: this.trackOn('sleep') && avgWake ? {
-        title: 'Awake about ' + this.dur(avgWake) + ' between naps',
+        title: t('Awake about {dur} between naps', { dur: this.dur(avgWake) }),
         body: ageI.weeks != null
-          ? 'Typical at ' + ageI.label + ' is ' + normFor(WAKE_NORMS, ageI.weeks) + '. Watching this stretch out over the weeks is the rhythm maturing — not something to fight.'
-          : 'Add ' + (s.babyName || 'the baby') + '’s birthday below and this compares against what’s typical for their age.',
+          ? t('Typical at {age} is {norm}. Watching this stretch out over the weeks is the rhythm maturing — not something to fight.', { age: ageI.label, norm: t(normFor(WAKE_NORMS, ageI.weeks)) })
+          : t('Add {name}’s birthday below and this compares against what’s typical for their age.', { name: s.babyName || t('the baby') }),
       } : null,
       trackRec: trackRec ? {
-        title: 'Not tracking ' + trackRec.label.toLowerCase() + '?',
-        body: (trackRec.n ? 'Only ' + trackRec.n + ' logged' : 'Nothing logged') + ' in the last 7 days. Turning it off hides its cards and charts — nothing is deleted, and it comes back if you switch it on again.',
-        offLabel: 'Turn off ' + trackRec.label.toLowerCase(),
+        title: t('Not tracking {thing}?', { thing: lower(trackRec.label) }),
+        body: (trackRec.n ? t('Only {n} logged', { n: trackRec.n }) : t('Nothing logged')) + ' ' + t('in the last 7 days. Turning it off hides its cards and charts — nothing is deleted, and it comes back if you switch it on again.'),
+        offLabel: t('Turn off {thing}', { thing: lower(trackRec.label) }),
         turnOff: () => this.setTracking(trackRec.key, false),
         keep: () => this.dismissRec(trackRec.key),
       } : null,
       birthdate: s.babyBirthdate || '', setBirthdate: this.setBirthdate,
       // the settings card is about the primary child, so its age line is too
-      ageLine: s.babyBirthdate ? this.ageInfoFor(s.babyBirthdate, s.age).label + ' old' : 'Set it and the log thinks in their weeks — insights compare against their age.',
+      ageLine: s.babyBirthdate ? t('{age} old', { age: this.ageInfoFor(s.babyBirthdate, s.age).label }) : t('Set it and the log thinks in their weeks — insights compare against their age.'),
       notify: (() => {
         const np = this.nPrefs()
         const row = (key, label, icon, color) => ({
@@ -2165,20 +2171,20 @@ export default class App extends React.Component {
           pushOn: s.pushOn,
           togglePush: this.togglePush,
           pushHint: !pushSupported()
-            ? 'This browser can’t do push — on iPhone, add mybabynotes to the Home Screen first, then look here again.'
-            : s.pushOn ? 'This phone gets pings. Pick what’s worth one below — each grown-up sets their own.'
-            : 'Flip it on and allow the permission — then pick what’s worth a ping.',
+            ? t('This browser can’t do push — on iPhone, add mybabynotes to the Home Screen first, then look here again.')
+            : t(s.pushOn ? 'This phone gets pings. Pick what’s worth one below — each grown-up sets their own.'
+            : 'Flip it on and allow the permission — then pick what’s worth a ping.'),
           rows: [
-            row('handoff', 'Handoff asks & handbacks', 'swap_horiz', 'var(--accent)'),
-            ...(partner ? [row('timer', (s.members.length > 2 ? 'Someone' : partnerName) + ' starts a timer', 'timer', 'oklch(0.60 0.075 350)')] : []),
-            ...(partner ? [row('partner', (s.members.length > 2 ? 'Someone' : partnerName) + ' logs something', 'edit_note', 'oklch(0.60 0.075 300)')] : []),
-            row('feed', 'Feed reminder', 'local_drink', 'oklch(0.60 0.075 250)'),
-            ...(this.trackOn('sleep') ? [row('wake', 'Wake window watch', 'wb_twilight', 'oklch(0.60 0.075 25)')] : []),
-            ...(this.trackOn('meds') ? [row('meds', 'Daily meds nudge', 'medication', 'oklch(0.60 0.075 150)')] : []),
-            row('quiet', 'Quiet hours', 'do_not_disturb_on', 'oklch(0.60 0.075 210)'),
+            row('handoff', t('Handoff asks & handbacks'), 'swap_horiz', 'var(--accent)'),
+            ...(partner ? [row('timer', t('{name} starts a timer', { name: s.members.length > 2 ? t('Someone') : partnerName }), 'timer', 'oklch(0.60 0.075 350)')] : []),
+            ...(partner ? [row('partner', t('{name} logs something', { name: s.members.length > 2 ? t('Someone') : partnerName }), 'edit_note', 'oklch(0.60 0.075 300)')] : []),
+            row('feed', t('Feed reminder'), 'local_drink', 'oklch(0.60 0.075 250)'),
+            ...(this.trackOn('sleep') ? [row('wake', t('Wake window watch'), 'wb_twilight', 'oklch(0.60 0.075 25)')] : []),
+            ...(this.trackOn('meds') ? [row('meds', t('Daily meds nudge'), 'medication', 'oklch(0.60 0.075 150)')] : []),
+            row('quiet', t('Quiet hours'), 'do_not_disturb_on', 'oklch(0.60 0.075 210)'),
           ],
           feedOn: np.feed,
-          feedChips: [[null, 'Rhythm'], [120, '2h'], [150, '2½h'], [180, '3h'], [210, '3½h'], [240, '4h']
+          feedChips: [[null, t('Rhythm')], [120, '2h'], [150, '2½h'], [180, '3h'], [210, '3½h'], [240, '4h']
           ].map(([v2, label]) => ({ label, onTap: () => this.setNotify({ feedEvery: v2 }), ...this.chip(np.feedEvery === v2, OLIVE) })),
           // 2+ children: one labeled chip row per child writing feedEveryByChild;
           // "Rhythm" clears that child's override so it inherits the global
@@ -2188,7 +2194,7 @@ export default class App extends React.Component {
             const cur = byChild[c.id] ?? null
             return {
               id: c.id, name: c.name,
-              chips: [[null, 'Rhythm'], [120, '2h'], [150, '2½h'], [180, '3h'], [210, '3½h'], [240, '4h']
+              chips: [[null, t('Rhythm')], [120, '2h'], [150, '2½h'], [180, '3h'], [210, '3½h'], [240, '4h']
               ].map(([v2, label]) => ({
                 label,
                 onTap: () => {
@@ -2214,10 +2220,10 @@ export default class App extends React.Component {
       unitChips: ['oz', 'ml'].map(u => ({
         key: u, label: u, on: this.unit() === u, onTap: () => this.setUnit(u),
       })),
-      unitWord: this.unit() === 'ml' ? 'millilitres' : 'ounces',
+      unitWord: t(this.unit() === 'ml' ? 'millilitres' : 'ounces'),
       trackRows: TRACKS.map(tr => {
         const on = this.trackOn(tr.key), tt = T(tr.types[0])
-        return { key: tr.key, on, label: tr.label, icon: tt.icon, color: tt.color,
+        return { key: tr.key, on, label: t(tr.label), icon: tt.icon, color: tt.color,
           toggleIcon: on ? 'toggle_on' : 'toggle_off', toggleColor: on ? 'var(--accent)' : 'var(--dim)',
           onToggle: () => this.setTracking(tr.key, !on) }
       }),
@@ -2226,7 +2232,7 @@ export default class App extends React.Component {
         const shown = this.widgetKeys()
         return WIDGETS.filter(w => !w.track || this.trackOn(w.track)).map(w => {
           const on = shown.includes(w.key)
-          return { label: w.label, icon: w.icon, color: w.color,
+          return { label: t(w.label), icon: w.icon, color: w.color,
             toggleIcon: on ? 'toggle_on' : 'toggle_off', toggleColor: on ? 'var(--accent)' : 'var(--dim)',
             onToggle: () => this.setWidget(w.key, !on) }
         })
@@ -2243,41 +2249,47 @@ export default class App extends React.Component {
           onTap: () => this.setTheme({ bg: key }),
         })),
         modes: [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([key, label]) => ({
-          key, label, on: (s.fx.mode || 'auto') === key, onTap: () => this.setFxMode(key),
+          key, label: t(label), on: (s.fx.mode || 'auto') === key, onTap: () => this.setFxMode(key),
         })),
         tilt: { on: !!s.fx.tilt, onToggle: this.toggleTilt },
         // device-local like theme/tilt: where running timers appear — the
         // one-tap-stop cards up top, rows in the Today list, or both
         timerSpots: [['top', 'Top'], ['today', 'Today'], ['both', 'Both']].map(([key, label]) => ({
-          key, label, on: (s.timerSpot || 'both') === key, onTap: () => this.setState({ timerSpot: key }),
+          key, label: t(label), on: (s.timerSpot || 'both') === key, onTap: () => this.setState({ timerSpot: key }),
         })),
+        // device-local like theme mode — the night shift reading Spanish
+        // shouldn't flip the partner's phone; setLang re-renders once the
+        // catalog chunk lands
+        lang: getLang(),
+        langs: LANGS,
+        setLang: e => setLang(e.target.value).then(() => this.setState(x => ({ tick: x.tick + 1 }))),
       },
       exportLog: this.exportLog, exportSummary: this.exportSummary,
       importBB: e => this.importBabyBuddy(e.currentTarget), importBusy: s.importBusy,
       exportRanges: [[7, '7 days'], [30, '30 days'], ['all', 'Everything']].map(([val, label]) => {
         const on = s.exportRange === val
-        return { label, onTap: () => this.setState({ exportRange: val }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
+        return { label: t(label), onTap: () => this.setState({ exportRange: val }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
       }),
       // ── management surfaces (settings) ─────────────────────────────────────
       canManage: this.isParent(),
       inviteRoleChips: [['parent', 'Parent'], ['caregiver', 'Caregiver']].map(([key, label]) => {
         const on = s.inviteRole === key
-        return { key, label, onTap: () => this.setState({ inviteRole: key }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
+        return { key, label: t(label), onTap: () => this.setState({ inviteRole: key }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
       }),
       childrenCard: (() => {
         const all = s.children
         if (!all.length) return null // pre-sync cache — the legacy About card still renders
         const canEdit = this.isParent()
         return {
-          header: all.length > 1 ? 'Children' : 'About ' + (all[0].name || 'Baby'),
+          header: all.length > 1 ? t('Children') : t('About {name}', { name: all[0].name || t('Baby') }),
           canEdit,
           canAdd: canEdit && all.length < this.maxChildren(), // server cap from /state limits
           rows: all.map((c, i) => ({
             id: c.id, primary: i === 0, archived: !!c.archived,
             name: s.childEdits[c.id] ?? c.name ?? '',
-            plainName: c.name || 'Baby',
+            plainName: c.name || t('Baby'),
             birthdate: c.birthdate || '',
-            ageText: c.birthdate ? this.ageInfoFor(c.birthdate, c.age).label + ' old' : (c.age || '—'),
+            ageText: c.birthdate ? t('{age} old', { age: this.ageInfoFor(c.birthdate, c.age).label }) : (c.age || '—'),
             setName: e => this.setChildEdit(c.id, e.target.value),
             saveName: () => this.saveChildName(c.id),
             setDob: this.setChildDob(c.id),
@@ -2288,9 +2300,9 @@ export default class App extends React.Component {
           addName: s.childAddName, setAddName: e => this.setState({ childAddName: e.target.value }),
           addDob: s.childAddDob, setAddDob: e => this.setState({ childAddDob: e.target.value }),
           submitAdd: this.addChild, addBusy: s.childBusy,
-          hint: !canEdit ? 'Only a parent can edit the children.'
-            : all.length > 1 ? 'The pills on Now and History switch between children. Hiding one tucks it out of the pills — nothing about their log is deleted.'
-            : (s.babyBirthdate ? this.ageInfoFor(s.babyBirthdate, s.age).label + ' old' : 'Set it and the log thinks in their weeks — insights compare against their age.'),
+          hint: !canEdit ? t('Only a parent can edit the children.')
+            : all.length > 1 ? t('The pills on Now and History switch between children. Hiding one tucks it out of the pills — nothing about their log is deleted.')
+            : (s.babyBirthdate ? t('{age} old', { age: this.ageInfoFor(s.babyBirthdate, s.age).label }) : t('Set it and the log thinks in their weeks — insights compare against their age.')),
         }
       })(),
       household: (() => {
@@ -2304,11 +2316,11 @@ export default class App extends React.Component {
         return {
           members: mem.map((m, i) => ({
             id: m.id,
-            name: m.name || 'Member',
+            name: m.name || t('Member'),
             isMe: !!(me && m.id === me.id),
             initial: initial(m.name),
             color: MEMBER_COLORS[i % MEMBER_COLORS.length],
-            roleLabel: m.role === 'caregiver' ? 'Caregiver' : 'Parent',
+            roleLabel: t(m.role === 'caregiver' ? 'Caregiver' : 'Parent'),
             roleParent: m.role !== 'caregiver',
             canRemove: canManage && !!me && m.id !== me.id,
             armed: s.removeConfirmId === m.id,
@@ -2318,7 +2330,7 @@ export default class App extends React.Component {
           })),
           invites: s.invites.map(i => ({
             email: i.email,
-            roleLabel: i.role === 'caregiver' ? 'Caregiver' : 'Parent',
+            roleLabel: t(i.role === 'caregiver' ? 'Caregiver' : 'Parent'),
             roleParent: i.role !== 'caregiver',
             // the code is shown once, to the phone that made the invite
             code: s.inviteCode && s.inviteCodeFor === i.email ? s.inviteCode : null,
@@ -2329,10 +2341,10 @@ export default class App extends React.Component {
           })),
           canInvite: canManage && seats < this.maxMembers(),
           full: canManage && seats >= this.maxMembers(),
-          capWord: spellCount(this.maxMembers()),
+          capWord: t(spellCount(this.maxMembers())),
           hint: canManage
-            ? 'Up to ' + spellCount(this.maxMembers()) + ' grown-ups share one log. Parents can change anything here; caregivers log, run timers, and cover shifts.'
-            : 'Only a parent can invite or remove people. You can log, run timers, and cover shifts.',
+            ? t('Up to {n} grown-ups share one log. Parents can change anything here; caregivers log, run timers, and cover shifts.', { n: t(spellCount(this.maxMembers())) })
+            : t('Only a parent can invite or remove people. You can log, run timers, and cover shifts.'),
         }
       })(),
       account: {
@@ -2352,21 +2364,21 @@ export default class App extends React.Component {
       },
       apiAccess: (() => {
         const chip = on => on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }
-        const day = iso => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        const day = iso => new Date(iso).toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' })
         return {
           open: s.tokensOpen, toggle: this.toggleTokens,
           loaded: s.apiTokens != null,
-          rows: (s.apiTokens || []).map(t => ({
-            id: t.id, name: t.name,
-            scopeText: (t.abilities || []).join(' · '),
+          rows: (s.apiTokens || []).map(tok => ({
+            id: tok.id, name: tok.name,
+            scopeText: (tok.abilities || []).join(' · '),
             hint: [
-              t.lastUsedAt ? 'last used ' + this.elapsed(new Date(t.lastUsedAt).getTime()) + ' ago' : 'never used',
-              t.expiresAt ? 'expires ' + day(t.expiresAt) : 'never expires',
+              tok.lastUsedAt ? t('last used {x} ago', { x: this.elapsed(new Date(tok.lastUsedAt).getTime()) }) : t('never used'),
+              tok.expiresAt ? t('expires {date}', { date: day(tok.expiresAt) }) : t('never expires'),
             ].join(' · '),
-            armed: s.revokeTokenArmId === t.id,
-            arm: () => this.setState({ revokeTokenArmId: t.id }),
+            armed: s.revokeTokenArmId === tok.id,
+            arm: () => this.setState({ revokeTokenArmId: tok.id }),
             disarm: () => this.setState({ revokeTokenArmId: null }),
-            revoke: () => this.revokeApiToken(t.id),
+            revoke: () => this.revokeApiToken(tok.id),
           })),
           addOpen: s.tokenAddOpen,
           toggleAdd: () => this.setState(x => ({ tokenAddOpen: !x.tokenAddOpen, tokenName: '', tokenScopes: [], tokenExpiry: 90, tokenError: null })),
@@ -2376,7 +2388,7 @@ export default class App extends React.Component {
             return { key, label, onTap: () => this.setState(x => ({ tokenScopes: on ? x.tokenScopes.filter(k => k !== key) : [...x.tokenScopes, key], tokenError: null })), ...chip(on) }
           }),
           expiryChips: [[30, '30 days'], [90, '90 days'], [365, '1 year'], [null, 'No expiry']].map(([val, label]) => ({
-            key: String(val), label, onTap: () => this.setState({ tokenExpiry: val }), ...chip(s.tokenExpiry === val),
+            key: String(val), label: t(label), onTap: () => this.setState({ tokenExpiry: val }), ...chip(s.tokenExpiry === val),
           })),
           submit: this.createApiToken, busy: s.tokenBusy, error: s.tokenError,
           canCreate: !!s.tokenName.trim() && s.tokenScopes.length > 0 && !s.tokenBusy,
@@ -2390,16 +2402,16 @@ export default class App extends React.Component {
         return {
           open: s.mqttOpen, toggle: this.toggleMqtt,
           loaded: cfg != null && f != null,
-          hint: cfg == null ? 'Sync sensors to your smart home'
-            : !cfg.enabled ? 'Off'
-              : fresh ? 'On · synced ' + this.elapsed(beat) + ' ago'
-                : 'On · broker unreachable',
+          hint: cfg == null ? t('Sync sensors to your smart home')
+            : !cfg.enabled ? t('Off')
+              : fresh ? t('On · synced {x} ago', { x: this.elapsed(beat) })
+                : t('On · broker unreachable'),
           enabled: !!f?.enabled, toggleEnabled: () => this.setMqttForm({ enabled: !f.enabled }),
           host: f?.host ?? '', setHost: e => this.setMqttForm({ host: e.target.value }),
           port: f?.port ?? '', setPort: e => this.setMqttForm({ port: e.target.value === '' ? '' : Number(e.target.value) }),
           username: f?.username ?? '', setUsername: e => this.setMqttForm({ username: e.target.value }),
           password: f?.password ?? '', setPassword: e => this.setMqttForm({ password: e.target.value }),
-          pwPlaceholder: cfg?.hasPassword ? '•••• saved' : 'Password',
+          pwPlaceholder: cfg?.hasPassword ? t('•••• saved') : t('Password'),
           tls: !!f?.tls, toggleTls: () => this.setMqttForm({ tls: !f.tls }),
           tlsVerify: f?.tls_verify !== false, toggleTlsVerify: () => this.setMqttForm({ tls_verify: !f.tls_verify }),
           test: this.testMqtt, save: this.saveMqtt,
@@ -2438,15 +2450,15 @@ export default class App extends React.Component {
               <Logo size={116} />
             </div>
             <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:40px;letter-spacing:-0.03em;padding-top:26px")}><Wordmark /></div>
-            <div style={S('font-size:16.5px;line-height:1.45;color:#6E6659;text-align:center;padding-top:8px;text-wrap:pretty;max-width:260px')}>Three taps, then back to the baby.<br />Both of you, one log.</div>
+            <div style={S('font-size:16.5px;line-height:1.45;color:#6E6659;text-align:center;padding-top:8px;text-wrap:pretty;max-width:260px')}>{t('Three taps, then back to the baby.')}<br />{t('Both of you, one log.')}</div>
             <div style={S('flex:1.2')} />
             <button type="button" onClick={v.goSignup} className="hov-olive" style={S('width:100%;height:60px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;box-shadow:0 8px 20px rgba(var(--accent-rgb),0.3)')}>
-              <div style={S('font-size:17px;font-weight:700;color:#FCFBF6')}>Create an account</div>
+              <div style={S('font-size:17px;font-weight:700;color:#FCFBF6')}>{t('Create an account')}</div>
             </button>
             <button type="button" onClick={v.goLogin} className="hov-cream" style={S('margin-top:10px;width:100%;height:56px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit')}>
-              <div style={S('font-size:16px;font-weight:600;color:#4E4A3F')}>I already have one</div>
+              <div style={S('font-size:16px;font-weight:600;color:#4E4A3F')}>{t('I already have one')}</div>
             </button>
-            <div style={S('font-size:12px;color:#B5AC98;padding-top:16px')}>Works on iPhone and Android · add to home screen</div>
+            <div style={S('font-size:12px;color:#B5AC98;padding-top:16px')}>{t('Works on iPhone and Android · add to home screen')}</div>
           </div>
         )}
 
@@ -2463,31 +2475,31 @@ export default class App extends React.Component {
               <div style={S('width:38px')} />
             </div>
             <div style={S('display:flex;background:rgba(38,35,29,0.06);border-radius:999px;padding:4px;margin-top:26px')}>
-              <button type="button" onClick={v.goLogin} style={S(`flex:1;height:40px;border:none;border-radius:999px;background:${v.loginTabBg};color:${v.loginTabFg};font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:${v.loginTabShadow}`)}>Log in</button>
-              <button type="button" onClick={v.goSignup} style={S(`flex:1;height:40px;border:none;border-radius:999px;background:${v.signupTabBg};color:${v.signupTabFg};font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:${v.signupTabShadow}`)}>Sign up</button>
+              <button type="button" onClick={v.goLogin} style={S(`flex:1;height:40px;border:none;border-radius:999px;background:${v.loginTabBg};color:${v.loginTabFg};font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:${v.loginTabShadow}`)}>{t('Log in')}</button>
+              <button type="button" onClick={v.goSignup} style={S(`flex:1;height:40px;border:none;border-radius:999px;background:${v.signupTabBg};color:${v.signupTabFg};font-family:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:${v.signupTabShadow}`)}>{t('Sign up')}</button>
             </div>
             <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;line-height:1.12;letter-spacing:-0.02em;padding-top:26px;text-wrap:pretty")}>{v.authTitle}</div>
             <div style={S('font-size:14.5px;line-height:1.5;color:#6E6659;padding-top:6px;text-wrap:pretty')}>{v.authBody}</div>
             <div style={S('display:flex;flex-direction:column;gap:10px;padding-top:22px')}>
               {v.isSignup && (
-                <input placeholder="Your name" value={v.authName} onChange={v.setAuthName} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
+                <input placeholder={t('Your name')} value={v.authName} onChange={v.setAuthName} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
               )}
-              <input placeholder="Email" type="email" value={v.authEmail} onChange={v.setAuthEmail} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
-              <input placeholder="Password" type="password" value={v.authPassword} onChange={v.setAuthPassword} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
+              <input placeholder={t('Email')} type="email" value={v.authEmail} onChange={v.setAuthEmail} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
+              <input placeholder={t('Password')} type="password" value={v.authPassword} onChange={v.setAuthPassword} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
               {v.isSignup && (
-                <input placeholder="Invite code — only if a partner invited you" value={v.authInvite} onChange={v.setAuthInvite} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
+                <input placeholder={t('Invite code — only if a partner invited you')} value={v.authInvite} onChange={v.setAuthInvite} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
               )}
             </div>
             {v.isLogin && (
-              <div style={S('display:flex;justify-content:flex-end;padding-top:10px')}><a href="#" onClick={e => { e.preventDefault(); v.toggleForgot() }} style={S('font-size:13.5px;font-weight:600;color:#5F6E42')}>Forgot password?</a></div>
+              <div style={S('display:flex;justify-content:flex-end;padding-top:10px')}><a href="#" onClick={e => { e.preventDefault(); v.toggleForgot() }} style={S('font-size:13.5px;font-weight:600;color:#5F6E42')}>{t('Forgot password?')}</a></div>
             )}
             {v.isLogin && v.forgotOpen && (
               <div style={S('margin-top:10px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.10);border-radius:24px;padding:16px 18px')}>
-                <div style={S('font-size:13.5px;font-weight:700;color:#26231D')}>Reset your password</div>
-                <div style={S('font-size:12.5px;line-height:1.5;color:#8C8474;padding-top:4px;text-wrap:pretty')}>We’ll email you a link to set a new one.</div>
+                <div style={S('font-size:13.5px;font-weight:700;color:#26231D')}>{t('Reset your password')}</div>
+                <div style={S('font-size:12.5px;line-height:1.5;color:#8C8474;padding-top:4px;text-wrap:pretty')}>{t('We’ll email you a link to set a new one.')}</div>
                 <div style={S('display:flex;gap:8px;padding-top:10px')}>
-                  <input placeholder="Email" type="email" value={v.forgotEmail} onChange={v.setForgotEmail} style={S('flex:1;min-width:0;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                  <button type="button" onClick={v.sendForgot} className="hov-olive" style={S('height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;flex-shrink:0')}>{v.forgotBusy ? 'One sec…' : 'Send'}</button>
+                  <input placeholder={t('Email')} type="email" value={v.forgotEmail} onChange={v.setForgotEmail} style={S('flex:1;min-width:0;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                  <button type="button" onClick={v.sendForgot} className="hov-olive" style={S('height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;flex-shrink:0')}>{v.forgotBusy ? t('One sec…') : t('Send')}</button>
                 </div>
                 {v.forgotResult && (
                   <div style={S(`font-size:12.5px;line-height:1.5;padding-top:10px;text-wrap:pretty;color:${v.forgotResult === 'error' ? '#A85A45' : '#6E6659'}`)}>{v.forgotCopy}</div>
@@ -2502,7 +2514,7 @@ export default class App extends React.Component {
               <Sym style={{ fontSize: 21, color: 'var(--on-accent)' }}>arrow_forward</Sym>
             </button>
             <div style={S('flex:1')} />
-            <div style={S('font-size:12px;line-height:1.5;color:#B5AC98;text-align:center;padding-top:16px;text-wrap:pretty')}>Invited by a partner? Use the same email they sent it to and you’ll land in their log.</div>
+            <div style={S('font-size:12px;line-height:1.5;color:#B5AC98;text-align:center;padding-top:16px;text-wrap:pretty')}>{t('Invited by a partner? Use the same email they sent it to and you’ll land in their log.')}</div>
           </div>
         )}
 
@@ -2518,20 +2530,20 @@ export default class App extends React.Component {
               </div>
               <div style={S('width:38px')} />
             </div>
-            <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;line-height:1.12;letter-spacing:-0.02em;padding-top:26px;text-wrap:pretty")}>Set a new password</div>
-            <div style={S('font-size:14.5px;line-height:1.5;color:#6E6659;padding-top:6px;text-wrap:pretty')}>For {v.resetEmail} — pick something with at least 8 characters. Your log is untouched.</div>
+            <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:28px;line-height:1.12;letter-spacing:-0.02em;padding-top:26px;text-wrap:pretty")}>{t('Set a new password')}</div>
+            <div style={S('font-size:14.5px;line-height:1.5;color:#6E6659;padding-top:6px;text-wrap:pretty')}>{t('For {email} — pick something with at least 8 characters. Your log is untouched.', { email: v.resetEmail })}</div>
             <div style={S('display:flex;flex-direction:column;gap:10px;padding-top:22px')}>
-              <input placeholder="New password" type="password" value={v.resetPw} onChange={v.setResetPw} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
+              <input placeholder={t('New password')} type="password" value={v.resetPw} onChange={v.setResetPw} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:18px;padding:15px 18px;font-size:16.5px;color:#26231D;outline:none')} />
             </div>
             {v.resetError && (
               <div style={S('font-size:13px;line-height:1.4;color:#A85A45;padding-top:12px;text-wrap:pretty')}>{v.resetError}</div>
             )}
             <button type="button" onClick={v.submitReset} className="hov-olive" style={S('margin-top:18px;width:100%;height:60px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit;box-shadow:0 8px 20px rgba(var(--accent-rgb),0.3)')}>
-              <div style={S('font-size:17px;font-weight:700;color:#FCFBF6')}>{v.resetBusy ? 'One sec…' : 'Save new password'}</div>
+              <div style={S('font-size:17px;font-weight:700;color:#FCFBF6')}>{v.resetBusy ? t('One sec…') : t('Save new password')}</div>
               <Sym style={{ fontSize: 21, color: 'var(--on-accent)' }}>arrow_forward</Sym>
             </button>
             <div style={S('flex:1')} />
-            <div style={S('font-size:12px;line-height:1.5;color:#B5AC98;text-align:center;padding-top:16px;text-wrap:pretty')}>Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.</div>
+            <div style={S('font-size:12px;line-height:1.5;color:#B5AC98;text-align:center;padding-top:16px;text-wrap:pretty')}>{t('Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.')}</div>
           </div>
         )}
 
@@ -2543,39 +2555,39 @@ export default class App extends React.Component {
                 <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.02em")}><Wordmark /></div>
               </div>
             </div>
-            <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:32px;line-height:1.1;letter-spacing:-0.025em;text-wrap:pretty")}>Who are we keeping track of?</div>
-            <div style={S('font-size:15px;line-height:1.5;color:#6E6659;padding-top:10px;text-wrap:pretty')}>Two answers and you’re logging. Everything else can wait.</div>
+            <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:32px;line-height:1.1;letter-spacing:-0.025em;text-wrap:pretty")}>{t('Who are we keeping track of?')}</div>
+            <div style={S('font-size:15px;line-height:1.5;color:#6E6659;padding-top:10px;text-wrap:pretty')}>{t('Two answers and you’re logging. Everything else can wait.')}</div>
 
             <div style={S('display:flex;flex-direction:column;gap:14px;padding-top:26px')}>
               <div style={S('display:flex;flex-direction:column;gap:7px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>Baby’s name</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Baby’s name')}</div>
                 <input value={v.nameField} onChange={v.setName} placeholder="Wren" style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:16px;padding:15px 16px;font-size:17px;color:#26231D;outline:none')} />
               </div>
 
               <div style={S('display:flex;flex-direction:column;gap:7px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>Born on</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Born on')}</div>
                 <input type="date" value={v.dobField} onChange={v.setDob} max={v.today} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:16px;padding:15px 16px;font-size:17px;color:#26231D;outline:none;font-family:inherit')} />
-                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>So the log can think in their weeks — feeds, naps, and wake windows all change with age.</div>
+                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>{t('So the log can think in their weeks — feeds, naps, and wake windows all change with age.')}</div>
               </div>
 
               <div style={S('display:flex;flex-direction:column;gap:7px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>Invite your partner or a caregiver</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Invite your partner or a caregiver')}</div>
                 <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:16px;padding:4px 4px 4px 16px;display:flex;align-items:center;gap:8px')}>
                   <input value={v.inviteField} onChange={v.setInvite} placeholder="katrina@email.com" type="email" style={S('flex:1;min-width:0;background:none;border:none;padding:13px 0;font-size:16px;color:#26231D;outline:none')} />
-                  <button type="button" onClick={v.sendInvite} style={S('background:rgba(var(--accent-rgb),0.14);border:none;border-radius:12px;padding:11px 14px;font-family:inherit;font-size:13.5px;font-weight:600;color:#5F6E42;cursor:pointer')}>Invite</button>
+                  <button type="button" onClick={v.sendInvite} style={S('background:rgba(var(--accent-rgb),0.14);border:none;border-radius:12px;padding:11px 14px;font-family:inherit;font-size:13.5px;font-weight:600;color:#5F6E42;cursor:pointer')}>{t('Invite')}</button>
                 </div>
                 <div style={S('display:flex;gap:6px')}>
                   {v.inviteRoleChips.map(c => (
                     <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
                   ))}
                 </div>
-                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>They see the same log live. No “when did you…” texts. Caregivers can log and cover shifts, but can’t change settings.</div>
+                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>{t('They see the same log live. No “when did you…” texts. Caregivers can log and cover shifts, but can’t change settings.')}</div>
               </div>
             </div>
 
             <div style={S('flex:1')} />
             <button type="button" onClick={v.finishOnboard} className="hov-olive" style={S('margin-top:24px;width:100%;height:60px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
-              <div style={S('font-size:17px;font-weight:600;color:#FCFBF6;letter-spacing:-0.01em')}>Start logging</div>
+              <div style={S('font-size:17px;font-weight:600;color:#FCFBF6;letter-spacing:-0.01em')}>{t('Start logging')}</div>
               <Sym style={{ fontSize: 21, color: 'var(--on-accent)' }}>arrow_forward</Sym>
             </button>
           </div>
@@ -2588,7 +2600,7 @@ export default class App extends React.Component {
                 <Logo size={38} />
                 <div style={S('display:flex;flex-direction:column;gap:1px')}>
                   <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{v.babyName}</div>
-                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.ageLabel} · {v.dateLabel}{v.offline ? ' · offline' : ''}</div>
+                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.ageLabel} · {v.dateLabel}{v.offline ? ' · ' + t('offline') : ''}</div>
                 </div>
               </div>
               <button type="button" onClick={v.openShift} className="hov-bd" style={S('display:flex;align-items:center;gap:8px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;padding:5px 13px 5px 6px;cursor:pointer;font-family:inherit')}>
@@ -2607,24 +2619,24 @@ export default class App extends React.Component {
 
             <div style={S('flex:1;overflow:auto;padding:0 16px 20px;min-height:0')}>
 
-              {v.timers.map(t => (
-                <div key={t.id} style={S(`background:#FFFDF8;border:1px solid ${t.color};border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;gap:13px;position:relative;overflow:hidden`)}>
-                  <div style={S(`position:absolute;inset:0;opacity:0.06;background:${t.color}`)} />
+              {v.timers.map(tm => (
+                <div key={tm.id} style={S(`background:#FFFDF8;border:1px solid ${tm.color};border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;gap:13px;position:relative;overflow:hidden`)}>
+                  <div style={S(`position:absolute;inset:0;opacity:0.06;background:${tm.color}`)} />
                   <div style={S('position:relative;width:42px;height:42px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0')}>
-                    <div style={S(`position:absolute;inset:0;background:${t.color};opacity:0.18`)} />
-                    <Sym style={{ position: 'relative', fontSize: 22, color: t.color }}>{t.icon}</Sym>
+                    <div style={S(`position:absolute;inset:0;background:${tm.color};opacity:0.18`)} />
+                    <Sym style={{ position: 'relative', fontSize: 22, color: tm.color }}>{tm.icon}</Sym>
                   </div>
                   <div style={S('position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
-                    <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t.label}{t.child ? ' · ' + t.child : ''} · {t.who}</div>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.03em;color:#3D392F;font-variant-numeric:tabular-nums")}>{t.elapsed}</div>
+                    <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{tm.label}{tm.child ? ' · ' + tm.child : ''} · {tm.who}</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.03em;color:#3D392F;font-variant-numeric:tabular-nums")}>{tm.elapsed}</div>
                   </div>
-                  {t.mine ? (
-                    <button type="button" onClick={t.stop} className="hov-dark" style={S('position:relative;height:44px;padding:0 20px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:7px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
+                  {tm.mine ? (
+                    <button type="button" onClick={tm.stop} className="hov-dark" style={S('position:relative;height:44px;padding:0 20px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:7px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
                       <Sym style={{ fontSize: 18, color: 'var(--bg)' }}>stop</Sym>
-                      <div style={S('font-size:14px;font-weight:700;color:#FAF6EF')}>Stop</div>
+                      <div style={S('font-size:14px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
                     </button>
                   ) : (
-                    <Sym style={{ position: 'relative', fontSize: 22, color: t.color, flexShrink: 0 }}>timer</Sym>
+                    <Sym style={{ position: 'relative', fontSize: 22, color: tm.color, flexShrink: 0 }}>timer</Sym>
                   )}
                 </div>
               ))}
@@ -2634,14 +2646,14 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;gap:10px')}>
                     <div style={S(`width:34px;height:34px;border-radius:999px;background:${v.requesterColor};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#FCFBF6`)}>{v.requesterInitial}</div>
                     <div style={S('flex:1;display:flex;flex-direction:column;gap:1px')}>
-                      <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{v.requesterName} is handing off</div>
+                      <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('{name} is handing off', { name: v.requesterName })}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.requestAgo}</div>
                     </div>
                     <Sym style={{ fontSize: 22, color: 'var(--accent)' }}>swap_horiz</Sym>
                   </div>
                   <div style={S('font-size:15px;line-height:1.45;color:#4E4A3F;background:rgba(var(--accent-rgb),0.09);border-radius:16px;padding:12px 14px;text-wrap:pretty')}>“{v.requestNote}”</div>
                   <div style={S('display:flex;flex-direction:column;gap:6px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>The plan for your shift</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
                     <div style={S('display:flex;flex-wrap:wrap;gap:6px')}>
                       {v.requestPlan.map((p, i) => (
                         <div key={i} style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px')}>
@@ -2654,9 +2666,9 @@ export default class App extends React.Component {
                   <div style={S('display:flex;gap:8px;padding-top:2px')}>
                     <button type="button" onClick={v.acceptShift} className="hov-olive" style={S('flex:1;height:50px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px rgba(var(--accent-rgb),0.28)')}>
                       <Sym style={{ fontSize: 20, color: 'var(--on-accent)' }}>check</Sym>
-                      <div style={S('font-size:15px;font-weight:700;color:#FCFBF6')}>I’ve got him</div>
+                      <div style={S('font-size:15px;font-weight:700;color:#FCFBF6')}>{t('I’ve got him')}</div>
                     </button>
-                    <button type="button" onClick={v.openShift} className="hov-cream" style={S('height:50px;padding:0 18px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:#6E6659')}>Details</button>
+                    <button type="button" onClick={v.openShift} className="hov-cream" style={S('height:50px;padding:0 18px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:#6E6659')}>{t('Details')}</button>
                   </div>
                 </div>
               )}
@@ -2667,7 +2679,7 @@ export default class App extends React.Component {
                     <div style={S('display:flex;align-items:center;gap:9px')}>
                       <div style={S(`width:28px;height:28px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
                       <div style={S('display:flex;flex-direction:column')}>
-                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>Your shift</div>
+                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('Your shift')}</div>
                         <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.shiftSince}</div>
                       </div>
                     </div>
@@ -2687,10 +2699,10 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;justify-content:space-between;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
                     <button type="button" onClick={v.addPlanFeed} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
                       <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>add</Sym>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>Add to plan</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
                     </button>
                     <button type="button" onClick={v.openShift} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42")}>Hand back</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42")}>{t('Hand back')}</div>
                       <Sym style={{ fontSize: 17, color: 'var(--accent-text)' }}>arrow_forward</Sym>
                     </button>
                   </div>
@@ -2703,7 +2715,7 @@ export default class App extends React.Component {
                     <div style={S('display:flex;align-items:center;gap:9px')}>
                       <div style={S(`width:28px;height:28px;border-radius:999px;background:${v.shiftOwnerColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.shiftOwnerInitial}</div>
                       <div style={S('display:flex;flex-direction:column')}>
-                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{v.shiftOwnerName}’s shift</div>
+                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('{name}’s shift', { name: v.shiftOwnerName })}</div>
                         <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.theirShiftSub}</div>
                       </div>
                     </div>
@@ -2723,7 +2735,7 @@ export default class App extends React.Component {
                     </div>
                   ))}
                   <div style={S('display:flex;align-items:center;justify-content:center;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.plan.length ? 'Their plan, live from the log — no need to ask' : 'No plan set — the log below updates live'}</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t(v.plan.length ? 'Their plan, live from the log — no need to ask' : 'No plan set — the log below updates live')}</div>
                   </div>
                 </div>
               )}
@@ -2741,7 +2753,7 @@ export default class App extends React.Component {
                     </div>
                     <div style={S('position:relative;display:flex;align-items:baseline;gap:4px')}>
                       <div style={S("font-family:'Nunito',sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.04em")}>{c.elapsed}</div>
-                      <div style={S('font-size:11px;color:#8C8474')}>ago</div>
+                      <div style={S('font-size:11px;color:#8C8474')}>{t('ago')}</div>
                     </div>
                     <div style={S('position:relative;font-size:11.5px;color:#6E6659')}>{c.at}</div>
                   </div>
@@ -2749,13 +2761,13 @@ export default class App extends React.Component {
               </div>
 
               <div style={S('display:flex;align-items:center;justify-content:space-between;padding:22px 4px 9px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474")}>Today</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474")}>{t('Today')}</div>
                 <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.04em")}>{v.todaySummary}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);overflow:hidden')}>
                 {v.timeline.length === 0 && (
-                  <div style={S('padding:22px 16px;text-align:center;font-size:13.5px;color:#B5AC98;text-wrap:pretty')}>Nothing logged yet — tap + and you’re three taps from done.</div>
+                  <div style={S('padding:22px 16px;text-align:center;font-size:13.5px;color:#B5AC98;text-wrap:pretty')}>{t('Nothing logged yet — tap + and you’re three taps from done.')}</div>
                 )}
                 {v.timeline.map((e, i) => e.timer ? (
                   // a running timer holding its place in the day, with the same
@@ -2776,7 +2788,7 @@ export default class App extends React.Component {
                     {e.mine ? (
                       <button type="button" onClick={e.onStop} className="hov-dark" style={S('height:34px;padding:0 14px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
                         <Sym style={{ fontSize: 15, color: 'var(--bg)' }}>stop</Sym>
-                        <div style={S('font-size:12.5px;font-weight:700;color:#FAF6EF')}>Stop</div>
+                        <div style={S('font-size:12.5px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
                       </button>
                     ) : (
                       <Sym style={{ fontSize: 18, color: e.color, flexShrink: 0 }}>timer</Sym>
@@ -2794,13 +2806,13 @@ export default class App extends React.Component {
                       <div style={S('font-size:11.5px;color:#8C8474')}>{e.sub}{e.pending && <PendingDot />}</div>
                     </div>
                     {e.byChip && (
-                      <div title={'Logged by ' + e.byChip.name} style={S(`width:20px;height:20px;border-radius:999px;background:${e.byChip.color};display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{e.byChip.initial}</div>
+                      <div title={t('Logged by {name}', { name: e.byChip.name })} style={S(`width:20px;height:20px;border-radius:999px;background:${e.byChip.color};display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{e.byChip.initial}</div>
                     )}
                     <Sym style={{ fontSize: 18, color: 'var(--dim)', flexShrink: 0 }}>chevron_right</Sym>
                   </button>
                 ))}
               </div>
-              <div style={S('text-align:center;padding:14px 0 0;font-size:12.5px;color:#B5AC98')}>Older days live in History</div>
+              <div style={S('text-align:center;padding:14px 0 0;font-size:12.5px;color:#B5AC98')}>{t('Older days live in History')}</div>
             </div>
           </div>
         )}
@@ -2829,7 +2841,7 @@ export default class App extends React.Component {
                 <>
                   <Logo size={38} />
                   <div style={S('display:flex;flex-direction:column;gap:1px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>Last 7 days</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{t('Last 7 days')}</div>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.historySubtitle}</div>
                   </div>
                   <div style={S('flex:1')} />
@@ -2852,7 +2864,7 @@ export default class App extends React.Component {
               {v.dayView ? (
                 <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);overflow:hidden')}>
                   {v.dayView.rows.length === 0 && (
-                    <div style={S('padding:22px 16px;text-align:center;font-size:13.5px;color:#B5AC98;text-wrap:pretty')}>Nothing logged this day.</div>
+                    <div style={S('padding:22px 16px;text-align:center;font-size:13.5px;color:#B5AC98;text-wrap:pretty')}>{t('Nothing logged this day.')}</div>
                   )}
                   {v.dayView.rows.map((e, i) => (
                     <button key={i} type="button" onClick={e.onEdit} className="hov-row" style={S('width:100%;background:none;border:none;border-top:1px solid rgba(38,35,29,0.06);padding:13px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit')}>
@@ -2866,7 +2878,7 @@ export default class App extends React.Component {
                         <div style={S('font-size:11.5px;color:#8C8474')}>{e.sub}{e.pending && <PendingDot />}</div>
                       </div>
                       {e.byChip && (
-                        <div title={'Logged by ' + e.byChip.name} style={S(`width:20px;height:20px;border-radius:999px;background:${e.byChip.color};display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{e.byChip.initial}</div>
+                        <div title={t('Logged by {name}', { name: e.byChip.name })} style={S(`width:20px;height:20px;border-radius:999px;background:${e.byChip.color};display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{e.byChip.initial}</div>
                       )}
                       <Sym style={{ fontSize: 18, color: 'var(--dim)', flexShrink: 0 }}>chevron_right</Sym>
                     </button>
@@ -2888,7 +2900,7 @@ export default class App extends React.Component {
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:16px 16px 12px;margin-top:12px')}>
                 <div style={S('display:flex;align-items:center;justify-content:space-between;padding-bottom:14px')}>
-                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>Feeds per day</div>
+                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{t('Feeds per day')}</div>
                   <div style={S('display:flex;align-items:center;gap:6px')}>
                     <div style={S('width:9px;height:9px;border-radius:3px;background:oklch(0.60 0.075 130)')} />
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>{v.feedUnitLabel}</div>
@@ -2908,10 +2920,10 @@ export default class App extends React.Component {
               {v.showDiaperChart && (
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:16px 16px 12px;margin-top:12px')}>
                 <div style={S('display:flex;align-items:center;justify-content:space-between;padding-bottom:14px')}>
-                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>Diapers per day</div>
+                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{t('Diapers per day')}</div>
                   <div style={S('display:flex;align-items:center;gap:6px')}>
                     <div style={S('width:9px;height:9px;border-radius:3px;background:oklch(0.60 0.075 210)')} />
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>changes</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>{t('changes')}</div>
                   </div>
                 </div>
                 <div style={S('display:flex;align-items:flex-end;gap:8px;height:104px')}>
@@ -2945,7 +2957,7 @@ export default class App extends React.Component {
               )}
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 0 4px;margin-top:12px;overflow:hidden')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 16px 6px")}>All days</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 16px 6px")}>{t('All days')}</div>
                 {v.historyDays.map((d, i) => (
                   <button key={d.key} type="button" onClick={d.onTap} className="hov-row" style={S('width:100%;background:none;border:none;border-top:1px solid rgba(38,35,29,0.06);padding:12px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit')}>
                     <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
@@ -2968,7 +2980,7 @@ export default class App extends React.Component {
                   </div>
                   <div style={S('display:flex;gap:8px')}>
                     <button type="button" onClick={v.trackRec.turnOff} style={S('flex:1;background:rgba(var(--accent-rgb),0.16);border:1px solid var(--accent);border-radius:999px;padding:10px 6px;font-family:inherit;font-size:13px;font-weight:600;color:var(--accent-deep);cursor:pointer')}>{v.trackRec.offLabel}</button>
-                    <button type="button" onClick={v.trackRec.keep} className="hov-cream" style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:600;color:#6E6659;cursor:pointer')}>Keep</button>
+                    <button type="button" onClick={v.trackRec.keep} className="hov-cream" style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:600;color:#6E6659;cursor:pointer')}>{t('Keep')}</button>
                   </div>
                 </div>
               )}
@@ -2986,8 +2998,8 @@ export default class App extends React.Component {
                 <Sym style={{ fontSize: 20, color: 'var(--muted)' }}>arrow_back</Sym>
               </button>
               <div style={S('display:flex;flex-direction:column;gap:1px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>Settings</div>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.primaryBabyName}’s log</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{t('Settings')}</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{t('{name}’s log', { name: v.primaryBabyName })}</div>
               </div>
             </div>
 
@@ -2999,20 +3011,20 @@ export default class App extends React.Component {
                     <React.Fragment key={c.id}>
                       <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 80)' }}>child_care</Sym>
-                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Name</div>
-                        <input value={c.name} onChange={c.setName} onBlur={c.saveName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder="Baby" style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
+                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Name')}</div>
+                        <input value={c.name} onChange={c.setName} onBlur={c.saveName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder={t('Baby')} style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                       </div>
                       <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 350)' }}>cake</Sym>
-                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Born on</div>
+                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Born on')}</div>
                         <input type="date" value={c.birthdate} onChange={c.setDob} max={v.today} style={S("background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                       </div>
                       {!c.primary && (
                         <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                           <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 210)' }}>visibility</Sym>
                           <div style={S('flex:1')}>
-                            <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Show {c.plainName} in the app</div>
-                            <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>Off tucks them out of the pills — their log stays</div>
+                            <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Show {name} in the app', { name: c.plainName })}</div>
+                            <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('Off tucks them out of the pills — their log stays')}</div>
                           </div>
                           <button type="button" onClick={c.onArchive} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                             <Sym style={{ fontSize: 22, color: c.archived ? 'var(--dim)' : 'var(--accent)' }}>{c.archived ? 'toggle_off' : 'toggle_on'}</Sym>
@@ -3023,7 +3035,7 @@ export default class App extends React.Component {
                   )) : v.childrenCard.rows.map(c => (
                     <div key={c.id} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                       <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 80)' }}>child_care</Sym>
-                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{c.plainName}{c.archived ? ' · hidden' : ''}</div>
+                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{c.plainName}{c.archived ? ' · ' + t('hidden') : ''}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{c.ageText}</div>
                     </div>
                   ))}
@@ -3031,15 +3043,15 @@ export default class App extends React.Component {
                     <>
                       <button type="button" onClick={v.childrenCard.toggleAdd} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07);cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                         <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>person_add</Sym>
-                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Add a child</div>
+                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Add a child')}</div>
                         <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>{v.childrenCard.addOpen ? 'expand_less' : 'expand_more'}</Sym>
                       </button>
                       {v.childrenCard.addOpen && (
                         <div style={S('display:flex;flex-direction:column;gap:8px;padding:2px 0 10px 29px')}>
-                          <input placeholder="Their name" value={v.childrenCard.addName} onChange={v.childrenCard.setAddName} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                          <input placeholder={t('Their name')} value={v.childrenCard.addName} onChange={v.childrenCard.setAddName} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
                           <input type="date" value={v.childrenCard.addDob} onChange={v.childrenCard.setAddDob} max={v.today} style={S("width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none;font-family:inherit")} />
-                          <button type="button" onClick={v.childrenCard.submitAdd} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.childrenCard.addBusy ? 'One sec…' : 'Add them'}</button>
-                          <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>Their birthday keeps feeds, naps and wake windows compared against the right age.</div>
+                          <button type="button" onClick={v.childrenCard.submitAdd} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.childrenCard.addBusy ? t('One sec…') : t('Add them')}</button>
+                          <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('Their birthday keeps feeds, naps and wake windows compared against the right age.')}</div>
                         </div>
                       )}
                     </>
@@ -3048,15 +3060,15 @@ export default class App extends React.Component {
                 </div>
               ) : (
                 <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px')}>
-                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>About {v.primaryBabyName}</div>
+                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('About {name}', { name: v.primaryBabyName })}</div>
                   <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                     <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 80)' }}>child_care</Sym>
-                    <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Name</div>
-                    <input value={v.account.babyName} onChange={v.account.setBabyName} onBlur={v.account.saveBabyName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder="Baby" style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
+                    <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Name')}</div>
+                    <input value={v.account.babyName} onChange={v.account.setBabyName} onBlur={v.account.saveBabyName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder={t('Baby')} style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                   </div>
                   <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                     <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 350)' }}>cake</Sym>
-                    <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Born on</div>
+                    <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Born on')}</div>
                     <input type="date" value={v.birthdate} onChange={v.setBirthdate} max={v.today} style={S("background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                   </div>
                   <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{v.ageLine}</div>
@@ -3064,19 +3076,19 @@ export default class App extends React.Component {
               )}
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Your household</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Your household')}</div>
                 {v.household.members.map(m => (
                   <div key={m.id} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                     <div style={S(`width:26px;height:26px;border-radius:999px;background:${m.color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{m.initial}</div>
-                    <div style={S('flex:1;min-width:0;font-size:14px;font-weight:600;color:#4E4A3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{m.name}{m.isMe ? ' (you)' : ''}</div>
+                    <div style={S('flex:1;min-width:0;font-size:14px;font-weight:600;color:#4E4A3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{m.name}{m.isMe ? ' ' + t('(you)') : ''}</div>
                     <div style={S(`flex-shrink:0;border-radius:999px;padding:4px 10px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;background:${m.roleParent ? 'rgba(var(--accent-rgb),0.14)' : 'rgba(38,35,29,0.06)'};color:${m.roleParent ? 'var(--accent-deep)' : '#8C8474'}`)}>{m.roleLabel}</div>
                     {m.canRemove && !m.armed && (
-                      <button type="button" onClick={m.arm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Remove</button>
+                      <button type="button" onClick={m.arm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Remove')}</button>
                     )}
                     {m.canRemove && m.armed && (
                       <>
-                        <button type="button" onClick={m.remove} style={S("flex-shrink:0;background:#A85A45;border:none;border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FCFBF6;cursor:pointer")}>Yes, remove</button>
-                        <button type="button" onClick={m.disarm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Keep</button>
+                        <button type="button" onClick={m.remove} style={S("flex-shrink:0;background:#A85A45;border:none;border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FCFBF6;cursor:pointer")}>{t('Yes, remove')}</button>
+                        <button type="button" onClick={m.disarm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Keep')}</button>
                       </>
                     )}
                   </div>
@@ -3087,21 +3099,21 @@ export default class App extends React.Component {
                       <Sym style={{ fontSize: 18, color: 'var(--soft)' }}>mail</Sym>
                       <div style={S('flex:1;min-width:0')}>
                         <div style={S('font-size:14px;font-weight:600;color:#4E4A3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{i.email}</div>
-                        <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>invited — hasn’t joined yet</div>
+                        <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('invited — hasn’t joined yet')}</div>
                       </div>
                       <div style={S(`flex-shrink:0;border-radius:999px;padding:4px 10px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;background:${i.roleParent ? 'rgba(var(--accent-rgb),0.14)' : 'rgba(38,35,29,0.06)'};color:${i.roleParent ? 'var(--accent-deep)' : '#8C8474'}`)}>{i.roleLabel}</div>
                       {i.resend && (
-                        <button type="button" onClick={i.resend} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Resend</button>
+                        <button type="button" onClick={i.resend} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Resend')}</button>
                       )}
                       {i.revoke && (
-                        <button type="button" onClick={i.revoke} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>Revoke</button>
+                        <button type="button" onClick={i.revoke} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>{t('Revoke')}</button>
                       )}
                     </div>
                     {i.code && (
                       <div style={S('display:flex;align-items:center;gap:8px;padding:0 0 8px 29px')}>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>Their code</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('Their code')}</div>
                         <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;letter-spacing:0.14em;color:#26231D")}>{i.code}</div>
-                        <button type="button" onClick={i.copyCode} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:5px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;color:#8C8474;cursor:pointer")}>Copy</button>
+                        <button type="button" onClick={i.copyCode} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:5px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;color:#8C8474;cursor:pointer")}>{t('Copy')}</button>
                       </div>
                     )}
                   </React.Fragment>
@@ -3110,7 +3122,7 @@ export default class App extends React.Component {
                   <>
                     <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                       <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>person_add</Sym>
-                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Invite your partner or a caregiver</div>
+                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Invite your partner or a caregiver')}</div>
                     </div>
                     <div style={S('display:flex;gap:6px;padding:2px 0 8px 29px')}>
                       {v.inviteRoleChips.map(c => (
@@ -3119,23 +3131,23 @@ export default class App extends React.Component {
                     </div>
                     <div style={S('display:flex;gap:8px;padding:0 0 8px 29px')}>
                       <input placeholder="their@email.com" type="email" value={v.inviteField} onChange={v.setInvite} style={S('flex:1;min-width:0;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                      <button type="button" onClick={v.sendInvite} className="hov-olive" style={S('height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;flex-shrink:0;align-self:center')}>Invite</button>
+                      <button type="button" onClick={v.sendInvite} className="hov-olive" style={S('height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;flex-shrink:0;align-self:center')}>{t('Invite')}</button>
                     </div>
                   </>
                 )}
                 {v.household.full && (
-                  <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>This log is at its {v.household.capWord}-grown-up limit — remove someone (or revoke an invite) to free a seat.</div>
+                  <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('This log is at its {n}-grown-up limit — remove someone (or revoke an invite) to free a seat.', { n: v.household.capWord })}</div>
                 )}
                 <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{v.household.hint}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Appearance</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Appearance')}</div>
                 {v.canManage && (
                 <>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>palette</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Accent</div>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Accent')}</div>
                 </div>
                 <div style={S('display:flex;gap:10px;padding:2px 0 8px 29px;overflow:auto')}>
                   {v.appearance.accents.map(a => (
@@ -3146,7 +3158,7 @@ export default class App extends React.Component {
                 </div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 80)' }}>wallpaper</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Background</div>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Background')}</div>
                 </div>
                 <div style={S('display:flex;gap:10px;padding:2px 0 8px 29px;overflow:auto')}>
                   {v.appearance.bgs.map(b => (
@@ -3160,7 +3172,7 @@ export default class App extends React.Component {
                 )}
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 300)' }}>dark_mode</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Theme</div>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Theme')}</div>
                 </div>
                 <div style={S('display:flex;gap:8px;padding:2px 0 8px 29px')}>
                   {v.appearance.modes.map(m => (
@@ -3170,8 +3182,8 @@ export default class App extends React.Component {
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 210)' }}>screen_rotation</Sym>
                   <div style={S('flex:1')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Tilt parallax</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>The background drifts as the phone tilts</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Tilt parallax')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('The background drifts as the phone tilts')}</div>
                   </div>
                   <button type="button" onClick={v.appearance.tilt.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                     <Sym style={{ fontSize: 22, color: v.appearance.tilt.on ? 'var(--accent)' : 'var(--dim)' }}>{v.appearance.tilt.on ? 'toggle_on' : 'toggle_off'}</Sym>
@@ -3180,8 +3192,8 @@ export default class App extends React.Component {
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 25)' }}>timer</Sym>
                   <div style={S('flex:1')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Running timers</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>Cards up top, rows in the Today list, or both</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Running timers')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('Cards up top, rows in the Today list, or both')}</div>
                   </div>
                 </div>
                 <div style={S('display:flex;gap:8px;padding:2px 0 8px 29px')}>
@@ -3189,12 +3201,23 @@ export default class App extends React.Component {
                     <button key={m.key} type="button" onClick={m.onTap} className={m.on ? undefined : 'hov-bd'} style={S(`flex:1;height:34px;border-radius:999px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:${m.on ? 'rgba(var(--accent-rgb),0.16)' : 'var(--surface)'};border:1px solid ${m.on ? 'var(--accent)' : 'rgba(var(--ink-rgb),0.12)'};color:${m.on ? 'var(--accent-deep)' : 'var(--muted)'}`)}>{m.label}</button>
                   ))}
                 </div>
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{v.canManage ? 'Colors are shared with your partner. Theme, tilt, and timer placement stay on this phone.' : 'Theme, tilt, and timer placement stay on this phone — colors are the household’s, set by a parent.'}</div>
+                <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
+                  <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 130)' }}>language</Sym>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Language')}</div>
+                  {/* options render in each language's own name, so this row is
+                      findable even when the app is in a language you can't read */}
+                  <select value={v.appearance.lang} onChange={v.appearance.setLang} style={S("background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")}>
+                    {v.appearance.langs.map(l => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t(v.canManage ? 'Colors are shared with your partner. Theme, tilt, language, and timer placement stay on this phone.' : 'Theme, tilt, language, and timer placement stay on this phone — colors are the household’s, set by a parent.')}</div>
               </div>
 
               {v.canManage && (
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Now screen cards</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Now screen cards')}</div>
                 {v.widgetRows.map((r, i) => (
                   <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                     <Sym style={{ fontSize: 18, color: r.color }}>{r.icon}</Sym>
@@ -3204,13 +3227,13 @@ export default class App extends React.Component {
                     </button>
                   </div>
                 ))}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>These are the “time since last …” cards at the top of Now. Only things you track can appear here.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('These are the “time since last …” cards at the top of Now. Only things you track can appear here.')}</div>
               </div>
               )}
 
               {v.canManage && (
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>What you track</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('What you track')}</div>
                 {v.trackRows.map(r => (
                   <React.Fragment key={r.key}>
                     <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
@@ -3222,37 +3245,37 @@ export default class App extends React.Component {
                     </div>
                     {r.key === 'meds' && r.on && (
                       <div style={S('display:flex;align-items:center;gap:8px;padding:2px 0 8px 29px')}>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0")}>Name</div>
-                        <input type="text" value={v.medNameField} onChange={v.setMedName} placeholder="Vitamin D" maxLength={40} style={S("flex:1;min-width:0;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:7px 9px;font-size:13px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0")}>{t('Name')}</div>
+                        <input type="text" value={v.medNameField} onChange={v.setMedName} placeholder={t('Vitamin D')} maxLength={40} style={S("flex:1;min-width:0;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:7px 9px;font-size:13px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                       </div>
                     )}
                   </React.Fragment>
                 ))}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>Feeds are always on. Turning something off hides it for both of you — old entries stay, and it all comes back if you switch it on again.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('Feeds are always on. Turning something off hides it for both of you — old entries stay, and it all comes back if you switch it on again.')}</div>
               </div>
               )}
 
               {v.canManage && (
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Units</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Units')}</div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0 4px;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 250)' }}>local_drink</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Bottle & pump amounts</div>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Bottle & pump amounts')}</div>
                 </div>
                 <div style={S('display:flex;gap:8px;padding:2px 0 8px 29px')}>
                   {v.unitChips.map(u => (
                     <button key={u.key} type="button" onClick={u.onTap} className={u.on ? undefined : 'hov-bd'} style={S(`flex:1;height:34px;border-radius:999px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:${u.on ? 'rgba(var(--accent-rgb),0.16)' : 'var(--surface)'};border:1px solid ${u.on ? 'var(--accent)' : 'rgba(var(--ink-rgb),0.12)'};color:${u.on ? 'var(--accent-deep)' : 'var(--muted)'}`)}>{u.label}</button>
                   ))}
                 </div>
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Shared with your partner. The whole log converts either way — nothing to re-enter.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Shared with your partner. The whole log converts either way — nothing to re-enter.')}</div>
               </div>
               )}
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Notifications</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Notifications')}</div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>notifications_active</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Push to this phone</div>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Push to this phone')}</div>
                   {v.notify.supported && (
                     <button type="button" onClick={v.notify.togglePush} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                       <Sym style={{ fontSize: 22, color: v.notify.pushOn ? 'var(--accent)' : 'var(--dim)' }}>{v.notify.pushOn ? 'toggle_on' : 'toggle_off'}</Sym>
@@ -3283,14 +3306,14 @@ export default class App extends React.Component {
                           </div>
                         )) : (
                         <div style={S('display:flex;align-items:center;gap:7px;padding:2px 0 8px 29px;overflow:auto')}>
-                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0")}>Every</div>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0")}>{t('Every')}</div>
                           {v.notify.feedChips.map((c, i) => (
                             <button key={i} type="button" onClick={c.onTap} style={S(`flex-shrink:0;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:6px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:${c.fg};cursor:pointer`)}>{c.label}</button>
                           ))}
                         </div>
                         )}
                         <div style={S('display:flex;align-items:center;gap:11px;padding:0 0 8px 29px')}>
-                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>Only while I’m on duty</div>
+                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>{t('Only while I’m on duty')}</div>
                           <button type="button" onClick={v.notify.toggleOnDuty} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                             <Sym style={{ fontSize: 20, color: v.notify.onDutyToggleColor }}>{v.notify.onDutyToggleIcon}</Sym>
                           </button>
@@ -3299,19 +3322,19 @@ export default class App extends React.Component {
                     )}
                     {r.key === 'quiet' && v.notify.quietOn && (
                       <div style={S('display:flex;align-items:center;gap:8px;padding:2px 0 8px 29px')}>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>From</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('From')}</div>
                         <input type="time" value={v.notify.quietStart} onChange={v.notify.setQuietStart} style={S("background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:7px 9px;font-size:13px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>to</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('to')}</div>
                         <input type="time" value={v.notify.quietEnd} onChange={v.notify.setQuietEnd} style={S("background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:7px 9px;font-size:13px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                       </div>
                     )}
                   </React.Fragment>
                 ))}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>Quiet hours pause reminders and activity pings — handoff asks always come through. Reminders reach every phone you’ve switched on.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('Quiet hours pause reminders and activity pings — handoff asks always come through. Reminders reach every phone you’ve switched on.')}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Share with your pediatrician</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Share with your pediatrician')}</div>
                 <div style={S('display:flex;gap:6px;padding:4px 0 10px')}>
                   {v.exportRanges.map((u, i) => (
                     <button key={i} type="button" onClick={u.onTap} style={S(`flex:1;background:${u.bg};border:1px solid ${u.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${u.fg};cursor:pointer`)}>{u.label}</button>
@@ -3320,99 +3343,99 @@ export default class App extends React.Component {
                 <button type="button" onClick={v.exportSummary} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07);cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 130)' }}>calendar_month</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Daily summary</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>Feeds, {v.unitWord}, diapers & sleep per day</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Daily summary')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('Feeds, {units}, diapers & sleep per day', { units: v.unitWord })}</div>
                   </div>
                   <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>ios_share</Sym>
                 </button>
                 <button type="button" onClick={v.exportLog} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07);cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 250)' }}>table_view</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Full log</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>Every entry, spreadsheet-ready</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Full log')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('Every entry, spreadsheet-ready')}</div>
                   </div>
                   <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>ios_share</Sym>
                 </button>
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Opens your phone’s share sheet as a CSV — send it by email or message.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Opens your phone’s share sheet as a CSV — send it by email or message.')}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Bring your history over</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Bring your history over')}</div>
                 <label className="hov-row" style={S('width:100%;box-sizing:border-box;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07);cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 300)' }}>child_care</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Import from Baby Buddy</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{v.importBusy ? 'Importing…' : 'Feedings, pumping, diapers & sleep CSVs'}</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Import from Baby Buddy')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t(v.importBusy ? 'Importing…' : 'Feedings, pumping, diapers & sleep CSVs')}</div>
                   </div>
                   <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>upload_file</Sym>
                   <input type="file" accept=".csv,text/csv" multiple onChange={v.importBB} style={S('display:none')} />
                 </label>
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Pick the CSV files Baby Buddy exports (one per type) — you can select several at once, and importing the same file twice won’t duplicate anything.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Pick the CSV files Baby Buddy exports (one per type) — you can select several at once, and importing the same file twice won’t duplicate anything.')}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
                 <button type="button" onClick={v.apiAccess.toggle} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 40)' }}>key</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>API access</div>
-                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>Tokens for other apps and AI assistants</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('API access')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('Tokens for other apps and AI assistants')}</div>
                   </div>
                   <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>{v.apiAccess.open ? 'expand_less' : 'expand_more'}</Sym>
                 </button>
                 {v.apiAccess.open && (
                   <>
                     {!v.apiAccess.loaded && (
-                      <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px')}>One sec…</div>
+                      <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px')}>{t('One sec…')}</div>
                     )}
                     {v.apiAccess.loaded && !v.apiAccess.rows.length && (
-                      <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px;text-wrap:pretty')}>Nothing yet — make a token and other apps can read or write this log as you.</div>
+                      <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px;text-wrap:pretty')}>{t('Nothing yet — make a token and other apps can read or write this log as you.')}</div>
                     )}
-                    {v.apiAccess.rows.map(t => (
-                      <div key={t.id} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
+                    {v.apiAccess.rows.map(tok => (
+                      <div key={tok.id} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <Sym style={{ fontSize: 18, color: 'var(--soft)' }}>vpn_key</Sym>
                         <div style={S('flex:1;min-width:0')}>
-                          <div style={S('font-size:14px;font-weight:600;color:#4E4A3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{t.name}</div>
-                          <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{t.scopeText}</div>
-                          <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t.hint}</div>
+                          <div style={S('font-size:14px;font-weight:600;color:#4E4A3F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{tok.name}</div>
+                          <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{tok.scopeText}</div>
+                          <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{tok.hint}</div>
                         </div>
-                        {!t.armed && (
-                          <button type="button" onClick={t.arm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>Revoke</button>
+                        {!tok.armed && (
+                          <button type="button" onClick={tok.arm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>{t('Revoke')}</button>
                         )}
-                        {t.armed && (
+                        {tok.armed && (
                           <>
-                            <button type="button" onClick={t.revoke} style={S("flex-shrink:0;background:#A85A45;border:none;border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FCFBF6;cursor:pointer")}>Yes, revoke</button>
-                            <button type="button" onClick={t.disarm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Keep</button>
+                            <button type="button" onClick={tok.revoke} style={S("flex-shrink:0;background:#A85A45;border:none;border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FCFBF6;cursor:pointer")}>{t('Yes, revoke')}</button>
+                            <button type="button" onClick={tok.disarm} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Keep')}</button>
                           </>
                         )}
                       </div>
                     ))}
                     {v.apiAccess.newToken && (
                       <div style={S('display:flex;flex-direction:column;gap:6px;padding:9px 0 10px 29px;border-top:1px solid rgba(38,35,29,0.07)')}>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>Your new token</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('Your new token')}</div>
                         <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;letter-spacing:0.02em;color:#26231D;word-break:break-all")}>{v.apiAccess.newToken}</div>
                         <div>
-                          <button type="button" onClick={v.apiAccess.copyNew} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:5px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;color:#8C8474;cursor:pointer")}>Copy</button>
+                          <button type="button" onClick={v.apiAccess.copyNew} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:5px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:10.5px;color:#8C8474;cursor:pointer")}>{t('Copy')}</button>
                         </div>
-                        <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>You won’t see this again — copy it now.</div>
+                        <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('You won’t see this again — copy it now.')}</div>
                       </div>
                     )}
                     {v.apiAccess.loaded && (
                       <>
                         <button type="button" onClick={v.apiAccess.toggleAdd} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07);cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                           <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>add_circle</Sym>
-                          <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>New token</div>
+                          <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('New token')}</div>
                           <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>{v.apiAccess.addOpen ? 'expand_less' : 'expand_more'}</Sym>
                         </button>
                         {v.apiAccess.addOpen && (
                           <div style={S('display:flex;flex-direction:column;gap:8px;padding:2px 0 10px 29px')}>
-                            <input placeholder="What’s it for? — Home Assistant, Claude…" value={v.apiAccess.name} onChange={v.apiAccess.setName} maxLength={40} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>What it may do</div>
+                            <input placeholder={t('What’s it for? — Home Assistant, Claude…')} value={v.apiAccess.name} onChange={v.apiAccess.setName} maxLength={40} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('What it may do')}</div>
                             <div style={S('display:flex;flex-wrap:wrap;gap:6px')}>
                               {v.apiAccess.scopeChips.map(c => (
                                 <button key={c.key} type="button" onClick={c.onTap} style={S(`background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:${c.fg};cursor:pointer;text-align:left`)}>{c.label}</button>
                               ))}
                             </div>
-                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>Expires</div>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('Expires')}</div>
                             <div style={S('display:flex;gap:6px')}>
                               {v.apiAccess.expiryChips.map(c => (
                                 <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
@@ -3421,8 +3444,8 @@ export default class App extends React.Component {
                             {v.apiAccess.error && (
                               <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;text-wrap:pretty')}>{v.apiAccess.error}</div>
                             )}
-                            <button type="button" onClick={v.apiAccess.submit} disabled={!v.apiAccess.canCreate} className="hov-olive" style={S(`align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;opacity:${v.apiAccess.canCreate ? '1' : '0.5'}`)}>{v.apiAccess.busy ? 'One sec…' : 'Create token'}</button>
-                            <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>It can only do what you tick here — and only as your account.</div>
+                            <button type="button" onClick={v.apiAccess.submit} disabled={!v.apiAccess.canCreate} className="hov-olive" style={S(`align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;opacity:${v.apiAccess.canCreate ? '1' : '0.5'}`)}>{v.apiAccess.busy ? t('One sec…') : t('Create token')}</button>
+                            <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('It can only do what you tick here — and only as your account.')}</div>
                           </div>
                         )}
                       </>
@@ -3432,7 +3455,7 @@ export default class App extends React.Component {
                     )}
                   </>
                 )}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Tokens let other apps — scripts, Home Assistant, AI assistants over MCP — use this log as you. Revoking one stops it right away.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Tokens let other apps — scripts, Home Assistant, AI assistants over MCP — use this log as you. Revoking one stops it right away.')}</div>
               </div>
 
               {v.canManage && (
@@ -3440,13 +3463,13 @@ export default class App extends React.Component {
                 <button type="button" onClick={v.mqtt.toggle} className="hov-row" style={S('width:100%;background:none;border:none;display:flex;align-items:center;gap:11px;padding:9px 0;cursor:pointer;font-family:inherit;text-align:left;border-radius:10px')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 170)' }}>home_iot_device</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Home Assistant</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Home Assistant')}</div>
                     <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{v.mqtt.hint}</div>
                   </div>
                   <Sym style={{ fontSize: 18, color: 'var(--dim)' }}>{v.mqtt.open ? 'expand_less' : 'expand_more'}</Sym>
                 </button>
                 {v.mqtt.open && !v.mqtt.loaded && !v.mqtt.error && (
-                  <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px')}>One sec…</div>
+                  <div style={S('font-size:12px;color:#B5AC98;padding:6px 0 4px 29px')}>{t('One sec…')}</div>
                 )}
                 {v.mqtt.open && !v.mqtt.loaded && v.mqtt.error && (
                   <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;padding:2px 0 4px 29px;text-wrap:pretty')}>{v.mqtt.error}</div>
@@ -3455,32 +3478,32 @@ export default class App extends React.Component {
                   <>
                     <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                       <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>sync</Sym>
-                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Publish to MQTT</div>
+                      <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Publish to MQTT')}</div>
                       <button type="button" onClick={v.mqtt.toggleEnabled} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                         <Sym style={{ fontSize: 22, color: v.mqtt.enabled ? 'var(--accent)' : 'var(--dim)' }}>{v.mqtt.enabled ? 'toggle_on' : 'toggle_off'}</Sym>
                       </button>
                     </div>
                     <div style={S('display:flex;flex-direction:column;gap:8px;padding:2px 0 10px 29px')}>
-                      <input placeholder="Host" value={v.mqtt.host} onChange={v.mqtt.setHost} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                      <input placeholder="Port" type="number" value={v.mqtt.port} onChange={v.mqtt.setPort} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                      <input placeholder="Username" value={v.mqtt.username} onChange={v.mqtt.setUsername} autoComplete="off" style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                      <input placeholder={t('Host')} value={v.mqtt.host} onChange={v.mqtt.setHost} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                      <input placeholder={t('Port')} type="number" value={v.mqtt.port} onChange={v.mqtt.setPort} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                      <input placeholder={t('Username')} value={v.mqtt.username} onChange={v.mqtt.setUsername} autoComplete="off" style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
                       <input placeholder={v.mqtt.pwPlaceholder} type="password" value={v.mqtt.password} onChange={v.mqtt.setPassword} autoComplete="new-password" style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
                       <div style={S('display:flex;align-items:center;gap:11px;padding:2px 0')}>
-                        <div style={S('flex:1;font-size:13px;color:#6E6659')}>Use TLS</div>
+                        <div style={S('flex:1;font-size:13px;color:#6E6659')}>{t('Use TLS')}</div>
                         <button type="button" onClick={v.mqtt.toggleTls} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                           <Sym style={{ fontSize: 20, color: v.mqtt.tls ? 'var(--accent)' : 'var(--dim)' }}>{v.mqtt.tls ? 'toggle_on' : 'toggle_off'}</Sym>
                         </button>
                       </div>
                       {v.mqtt.tls && (
                         <div style={S('display:flex;align-items:center;gap:11px;padding:2px 0')}>
-                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>Verify certificate</div>
+                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>{t('Verify certificate')}</div>
                           <button type="button" onClick={v.mqtt.toggleTlsVerify} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                             <Sym style={{ fontSize: 20, color: v.mqtt.tlsVerify ? 'var(--accent)' : 'var(--dim)' }}>{v.mqtt.tlsVerify ? 'toggle_on' : 'toggle_off'}</Sym>
                           </button>
                         </div>
                       )}
                       {v.mqtt.testResult?.ok && (
-                        <div style={S('font-size:12.5px;line-height:1.4;font-weight:600;color:oklch(0.60 0.075 145)')}>Connected ✓</div>
+                        <div style={S('font-size:12.5px;line-height:1.4;font-weight:600;color:oklch(0.60 0.075 145)')}>{t('Connected ✓')}</div>
                       )}
                       {v.mqtt.testResult && !v.mqtt.testResult.ok && (
                         <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;text-wrap:pretty')}>{v.mqtt.testResult.message}</div>
@@ -3489,63 +3512,63 @@ export default class App extends React.Component {
                         <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;text-wrap:pretty')}>{v.mqtt.error}</div>
                       )}
                       <div style={S('display:flex;gap:8px')}>
-                        <button type="button" onClick={v.mqtt.test} disabled={v.mqtt.busy} className="hov-bd" style={S(`height:42px;padding:0 18px;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#8C8474;opacity:${v.mqtt.busy ? '0.5' : '1'}`)}>Test connection</button>
-                        <button type="button" onClick={v.mqtt.save} disabled={v.mqtt.busy} className="hov-olive" style={S(`height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;opacity:${v.mqtt.busy ? '0.5' : '1'}`)}>{v.mqtt.busy ? 'One sec…' : 'Save'}</button>
+                        <button type="button" onClick={v.mqtt.test} disabled={v.mqtt.busy} className="hov-bd" style={S(`height:42px;padding:0 18px;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#8C8474;opacity:${v.mqtt.busy ? '0.5' : '1'}`)}>{t('Test connection')}</button>
+                        <button type="button" onClick={v.mqtt.save} disabled={v.mqtt.busy} className="hov-olive" style={S(`height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6;opacity:${v.mqtt.busy ? '0.5' : '1'}`)}>{v.mqtt.busy ? t('One sec…') : t('Save')}</button>
                       </div>
                     </div>
                   </>
                 )}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Publishes to your MQTT broker so Home Assistant discovers sensors and buttons. See docs/home-assistant.md.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Publishes to your MQTT broker so Home Assistant discovers sensors and buttons. See docs/home-assistant.md.')}</div>
               </div>
               )}
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
-                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Your account</div>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Your account')}</div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'var(--accent)' }}>badge</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Your name</div>
-                  <input value={v.account.name} onChange={v.account.setName} onBlur={v.account.saveName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder="Parent" style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Your name')}</div>
+                  <input value={v.account.name} onChange={v.account.setName} onBlur={v.account.saveName} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} placeholder={t('Parent')} style={S("width:140px;box-sizing:border-box;text-align:right;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:8px 10px;font-size:13.5px;color:#26231D;outline:none;font-family:'Nunito',sans-serif;font-weight:600")} />
                 </div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 250)' }}>alternate_email</Sym>
                   <div style={S('flex:1;min-width:0')}>
-                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>Email</div>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Email')}</div>
                     <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{v.account.email || '—'}</div>
                   </div>
-                  <button type="button" onClick={() => v.account.toggle('email')} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{v.account.open === 'email' ? 'Cancel' : 'Change'}</button>
+                  <button type="button" onClick={() => v.account.toggle('email')} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t(v.account.open === 'email' ? 'Cancel' : 'Change')}</button>
                 </div>
                 {v.account.open === 'email' && (
                   <div style={S('display:flex;flex-direction:column;gap:8px;padding:2px 0 10px 29px')}>
-                    <input placeholder="New email" type="email" value={v.account.emailField} onChange={v.account.setEmailField} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                    <input placeholder="Current password" type="password" value={v.account.emailPw} onChange={v.account.setEmailPw} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                    <input placeholder={t('New email')} type="email" value={v.account.emailField} onChange={v.account.setEmailField} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                    <input placeholder={t('Current password')} type="password" value={v.account.emailPw} onChange={v.account.setEmailPw} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
                     {v.account.error && (
                       <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;text-wrap:pretty')}>{v.account.error}</div>
                     )}
-                    <button type="button" onClick={v.account.submitEmail} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.account.busy ? 'One sec…' : 'Save email'}</button>
-                    <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>You’ll log in with the new address from now on — this phone stays signed in.</div>
+                    <button type="button" onClick={v.account.submitEmail} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.account.busy ? t('One sec…') : t('Save email')}</button>
+                    <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('You’ll log in with the new address from now on — this phone stays signed in.')}</div>
                   </div>
                 )}
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 300)' }}>key</Sym>
-                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>Password</div>
-                  <button type="button" onClick={() => v.account.toggle('password')} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{v.account.open === 'password' ? 'Cancel' : 'Change'}</button>
+                  <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Password')}</div>
+                  <button type="button" onClick={() => v.account.toggle('password')} className="hov-bd" style={S("flex-shrink:0;background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:6px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t(v.account.open === 'password' ? 'Cancel' : 'Change')}</button>
                 </div>
                 {v.account.open === 'password' && (
                   <div style={S('display:flex;flex-direction:column;gap:8px;padding:2px 0 10px 29px')}>
-                    <input placeholder="Current password" type="password" value={v.account.pwCur} onChange={v.account.setPwCur} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
-                    <input placeholder="New password — 8+ characters" type="password" value={v.account.pwNew} onChange={v.account.setPwNew} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                    <input placeholder={t('Current password')} type="password" value={v.account.pwCur} onChange={v.account.setPwCur} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
+                    <input placeholder={t('New password — 8+ characters')} type="password" value={v.account.pwNew} onChange={v.account.setPwNew} style={S('width:100%;box-sizing:border-box;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:11px 16px;font-size:14.5px;color:#26231D;outline:none')} />
                     {v.account.error && (
                       <div style={S('font-size:12.5px;line-height:1.4;color:#A85A45;text-wrap:pretty')}>{v.account.error}</div>
                     )}
-                    <button type="button" onClick={v.account.submitPassword} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.account.busy ? 'One sec…' : 'Save password'}</button>
-                    <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>Every other phone gets logged out — this one stays signed in.</div>
+                    <button type="button" onClick={v.account.submitPassword} className="hov-olive" style={S('align-self:flex-start;height:42px;padding:0 18px;background:var(--accent);border:none;border-radius:999px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:700;color:#FCFBF6')}>{v.account.busy ? t('One sec…') : t('Save password')}</button>
+                    <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('Every other phone gets logged out — this one stays signed in.')}</div>
                   </div>
                 )}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>Your name is what your partner sees on duty and handoffs.</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Your name is what your partner sees on duty and handoffs.')}</div>
               </div>
 
               <div style={S('text-align:center;padding:16px 0 0')}>
-                <button type="button" onClick={v.logout} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:8px 15px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Log out</button>
+                <button type="button" onClick={v.logout} className="hov-bd" style={S("background:none;border:1px solid rgba(38,35,29,0.14);border-radius:999px;padding:8px 15px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Log out')}</button>
               </div>
             </div>
           </div>
@@ -3556,14 +3579,14 @@ export default class App extends React.Component {
             <div style={S('padding:6px 18px 0;display:flex;align-items:center;gap:10px;position:relative;z-index:1')}>
               <button type="button" onClick={v.goHome} className="hov-cream" style={S(`height:56px;flex:1;background:${v.homeTabBg};border:1px solid rgba(38,35,29,0.10);border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;font-family:inherit`)}>
                 <Sym style={{ fontSize: 20, color: v.homeTabFg }}>schedule</Sym>
-                <div style={S(`font-size:11px;font-weight:600;color:${v.homeTabFg};letter-spacing:0.01em`)}>Now</div>
+                <div style={S(`font-size:11px;font-weight:600;color:${v.homeTabFg};letter-spacing:0.01em`)}>{t('Now')}</div>
               </button>
               <button type="button" onClick={v.openSheet} className="hov-olive" style={S('width:68px;height:68px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(var(--accent-rgb),0.34);margin-bottom:6px')}>
                 <Sym style={{ fontSize: 32, color: 'var(--on-accent)' }}>add</Sym>
               </button>
               <button type="button" onClick={v.goHistory} className="hov-cream" style={S(`height:56px;flex:1;background:${v.histTabBg};border:1px solid rgba(38,35,29,0.10);border-radius:999px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;font-family:inherit`)}>
                 <Sym style={{ fontSize: 20, color: v.histTabFg }}>bar_chart</Sym>
-                <div style={S(`font-size:11px;font-weight:600;color:${v.histTabFg};letter-spacing:0.01em`)}>History</div>
+                <div style={S(`font-size:11px;font-weight:600;color:${v.histTabFg};letter-spacing:0.01em`)}>{t('History')}</div>
               </button>
             </div>
             {v.hasPartner && (
@@ -3584,7 +3607,7 @@ export default class App extends React.Component {
             pointerEvents: v.toastLeaving ? 'none' : 'auto',
           }}>
             <div style={S('flex:1;min-width:0;font-size:14px;color:#FAF6EF')}>{v.toastText}</div>
-            {v.canUndo && <button type="button" onClick={v.undo} style={S("background:rgba(250,246,239,0.16);border:none;border-radius:999px;padding:7px 14px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FAF6EF;cursor:pointer")}>Undo</button>}
+            {v.canUndo && <button type="button" onClick={v.undo} style={S("background:rgba(250,246,239,0.16);border:none;border-radius:999px;padding:7px 14px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#FAF6EF;cursor:pointer")}>{t('Undo')}</button>}
           </div>
         )}
 
@@ -3610,7 +3633,7 @@ export default class App extends React.Component {
 
                 {v.sheetChildren && (
                   <div style={S('display:flex;align-items:center;gap:8px;padding:0 4px 12px;overflow:auto')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0;padding-right:2px")}>For</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0;padding-right:2px")}>{t('For')}</div>
                     {v.sheetChildren.map(c => (
                       <button key={c.id} type="button" onClick={c.onTap} style={S(`flex-shrink:0;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:7px 12px;font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:${c.fg};cursor:pointer`)}>{c.label}</button>
                     ))}
@@ -3636,23 +3659,23 @@ export default class App extends React.Component {
                 )}
                 {v.timerFirst && (
                   <div style={S('padding:2px 4px 12px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>Time it live</div>
-                    <div style={S('font-size:13px;color:#6E6659;padding-top:3px;text-wrap:pretty')}>Hit start, and stop when you’re done — the duration logs itself.</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{t('Time it live')}</div>
+                    <div style={S('font-size:13px;color:#6E6659;padding-top:3px;text-wrap:pretty')}>{t('Hit start, and stop when you’re done — the duration logs itself.')}</div>
                   </div>
                 )}
 
                 <div style={S('display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px')}>
-                  {v.types.map(t => (
-                    <button key={t.label} type="button" onClick={t.onTap} className="hov-bd" style={S('position:relative;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:24px;padding:12px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font-family:inherit;overflow:hidden')}>
-                      <div style={S(`position:absolute;inset:0;opacity:${t.tint};background:${t.color}`)} />
-                      {t.on && (
-                        <div style={S(`position:absolute;inset:0;border-radius:23px;box-shadow:inset 0 0 0 2.5px ${t.color}`)} />
+                  {v.types.map(ty => (
+                    <button key={ty.label} type="button" onClick={ty.onTap} className="hov-bd" style={S('position:relative;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:24px;padding:12px 8px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;font-family:inherit;overflow:hidden')}>
+                      <div style={S(`position:absolute;inset:0;opacity:${ty.tint};background:${ty.color}`)} />
+                      {ty.on && (
+                        <div style={S(`position:absolute;inset:0;border-radius:23px;box-shadow:inset 0 0 0 2.5px ${ty.color}`)} />
                       )}
                       <div style={S('position:relative;width:48px;height:48px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden')}>
-                        <div style={S(`position:absolute;inset:0;background:${t.color};opacity:0.16`)} />
-                        <Sym style={{ position: 'relative', fontSize: 26, color: t.color }}>{t.icon}</Sym>
+                        <div style={S(`position:absolute;inset:0;background:${ty.color};opacity:0.16`)} />
+                        <Sym style={{ position: 'relative', fontSize: 26, color: ty.color }}>{ty.icon}</Sym>
                       </div>
-                      <div style={S('position:relative;font-size:13px;font-weight:600;letter-spacing:-0.01em;color:#3D392F')}>{t.label}</div>
+                      <div style={S('position:relative;font-size:13px;font-weight:600;letter-spacing:-0.01em;color:#3D392F')}>{ty.label}</div>
                     </button>
                   ))}
                 </div>
@@ -3700,12 +3723,12 @@ export default class App extends React.Component {
                 )}
 
                 <div style={S('display:flex;align-items:center;justify-content:space-between;padding:12px 6px 0')}>
-                  <button type="button" onClick={v.closeSheet} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>Cancel</button>
+                  <button type="button" onClick={v.closeSheet} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer")}>{t('Cancel')}</button>
                   {v.canManual && (
-                    <button type="button" onClick={v.timerFirst ? v.toManual : v.toTimer} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#5F6E42;cursor:pointer")}>{v.timerFirst ? v.manualHint : 'Use a timer'}</button>
+                    <button type="button" onClick={v.timerFirst ? v.toManual : v.toTimer} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#5F6E42;cursor:pointer")}>{v.timerFirst ? v.manualHint : t('Use a timer')}</button>
                   )}
                   {v.editing && (
-                    <button type="button" onClick={v.remove} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>Delete entry</button>
+                    <button type="button" onClick={v.remove} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>{t('Delete entry')}</button>
                   )}
                 </div>
               </div>
@@ -3733,14 +3756,14 @@ export default class App extends React.Component {
                     <Sym style={{ fontSize: 28, color: 'var(--faint)', marginBottom: 22 }}>arrow_forward</Sym>
                     <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
                       <div style={S(`width:56px;height:56px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>You</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{t('You')}</div>
                     </div>
                   </div>
-                  <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>Take over from {v.relieveName}</div>
+                  <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{t('Take over from {name}', { name: v.relieveName })}</div>
                   <div style={S('text-align:center;font-size:13.5px;color:#8C8474;padding-top:4px')}>{v.theirShiftLine}</div>
 
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px;margin-top:18px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>Right now</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Right now')}</div>
                     {v.handoffRows.map((r, i) => (
                       <div key={i} style={S('display:flex;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <div style={S('flex:1;font-size:14px;color:#4E4A3F')}>{r.label}</div>
@@ -3751,8 +3774,8 @@ export default class App extends React.Component {
 
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:10px')}>
                     <div style={S('display:flex;align-items:center;justify-content:space-between;padding:10px 0 4px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>Plan for your shift</div>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#B5AC98")}>from the usual rhythm</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Plan for your shift')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#B5AC98")}>{t('from the usual rhythm')}</div>
                     </div>
                     {v.requestPlanRows.map((p, i) => (
                       <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
@@ -3764,7 +3787,7 @@ export default class App extends React.Component {
                         </button>
                       </div>
                     ))}
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>Until</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
                     <div style={S('display:flex;gap:6px;padding-top:6px')}>
                       {v.untilOptions.map((u, i) => (
                         <button key={i} type="button" onClick={u.onTap} style={S(`flex:1;background:${u.bg};border:1px solid ${u.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${u.fg};cursor:pointer`)}>{u.label}</button>
@@ -3774,9 +3797,9 @@ export default class App extends React.Component {
 
                   <button type="button" onClick={v.acceptShift} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
                     <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>check</Sym>
-                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>I’ve got him — start my shift</div>
+                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('I’ve got him — start my shift')}</div>
                   </button>
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px')}>{v.relieveName} gets a “you’re covered” ping and can sleep.</div>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px')}>{t('{name} gets a “you’re covered” ping and can sleep.', { name: v.relieveName })}</div>
                 </>
               )}
 
@@ -3785,7 +3808,7 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;gap:12px;padding:4px 4px 14px')}>
                     <div style={S(`width:48px;height:48px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
                     <div style={S('display:flex;flex-direction:column;gap:2px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>Your shift so far</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>{t('Your shift so far')}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{v.shiftSince} · {v.shiftElapsed}</div>
                     </div>
                   </div>
@@ -3798,12 +3821,12 @@ export default class App extends React.Component {
                     ))}
                   </div>
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:12px 16px;margin-top:10px;display:flex;flex-direction:column;gap:8px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>Note for {v.hbName}</div>
-                    <input value={v.handbackNote} onChange={v.setHandbackNote} placeholder="e.g. took the 1am bottle slow, fell asleep on me" style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Note for {name}', { name: v.hbName })}</div>
+                    <input value={v.handbackNote} onChange={v.setHandbackNote} placeholder={t('e.g. took the 1am bottle slow, fell asleep on me')} style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
                   </div>
                   <button type="button" onClick={v.handBack} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
                     <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>swap_horiz</Sym>
-                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>Hand back to {v.hbName}</div>
+                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('Hand back to {name}', { name: v.hbName })}</div>
                   </button>
                   {v.canRequest && (
                     <button type="button" onClick={v.requestHandoff} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
@@ -3811,7 +3834,7 @@ export default class App extends React.Component {
                       {v.askLabel}
                     </button>
                   )}
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>They get this summary as a card — no scrolling the log, no “when did you…”</div>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t('They get this summary as a card — no scrolling the log, no “when did you…”')}</div>
                 </>
               )}
 
@@ -3838,7 +3861,7 @@ export default class App extends React.Component {
                     <div style={S('font-size:14.5px;line-height:1.45;color:#4E4A3F;background:rgba(var(--accent-rgb),0.09);border-radius:16px;padding:12px 14px;margin-top:10px')}>“{v.reportNote}”</div>
                   )}
                   <button type="button" onClick={v.closeShift} className="hov-dark" style={S('margin-top:14px;width:100%;height:56px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit')}>
-                    <div style={S('font-size:16px;font-weight:700;color:#FAF6EF')}>Done</div>
+                    <div style={S('font-size:16px;font-weight:700;color:#FAF6EF')}>{t('Done')}</div>
                   </button>
                 </>
               )}
