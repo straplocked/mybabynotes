@@ -9,7 +9,7 @@ class StartTimerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['required', 'in:nurse,pump,sleep'],
+            'type' => ['required', 'in:nurse,pump,sleep,tummy'],
             'baby_id' => ['sometimes', 'nullable', 'integer'],
         ];
     }

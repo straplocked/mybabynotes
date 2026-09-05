@@ -19,6 +19,7 @@ const TYPES = [
   { key: 'dirty',  label: 'Dirty',   icon: 'baby_changing_station', color: 'oklch(0.60 0.075 60)' },
   { key: 'both',   label: 'Both',    icon: 'baby_changing_station', color: 'oklch(0.60 0.075 130)' },
   { key: 'sleep',  label: 'Sleep',   icon: 'bedtime',               color: 'oklch(0.60 0.075 25)', detail: 'dur' },
+  { key: 'tummy',  label: 'Tummy time', icon: 'bedroom_baby',       color: 'oklch(0.60 0.075 95)', detail: 'dur' },
   { key: 'bath',   label: 'Bath',    icon: 'bathtub',               color: 'oklch(0.60 0.075 195)' },
   { key: 'meds',   label: 'Meds',    icon: 'medication',            color: 'oklch(0.60 0.075 150)' },
 ]
@@ -30,6 +31,7 @@ const TRACKS = [
   { key: 'pump',    label: 'Pump',    types: ['pump'] },
   { key: 'diapers', label: 'Diapers', types: DIAPERS },
   { key: 'sleep',   label: 'Sleep',   types: ['sleep'] },
+  { key: 'tummy',   label: 'Tummy time', types: ['tummy'] },
   { key: 'bath',    label: 'Bath',    types: ['bath'] },
   { key: 'meds',    label: 'Meds',    types: ['meds'] },
 ]
@@ -40,6 +42,7 @@ const WIDGETS = [
   { key: 'pump',    keys: ['pump'],  label: 'Pumped', icon: 'opacity',               color: 'oklch(0.60 0.075 300)', track: 'pump' },
   { key: 'diapers', keys: DIAPERS,   label: 'Diaper', icon: 'baby_changing_station', color: 'oklch(0.60 0.075 210)', track: 'diapers' },
   { key: 'sleep',   keys: ['sleep'], label: 'Slept',  icon: 'bedtime',               color: 'oklch(0.60 0.075 25)',  track: 'sleep' },
+  { key: 'tummy',   keys: ['tummy'], label: 'Tummy time', icon: 'bedroom_baby',      color: 'oklch(0.60 0.075 95)',  track: 'tummy' },
   { key: 'bath',    keys: ['bath'],  label: 'Bath',   icon: 'bathtub',               color: 'oklch(0.60 0.075 195)', track: 'bath' },
   { key: 'meds',    keys: ['meds'],  label: 'Meds',   icon: 'medication',            color: 'oklch(0.60 0.075 150)', track: 'meds' },
 ]
@@ -195,7 +198,8 @@ function loadSaved() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null } catch { return null }
 }
 const numify = d => (typeof d === 'string' && /^\d+(\.\d+)?$/.test(d)) ? Number(d) : d
-// detail strings can carry extras: bottle "4 breastmilk", nurse "Left · 30m", pump "3 · 15m"
+// detail strings can carry extras: bottle "4 breastmilk", nurse "Left · 30m",
+// pump "3 · 15m", tagged sleep "Nap · 45m" (untagged stays bare minutes)
 const dSplit = d => {
   d = d == null ? '' : String(d)
   const lead = /^([\d.]+)\s*(m\b)?/.exec(d)
@@ -205,8 +209,12 @@ const dSplit = d => {
     mins: mm ? Number(mm[1]) : null,
     side: /left/i.test(d) ? 'Left' : /right/i.test(d) ? 'Right' : /both/i.test(d) ? 'Both' : null,
     milk: /breast/i.test(d) ? 'breastmilk' : /formula/i.test(d) ? 'formula' : null,
+    when: /nap/i.test(d) ? 'Nap' : /night/i.test(d) ? 'Night' : null,
   }
 }
+// sleep/tummy minutes, whichever way the wire spells them: bare leading number
+// (the timer's legacy format) or a "45m" token ("Nap · 45m") — null when absent
+const sleepMins = d => { const { n, mins } = dSplit(d); return mins ?? n }
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'e' + Date.now() + Math.random().toString(36).slice(2, 9))
 const dayKey = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
 const csvEsc = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }
@@ -832,10 +840,11 @@ export default class App extends React.Component {
   amountKey() { return this.unit() === 'ml' ? 'ml' : 'oz' }
   fmtDetail(d) {
     // wire strings stay canonical ('Left', 'breastmilk') — translate on the way out
-    const { n, mins, side, milk } = dSplit(d), p = []
+    const { n, mins, side, milk, when } = dSplit(d), p = []
     if (n != null) p.push(this.amt(n) + ' ' + this.unit())
     if (milk) p.push(t(milk))
     if (side) p.push(t(side))
+    if (when) p.push(t(when))
     if (mins != null) p.push(this.dur(mins))
     return p.join(' · ')
   }
@@ -843,7 +852,12 @@ export default class App extends React.Component {
     const day = noDay ? '' : this.dayOf(e.t), p = []
     if ((e.type === 'bottle' || e.type === 'pump') && e.detail != null) p.push(this.fmtDetail(e.detail) || String(e.detail))
     if (e.type === 'nurse') p.push(e.detail ? this.fmtDetail(e.detail) || String(e.detail) : t('either side'))
-    if (e.type === 'sleep') p.push(this.dur(e.detail))
+    if (e.type === 'sleep') {
+      const w = dSplit(e.detail).when
+      if (w) p.push(t(w))
+      p.push(this.dur(sleepMins(e.detail) || 0))
+    }
+    if (e.type === 'tummy') p.push(this.dur(sleepMins(e.detail) || 0))
     if (DIAPERS.includes(e.type)) p.push(t(e.type === 'both' ? 'wet + dirty' : e.type))
     if (e.type === 'meds') p.push(this.medName())
     if (day) p.push(day)
@@ -1169,14 +1183,16 @@ export default class App extends React.Component {
         toast: t('Nursing logged · {dur}', { dur: this.dur(mins) }), undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
       this.bumpToast()
-    } else if (tm.type === 'sleep') {
-      // sleep: the entry stamps the wake-up moment, and the duration leads the
-      // detail as bare minutes (the sleep format — the wake-window insight
-      // subtracts it from t to find when the nap started)
-      const entry = { id: uuid(), type: 'sleep', t: Date.now(), detail: mins, by: this.state.me?.id, babyId: timerBabyId }
+    } else if (tm.type === 'sleep' || tm.type === 'tummy') {
+      // sleep/tummy time: the entry stamps the moment the session ended, and
+      // the duration leads the detail as bare minutes (the sleep format — the
+      // wake-window insight subtracts it from t to find when the nap started).
+      // A nap/night tag is an edit-time refinement, so the timer stays untagged.
+      const entry = { id: uuid(), type: tm.type, t: Date.now(), detail: mins, by: this.state.me?.id, babyId: timerBabyId }
       this.setState(s => ({
         entries: [entry, ...s.entries], outbox: [...s.outbox, entry.id],
-        toast: t('Sleep logged · {dur}', { dur: this.dur(mins) }), undoAction: { kind: 'add', id: entry.id },
+        toast: t(tm.type === 'sleep' ? 'Sleep logged · {dur}' : 'Tummy time logged · {dur}', { dur: this.dur(mins) }),
+        undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
       this.bumpToast()
     } else {
@@ -1316,7 +1332,7 @@ export default class App extends React.Component {
     const d = T(k).detail
     if (d === 'amount') { const l = this.lastOf([k]); return this.amt(l ? (dSplit(l.detail).n ?? 4) : 4) } // seeds in the display unit
     if (d === 'side') { const l = this.lastOf(['nurse']); return l && dSplit(l.detail).side === 'Left' ? 'Right' : 'Left' }
-    if (d === 'dur') return 45
+    if (d === 'dur') return k === 'tummy' ? 10 : 45
     return null
   }
   defaultDetail2(k) {
@@ -1342,8 +1358,8 @@ export default class App extends React.Component {
         time: pad(dt.getHours()) + ':' + pad(dt.getMinutes()),
         type: t(T(e.type).label),
         oz: ['bottle', 'pump'].includes(e.type) ? d.n : null,
-        mins: e.type === 'sleep' ? d.n : d.mins, // sleep stores its minutes as the leading number
-        note: [d.side && t(d.side), d.milk && t(d.milk)].filter(Boolean).join(' · '),
+        mins: ['sleep', 'tummy'].includes(e.type) ? sleepMins(e.detail) : d.mins,
+        note: [d.side && t(d.side), d.milk && t(d.milk), d.when && t(d.when)].filter(Boolean).join(' · '),
         by: who[e.by] || '',
       }
     })
@@ -1374,21 +1390,22 @@ export default class App extends React.Component {
     const days = new Map()
     for (const r of this.exportRows()) {
       let d = days.get(r.date)
-      if (!d) days.set(r.date, d = { feeds: 0, oz: 0, nurseMin: 0, pumpOz: 0, wet: 0, dirty: 0, sleepMin: 0, baths: 0, meds: 0 })
+      if (!d) days.set(r.date, d = { feeds: 0, oz: 0, nurseMin: 0, pumpOz: 0, wet: 0, dirty: 0, sleepMin: 0, tummyMin: 0, baths: 0, meds: 0 })
       if (r.key === 'bottle') { d.feeds++; d.oz += r.oz || 0 }
       if (r.key === 'nurse') { d.feeds++; d.nurseMin += r.mins || 0 }
       if (r.key === 'pump') d.pumpOz += r.oz || 0
       if (r.key === 'wet' || r.key === 'both') d.wet++
       if (r.key === 'dirty' || r.key === 'both') d.dirty++
       if (r.key === 'sleep') d.sleepMin += r.mins || 0
+      if (r.key === 'tummy') d.tummyMin += r.mins || 0
       if (r.key === 'bath') d.baths++
       if (r.key === 'meds') d.meds++
     }
     // day totals sum in oz and convert once at the end — no per-row rounding drift
     this.shareCsv(this.exportName('daily'), [
-      t('Date,Feeds,Bottle ({unit}),Nursing (min),Pumped ({unit}),Wet diapers,Dirty diapers,Sleep (min),Baths,Meds', { unit: this.unit() }),
+      t('Date,Feeds,Bottle ({unit}),Nursing (min),Pumped ({unit}),Wet diapers,Dirty diapers,Sleep (min),Tummy time (min),Baths,Meds', { unit: this.unit() }),
       ...[...days.entries()].map(([date, d]) =>
-        [date, d.feeds, d.oz ? this.amt(d.oz) : '', d.nurseMin || '', d.pumpOz ? this.amt(d.pumpOz) : '', d.wet, d.dirty, d.sleepMin || '', d.baths || '', d.meds || ''].join(',')),
+        [date, d.feeds, d.oz ? this.amt(d.oz) : '', d.nurseMin || '', d.pumpOz ? this.amt(d.pumpOz) : '', d.wet, d.dirty, d.sleepMin || '', d.tummyMin || '', d.baths || '', d.meds || ''].join(',')),
     ])
   }
 
@@ -1434,13 +1451,17 @@ export default class App extends React.Component {
     if ((k === 'bottle' || k === 'pump') && a != null && a !== '' && this.unit() === 'ml') a = mlToOz(Number(a) || 0)
     if (k === 'bottle') return [a, b].filter(x => x != null && x !== '').join(' ') || null
     if (k === 'nurse' || k === 'pump') return [a, b != null ? b + 'm' : null].filter(x => x != null && x !== '').join(' · ') || null
+    // tagged sleep reads like nurse ("Nap · 45m"); untagged keeps the legacy bare minutes
+    if (k === 'sleep') return b != null && a != null && a !== '' ? b + ' · ' + a + 'm' : a
     return a
   }
   decompose(type, d) {
-    const { n, mins, side, milk } = dSplit(d)
+    const { n, mins, side, milk, when } = dSplit(d)
     if (type === 'bottle') return { detail: this.amt(n), detail2: milk }
     if (type === 'nurse') return { detail: side, detail2: mins }
     if (type === 'pump') return { detail: this.amt(n), detail2: mins }
+    if (type === 'sleep') return { detail: mins ?? n, detail2: when }
+    if (type === 'tummy') return { detail: mins ?? n, detail2: null }
     return { detail: d, detail2: null }
   }
   // every sheet opening routes through here: slide-up entrance (mount off-screen,
@@ -1768,7 +1789,7 @@ export default class App extends React.Component {
       const dOz = feeds.reduce((a, e) => a + (e.type === 'bottle' ? dSplit(e.detail).n || 0 : 0), 0)
       const p = [t('{n} feeds', { n: feeds.length })]
       if (dOz) p.push(this.amt(dOz) + ' ' + this.unit())
-      const dSl = evs.filter(e => e.type === 'sleep').reduce((a, e) => a + (Number(e.detail) || 0), 0)
+      const dSl = evs.filter(e => e.type === 'sleep').reduce((a, e) => a + (sleepMins(e.detail) || 0), 0)
       if (this.trackOn('sleep') && dSl) p.push(t('{dur} sleep', { dur: this.dur(dSl) }))
       const dDia = evs.filter(e => DIAPERS.includes(e.type)).length
       if (this.trackOn('diapers') && dDia) p.push(t('{n} diapers', { n: dDia }))
@@ -1822,18 +1843,19 @@ export default class App extends React.Component {
       })
     }
     const opts = kind === 'side' ? ['Left', 'Right', 'Both'].map(v => ({ v, label: t(v) })) : []
-    const detailOptions = kind === 'dur' ? scrubChips('detail', 'dur')
+    const detailOptions = kind === 'dur' ? scrubChips('detail', st.key === 'tummy' ? 'mins' : 'dur')
       : kind === 'amount' ? scrubChips('detail', this.amountKey())
       : opts.map(o => ({ label: o.label, onTap: () => this.setState({ detail: o.v }), ...this.chip(s.detail === o.v, st.color) }))
-    const kind2 = st.key === 'bottle' ? 'milk' : st.key === 'nurse' || st.key === 'pump' ? 'mins' : null
-    const opts2 = kind2 === 'milk' ? [{ v: 'breastmilk', label: t('Breast milk') }, { v: 'formula', label: t('Formula') }] : []
+    const kind2 = st.key === 'bottle' ? 'milk' : st.key === 'nurse' || st.key === 'pump' ? 'mins' : st.key === 'sleep' ? 'nap' : null
+    const opts2 = kind2 === 'milk' ? [{ v: 'breastmilk', label: t('Breast milk') }, { v: 'formula', label: t('Formula') }]
+      : kind2 === 'nap' ? [{ v: 'Nap', label: t('Nap') }, { v: 'Night', label: t('Night') }] : []
     const detail2Options = kind2 === 'mins' ? scrubChips('detail2', 'mins')
       : opts2.map(o => ({ label: o.label, onTap: () => this.setState(x => ({ detail2: x.detail2 === o.v ? null : o.v })), ...this.chip(s.detail2 === o.v, st.color) }))
     const detailStr = (kind === 'amount' ? (s.detail != null ? ' ' + s.detail + ' ' + this.unit() : '') : kind === 'side' ? ' ' + (s.detail ? t(s.detail) : '') : kind === 'dur' ? ' ' + this.dur(s.detail) : '')
-      + (s.detail2 != null ? (kind2 === 'milk' ? ' · ' + t(s.detail2 === 'formula' ? 'formula' : 'breast milk') : ' · ' + this.dur(s.detail2)) : '')
+      + (s.detail2 != null ? (kind2 === 'milk' ? ' · ' + t(s.detail2 === 'formula' ? 'formula' : 'breast milk') : kind2 === 'nap' ? ' · ' + t(s.detail2) : ' · ' + this.dur(s.detail2)) : '')
 
-    // nursing/pump/sleep default to the live timer; a manual toggle logs a past session
-    const timerType = (st.key === 'nurse' || st.key === 'pump' || st.key === 'sleep') && !s.editId
+    // nursing/pump/sleep/tummy default to the live timer; a manual toggle logs a past session
+    const timerType = ['nurse', 'pump', 'sleep', 'tummy'].includes(st.key) && !s.editId
     const timerFirst = timerType && !s.manualDur
 
     const feed = this.lastOf(FEEDS), dia = this.lastOf(DIAPERS), sleep = this.lastOf(['sleep'])
@@ -1841,7 +1863,7 @@ export default class App extends React.Component {
       { label: t('Last fed'), value: feed ? t('{x} ago', { x: this.elapsed(feed.t) }) : '—' },
       { label: t('That feed was'), value: feed ? (feed.type === 'bottle' ? t('{amount} bottle', { amount: this.fmtDetail(feed.detail) || feed.detail + ' ' + this.unit() }) : t('nursed, {side}', { side: feed.detail ? this.fmtDetail(feed.detail) || feed.detail : t('either') })) : '—' },
       ...(this.trackOn('diapers') ? [{ label: t('Last diaper'), value: dia ? t('{x} ago', { x: this.elapsed(dia.t) }) + ' · ' + t(dia.type === 'both' ? 'wet + dirty' : dia.type) : '—' }] : []),
-      ...(this.trackOn('sleep') ? [{ label: t('Last nap ended'), value: sleep ? t('{x} ago', { x: this.elapsed(sleep.t) }) + ' · ' + this.dur(sleep.detail) : '—' }] : []),
+      ...(this.trackOn('sleep') ? [{ label: t('Last nap ended'), value: sleep ? t('{x} ago', { x: this.elapsed(sleep.t) }) + ' · ' + this.dur(sleepMins(sleep.detail) || 0) : '—' }] : []),
       { label: t('Today so far'), value: t('{n} feeds', { n: td.filter(e => FEEDS.includes(e.type)).length }) + (this.trackOn('diapers') ? ' / ' + t('{n} diapers', { n: td.filter(e => DIAPERS.includes(e.type)).length }) : '') },
     ]
 
@@ -1853,7 +1875,7 @@ export default class App extends React.Component {
     const sleepsAsc = [...naps].sort((a, b) => a.t - b.t)
     const wakes = []
     for (let i = 1; i < sleepsAsc.length; i++) {
-      const w = (sleepsAsc[i].t - (Number(sleepsAsc[i].detail) || 0) * 60000) - sleepsAsc[i - 1].t
+      const w = (sleepsAsc[i].t - (sleepMins(sleepsAsc[i].detail) || 0) * 60000) - sleepsAsc[i - 1].t
       if (w > 0 && w < 8 * 3600000) wakes.push(w) // longer gaps are overnight or unlogged sleep
     }
     const avgWake = wakes.length ? Math.round(wakes.reduce((a, b) => a + b, 0) / wakes.length / 60000) : 0
@@ -1870,7 +1892,7 @@ export default class App extends React.Component {
       { label: t('{unit} / day', { unit: this.unit() }), value: Math.round(this.amt(ozWk / 7)), unit: t('bottles only') },
       ...(this.trackOn('diapers') ? [{ label: t('Diapers / day'), value: (week.filter(e => DIAPERS.includes(e.type)).length / 7).toFixed(1), unit: t('avg') }] : []),
       ...(this.trackOn('sleep') ? [
-        { label: t('Sleep logged'), value: this.dur(Math.round(naps.reduce((a, e) => a + (Number(e.detail) || 0), 0) / 7)), unit: t('/ day') },
+        { label: t('Sleep logged'), value: this.dur(Math.round(naps.reduce((a, e) => a + (sleepMins(e.detail) || 0), 0) / 7)), unit: t('/ day') },
         { label: t('Wake window'), value: avgWake ? this.dur(avgWake) : '—', unit: t('avg') },
       ] : []),
     ]
@@ -1880,7 +1902,7 @@ export default class App extends React.Component {
     let trackRec = null
     if (this.isParent() && week.length >= 20) {
       for (const tr of TRACKS) {
-        if (!['diapers', 'sleep', 'meds'].includes(tr.key)) continue // baths/pumping are legitimately occasional
+        if (!['diapers', 'sleep', 'tummy', 'meds'].includes(tr.key)) continue // baths/pumping are legitimately occasional
         if (!this.trackOn(tr.key) || s.settings.dismissed.includes(tr.key)) continue
         const n = week.filter(e => tr.types.includes(e.type)).length
         if (n / 7 < 0.5) { trackRec = { key: tr.key, label: t(tr.label), n }; break }
@@ -1956,7 +1978,7 @@ export default class App extends React.Component {
       { label: t('Feeds'), value: sf.length ? sf.length + ' · ' + sf.map(e => this.clock(e.t)).join(', ') : t('none yet') },
       { label: t('Total from bottles'), value: this.amt(sOz) + ' ' + this.unit() },
       ...(this.trackOn('diapers') ? [{ label: t('Diapers'), value: sd.length ? sd.length + ' · ' + sd.map(e => t(e.type === 'both' ? 'wet + dirty' : e.type)).join(', ') : t('none yet') }] : []),
-      ...(this.trackOn('sleep') ? [{ label: t('Sleep logged'), value: ss.length ? this.dur(ss.reduce((a, e) => a + (Number(e.detail) || 0), 0)) : t('none yet') }] : []),
+      ...(this.trackOn('sleep') ? [{ label: t('Sleep logged'), value: ss.length ? this.dur(ss.reduce((a, e) => a + (sleepMins(e.detail) || 0), 0)) : t('none yet') }] : []),
       { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
     ]
     const reqMins = sh?.requested_at ? Math.round((Date.now() - sh.requested_at) / 60000) : 0
@@ -2053,11 +2075,11 @@ export default class App extends React.Component {
       showTimePicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
       nudges, types,
       hasDetail: !!kind && !timerFirst, detailLabel: t(kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
-      hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : 'Duration'), detail2Options,
+      hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : kind2 === 'nap' ? 'Nap or night' : 'Duration'), detail2Options,
       scrubMove: this.scrubMove, scrubEnd: this.scrubEnd,
       showStamp: !timerFirst,
       timerFirst,
-      startTimerLabel: t(st.key === 'nurse' ? 'Start nursing' : st.key === 'sleep' ? 'Start sleep timer' : 'Start pumping'),
+      startTimerLabel: t(st.key === 'nurse' ? 'Start nursing' : st.key === 'sleep' ? 'Start sleep timer' : st.key === 'tummy' ? 'Start tummy time' : 'Start pumping'),
       startTimer: () => this.startTimer(st.key),
       canManual: timerType,
       toManual: () => this.setState({ manualDur: true }),
@@ -2072,7 +2094,7 @@ export default class App extends React.Component {
         const tt = T(tm.type)
         return {
           id: tm.id,
-          label: t(tm.type === 'nurse' ? 'Nursing' : tm.type === 'sleep' ? 'Sleep' : 'Pumping'),
+          label: t(tm.type === 'nurse' ? 'Nursing' : tm.type === 'sleep' ? 'Sleep' : tm.type === 'tummy' ? 'Tummy time' : 'Pumping'),
           child: kids.length > 1
             ? ((s.children || []).find(c => c.id === (tm.baby_id ?? this.primaryChildId()))?.name || '')
             : '',

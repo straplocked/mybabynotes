@@ -15,7 +15,7 @@ use Illuminate\Support\Str;
  */
 class TimerService
 {
-    private const LABELS = ['nurse' => 'nursing', 'pump' => 'pumping', 'sleep' => 'a sleep timer'];
+    private const LABELS = ['nurse' => 'nursing', 'pump' => 'pumping', 'sleep' => 'a sleep timer', 'tummy' => 'tummy time'];
 
     /**
      * Start a timer acting as $user. Timers stack — a nursing timer for one

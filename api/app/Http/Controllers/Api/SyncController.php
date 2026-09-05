@@ -290,10 +290,10 @@ class SyncController extends Controller
     }
 
     /** Trackers the household can switch off; feeds are core and not listed. */
-    private const TRACKS = ['pump', 'diapers', 'sleep', 'bath', 'meds'];
+    private const TRACKS = ['pump', 'diapers', 'sleep', 'tummy', 'bath', 'meds'];
 
     /** "Since last …" cards the household can choose to show on the Now screen. */
-    private const WIDGETS = ['feeds', 'pump', 'diapers', 'sleep', 'bath', 'meds'];
+    private const WIDGETS = ['feeds', 'pump', 'diapers', 'sleep', 'tummy', 'bath', 'meds'];
 
     /** Theme presets — keys only; the client maps them to actual colors. */
     private const THEME_ACCENTS = ['olive', 'clay', 'rose', 'plum', 'sea', 'denim'];

@@ -115,8 +115,8 @@ Batch upsert from the client outbox (≤ 500 per call).
 ```json
 { "entries": [ { "id": "uuid", "type": "bottle", "t": 1750000000000, "detail": "4", "deleted": false, "baby_id": 10 } ] }
 ```
-- `type` ≤ 20 chars — one of `bottle nurse pump wet dirty both sleep bath meds` (client-defined; server stores any short string).
-- `detail` nullable string ≤ 100 (amount for bottle/pump, side for nurse, minutes for sleep).
+- `type` ≤ 20 chars — one of `bottle nurse pump wet dirty both sleep tummy bath meds` (client-defined; server stores any short string).
+- `detail` nullable string ≤ 100 (amount for bottle/pump, side for nurse, minutes for sleep/tummy — sleep may carry a nap/night tag, e.g. `Nap · 45m`).
 - `baby_id` optional — must be one of the household's children; a foreign id is **dropped, never stored**. Absent (old single-child clients): a **create** lands on the primary (oldest) child, an **update** keeps the entry's stored `baby_id` — an old client editing an amount can't re-home the entry.
 - Ids colliding with **another household's** entry are silently skipped; within the household, last write wins and the original author's `user_id` is preserved.
 - Returns `{ ok, serverTime }`, broadcasts a poke.
@@ -140,7 +140,7 @@ Batch upsert from the client outbox (≤ 500 per call).
 ```json
 { "tracking": { "diapers": false }, "dismissed": ["meds"] }
 ```
-Household-level preferences, shared by every member; last write wins. `tracking` maps a tracker key to on/off — keys outside `pump diapers sleep bath meds` are silently dropped (feeds can't be turned off). `dismissed` lists trackers whose "turn this off?" nudge was declined. `widgets` is the ordered list of "since last …" cards shown on the Now screen (from `feeds pump diapers sleep bath meds`; unknowns/duplicates dropped, client order kept; omitted/empty ⇒ the client's default set). `unit` is the display unit for bottle/pump amounts (`oz` or `ml`, default `oz`) — display only: entry `detail` amounts are always stored and synced in oz. `theme` is the household-shared palette: `accent` ∈ `olive clay rose plum sea denim`, `bg` ∈ `cream blush mist sage lilac` — any other value → 422; an absent key means the default (peach accent / cream background), which is why "peach" and plain "cream" are never stored. `medName` (nullable, ≤40, trimmed) names the daily med; clients show "Vitamin D" when blank. Each provided top-level key replaces the stored one wholesale. Returns `{ ok, settings }`, broadcasts a poke.
+Household-level preferences, shared by every member; last write wins. `tracking` maps a tracker key to on/off — keys outside `pump diapers sleep tummy bath meds` are silently dropped (feeds can't be turned off). `dismissed` lists trackers whose "turn this off?" nudge was declined. `widgets` is the ordered list of "since last …" cards shown on the Now screen (from `feeds pump diapers sleep tummy bath meds`; unknowns/duplicates dropped, client order kept; omitted/empty ⇒ the client's default set). `unit` is the display unit for bottle/pump amounts (`oz` or `ml`, default `oz`) — display only: entry `detail` amounts are always stored and synced in oz. `theme` is the household-shared palette: `accent` ∈ `olive clay rose plum sea denim`, `bg` ∈ `cream blush mist sage lilac` — any other value → 422; an absent key means the default (peach accent / cream background), which is why "peach" and plain "cream" are never stored. `medName` (nullable, ≤40, trimmed) names the daily med; clients show "Vitamin D" when blank. Each provided top-level key replaces the stored one wholesale. Returns `{ ok, settings }`, broadcasts a poke.
 
 ## Push notifications — all auth + throttle 120/min
 
@@ -160,10 +160,10 @@ Any subset of the `notifyPrefs` keys shown in `/state`; provided keys merge over
 
 ## Timers — all auth + throttle 120/min
 
-The live nursing/pump/sleep timers. **Timers stack** — a nursing timer for one twin can run beside a sleep timer for the other — synced via `/state` (`timers`: a list of `{id, type, started_at, user_id, baby_id}` in start order; the legacy singular `timer` key carries the caller's newest for pre-multi-timer clients). Only the running state lives server-side; the resulting entry is written client-side through `/entries` on stop.
+The live nursing/pump/sleep/tummy-time timers. **Timers stack** — a nursing timer for one twin can run beside a sleep timer for the other — synced via `/state` (`timers`: a list of `{id, type, started_at, user_id, baby_id}` in start order; the legacy singular `timer` key carries the caller's newest for pre-multi-timer clients). Only the running state lives server-side; the resulting entry is written client-side through `/entries` on stop.
 
 ### `POST /timer/start`
-`{ type: nurse|pump|sleep, baby_id?, id? }` → appends to the household's `active_timers`, broadcasts a poke, and pushes every other member whose `timer` pref is on (honoring quiet hours) "{name} started nursing/pumping". Starting an identical session you already have running (same type, child, and starter — a double tap) returns the existing timer instead of stacking a duplicate. `baby_id` must be one of the household's children — a foreign id is dropped (stored as null, which clients read as the primary child). `id` is an optional client-generated timer id (entry-style), so the app's optimistic row and the server copy are the same timer. Returns `{ ok, timer }`.
+`{ type: nurse|pump|sleep|tummy, baby_id?, id? }` → appends to the household's `active_timers`, broadcasts a poke, and pushes every other member whose `timer` pref is on (honoring quiet hours) "{name} started nursing/pumping". Starting an identical session you already have running (same type, child, and starter — a double tap) returns the existing timer instead of stacking a duplicate. `baby_id` must be one of the household's children — a foreign id is dropped (stored as null, which clients read as the primary child). `id` is an optional client-generated timer id (entry-style), so the app's optimistic row and the server copy are the same timer. Returns `{ ok, timer }`.
 
 ### `POST /timer/stop`
 `{ id? }` — removes that timer from `active_timers`, broadcasts a poke. Without `id` (pre-multi-timer clients) it stops the caller's newest timer, else the household's newest. Returns `{ ok, stopped }` (`stopped` null if nothing matched). The client logs the nurse/pump entry (with the measured duration) separately.

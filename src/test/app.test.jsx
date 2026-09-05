@@ -175,6 +175,63 @@ describe('signed-in boot', () => {
   })
 })
 
+describe('sleep tags and tummy time', () => {
+  it('renders a tagged sleep and a tummy time entry from the cache', () => {
+    seedSignedIn({
+      entries: [
+        { id: 'e-nap', type: 'sleep', t: Date.now() - 1800_000, detail: 'Nap · 45m', deleted: false, by: 1, babyId: null },
+        { id: 'e-tummy', type: 'tummy', t: Date.now() - 900_000, detail: 12, deleted: false, by: 1, babyId: null },
+      ],
+    })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    expect(screen.getByText('Tummy time')).toBeInTheDocument()
+    expect(screen.getByText(/12m/)).toBeInTheDocument()
+    // the tag reads like nursing's side: tag first, then the duration
+    expect(screen.getByText(/Nap · 45m/)).toBeInTheDocument()
+  })
+
+  it('logging a past sleep with the Nap chip writes "Nap · 45m" on the wire', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await user.click(screen.getByText('add')) // the floating log button (icon ligature)
+    // the sheet is pointer-events:none until its enter animation lands (double rAF)
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    await user.click(screen.getByText('Log a past sleep')) // timer-first → manual mode
+    await user.click(screen.getByText('Nap'))
+    await user.click(screen.getByText(/Save sleep/))
+
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].type).toBe('sleep')
+    expect(pushed.entries[0].detail).toBe('Nap · 45m') // default 45m + the tag, nurse-style
+  })
+
+  it('an untagged sleep save keeps the legacy bare-minutes wire format', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    await user.click(screen.getByText('Log a past sleep'))
+    await user.click(screen.getByText(/Save sleep/))
+
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].detail).toBe('45') // detail is stringified for the wire
+  })
+})
+
 describe('outbox sync', () => {
   it('pushes queued entries in the wire shape, then clears the outbox', async () => {
     const t = Date.now() - 600_000

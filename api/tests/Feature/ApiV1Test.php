@@ -236,6 +236,15 @@ class ApiV1Test extends TestCase
         $this->assertSame([$sleep['id']], array_column($this->getJson('/api/v1/timer', $this->authed($pat))->json('timers'), 'id'));
     }
 
+    public function test_the_timer_takes_a_tummy_time_type(): void
+    {
+        [, $pat, $wrenId] = $this->parentWithPat();
+
+        $timer = $this->putJson('/api/v1/timer', ['type' => 'tummy', 'baby_id' => $wrenId], $this->authed($pat))
+            ->assertOk()->json('timer');
+        $this->assertSame('tummy', $timer['type']);
+    }
+
     public function test_a_foreign_baby_id_on_the_timer_is_dropped(): void
     {
         [, $pat] = $this->parentWithPat();

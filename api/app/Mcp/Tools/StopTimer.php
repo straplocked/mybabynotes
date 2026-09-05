@@ -9,7 +9,7 @@ use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 
-#[Description('Stop a running timer (several can run at once — get_timer lists them; omitting timer_id stops your newest), optionally logging the resulting entry (like the app does): sleep logs elapsed minutes as detail; nurse logs the side you pass as detail; pump logs the ounces you pass as detail.')]
+#[Description('Stop a running timer (several can run at once — get_timer lists them; omitting timer_id stops your newest), optionally logging the resulting entry (like the app does): sleep and tummy time log elapsed minutes as detail; nurse logs the side you pass as detail; pump logs the ounces you pass as detail.')]
 class StopTimer extends BabylogTool
 {
     public function schema(JsonSchema $schema): array
@@ -17,7 +17,7 @@ class StopTimer extends BabylogTool
         return [
             'timer_id' => $schema->string()->max(64)->description('Which timer to stop (ids from get_timer). Omitted: the caller\'s newest timer.'),
             'log' => $schema->boolean()->description('Also log the entry the timer was tracking (default true).'),
-            'detail' => $schema->string()->max(100)->description('Detail for the logged entry: side for nurse (e.g. "L"), ounces for pump. Ignored for sleep (elapsed minutes are used).'),
+            'detail' => $schema->string()->max(100)->description('Detail for the logged entry: side for nurse (e.g. "L"), ounces for pump. Ignored for sleep/tummy (elapsed minutes are used).'),
         ];
     }
 
@@ -45,7 +45,7 @@ class StopTimer extends BabylogTool
         // the stop itself never writes an entry (server invariant) — this tool
         // acts as the client and logs it, exactly like the PWA after a stop
         $elapsedMinutes = (int) max(1, round((now()->getTimestampMs() - $stopped['started_at']) / 60000));
-        $detail = $stopped['type'] === 'sleep'
+        $detail = in_array($stopped['type'], ['sleep', 'tummy'], true)
             ? (string) $elapsedMinutes
             : ($request->get('detail') !== null ? (string) $request->get('detail') : null);
 

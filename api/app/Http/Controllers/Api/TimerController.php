@@ -19,7 +19,7 @@ class TimerController extends Controller
     public function start(Request $request, TimerService $timers): JsonResponse
     {
         $data = $request->validate([
-            'type' => ['required', 'in:nurse,pump,sleep'],
+            'type' => ['required', 'in:nurse,pump,sleep,tummy'],
             'baby_id' => ['nullable', 'integer'],
             'id' => ['sometimes', 'string', 'max:64'],
         ]);

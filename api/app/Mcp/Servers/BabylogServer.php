@@ -29,9 +29,10 @@ use Laravel\Mcp\Server\Attributes\Version;
 #[Version('1.0.0')]
 #[Instructions(<<<'MD'
 MyBabyNotes tracks a household's baby care log. Entries have a type — bottle,
-nurse, pump, wet, dirty, both (a wet+dirty diaper), sleep, bath, meds — plus a
-time and a type-specific `detail` string: ounces for bottle/pump, the side for
-nurse (e.g. "L"), minutes for sleep. Amounts are always stored in ounces even
+nurse, pump, wet, dirty, both (a wet+dirty diaper), sleep, tummy (tummy time),
+bath, meds — plus a time and a type-specific `detail` string: ounces for
+bottle/pump, the side for nurse (e.g. "L"), minutes for sleep/tummy (sleep may
+carry a Nap/Night tag, e.g. "Nap · 45m"). Amounts are always stored in ounces even
 if the household displays milliliters. A household can have multiple children;
 tools default to the primary (oldest) child when no baby_id is given. Deletes
 are tombstones and every write syncs live to the parents' phones, so log only

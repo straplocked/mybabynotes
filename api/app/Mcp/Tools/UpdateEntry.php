@@ -16,7 +16,7 @@ class UpdateEntry extends BabylogTool
     {
         return [
             'id' => $schema->string()->description('The entry id (from list_entries).')->required(),
-            'type' => $schema->string()->enum(['bottle', 'nurse', 'pump', 'wet', 'dirty', 'both', 'sleep', 'bath', 'meds']),
+            'type' => $schema->string()->enum(['bottle', 'nurse', 'pump', 'wet', 'dirty', 'both', 'sleep', 'tummy', 'bath', 'meds']),
             'time' => $schema->string()->description('New time, ISO 8601.'),
             'detail' => $schema->string()->max(100)->nullable(),
             'baby_id' => $schema->integer()->description('Re-home the entry to this child (omit to keep).'),

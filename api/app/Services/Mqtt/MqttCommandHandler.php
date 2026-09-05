@@ -42,7 +42,7 @@ class MqttCommandHandler
                 'log' => $this->log($actor, $cmd, $babyId),
                 'timer_start' => app(TimerService::class)->start(
                     $actor,
-                    in_array($cmd['type'] ?? '', ['nurse', 'pump', 'sleep'], true) ? $cmd['type'] : 'sleep',
+                    in_array($cmd['type'] ?? '', ['nurse', 'pump', 'sleep', 'tummy'], true) ? $cmd['type'] : 'sleep',
                     $babyId,
                 ),
                 // timer_id picks one of several running timers; without it the

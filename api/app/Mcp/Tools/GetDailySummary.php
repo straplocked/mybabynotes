@@ -10,7 +10,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[IsReadOnly]
-#[Description('Totals for one day: feeds (bottle ounces, nursing count), pumping, diapers by kind, sleep minutes, baths, meds.')]
+#[Description('Totals for one day: feeds (bottle ounces, nursing count), pumping, diapers by kind, sleep minutes, tummy time minutes, baths, meds.')]
 class GetDailySummary extends BabylogTool
 {
     public function schema(JsonSchema $schema): array
@@ -53,11 +53,16 @@ class GetDailySummary extends BabylogTool
         }
 
         $entries = $query->get(['type', 'detail']);
-        $numeric = fn ($detail) => is_numeric($detail) ? (float) $detail : 0.0;
+        // details carry extras ("4 breastmilk", "3 · 15m") — the amount leads
+        $numeric = fn ($detail) => preg_match('/^([\d.]+)/', (string) $detail, $m) ? (float) $m[1] : 0.0;
+        // sleep/tummy minutes: bare number (the timer format) or a "45m" token ("Nap · 45m")
+        $minutes = fn ($detail) => is_numeric($detail) ? (int) $detail
+            : (preg_match('/(\d+)\s*m\b/', (string) $detail, $m) ? (int) $m[1] : 0);
 
         $byType = $entries->groupBy('type');
         $count = fn (string $type) => $byType->get($type)?->count() ?? 0;
         $sum = fn (string $type) => round($byType->get($type)?->sum(fn ($e) => $numeric($e->detail)) ?? 0, 2);
+        $mins = fn (string $type) => (int) ($byType->get($type)?->sum(fn ($e) => $minutes($e->detail)) ?? 0);
 
         return Response::json([
             'date' => $day->toDateString(),
@@ -74,7 +79,8 @@ class GetDailySummary extends BabylogTool
                 'both' => $count('both'),
                 'total' => $count('wet') + $count('dirty') + $count('both'),
             ],
-            'sleep' => ['sessions' => $count('sleep'), 'minutes' => (int) $sum('sleep')],
+            'sleep' => ['sessions' => $count('sleep'), 'minutes' => $mins('sleep')],
+            'tummy_time' => ['sessions' => $count('tummy'), 'minutes' => $mins('tummy')],
             'baths' => $count('bath'),
             'meds' => $count('meds'),
         ]);

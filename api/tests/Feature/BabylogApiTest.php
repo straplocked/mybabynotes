@@ -367,6 +367,16 @@ class BabylogApiTest extends TestCase
         $this->assertSame([], $settings['dismissed']);
     }
 
+    public function test_the_tummy_time_tracker_toggle_persists(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->postJson('/api/settings', ['tracking' => ['tummy' => false], 'widgets' => ['feeds', 'tummy']], $this->authed($ben))->assertOk();
+
+        $settings = $this->getJson('/api/state', $this->authed($ben))->json('settings');
+        $this->assertSame(['tummy' => false], $settings['tracking']);
+        $this->assertSame(['feeds', 'tummy'], $settings['widgets']);
+    }
+
     public function test_now_screen_widgets_round_trip_ordered_and_filtered(): void
     {
         $ben = $this->register('Ben', 'ben@example.com')->json('token');
@@ -524,6 +534,17 @@ class BabylogApiTest extends TestCase
 
         $this->postJson('/api/timer/stop', [], $this->authed($ben))->assertOk();
         $this->assertNull($this->getJson('/api/state', $this->authed($kat))->json('timer'));
+    }
+
+    public function test_tummy_time_timer_starts_and_stops(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+
+        $timer = $this->postJson('/api/timer/start', ['type' => 'tummy'], $this->authed($ben))->assertOk()->json('timer');
+        $this->assertSame('tummy', $timer['type']);
+
+        $this->postJson('/api/timer/stop', ['id' => $timer['id']], $this->authed($ben))->assertOk();
+        $this->assertSame([], $this->getJson('/api/state', $this->authed($ben))->json('timers'));
     }
 
     public function test_concurrent_timers_stack_and_stop_individually(): void

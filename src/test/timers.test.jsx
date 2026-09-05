@@ -119,6 +119,26 @@ describe('multi-timer rows', () => {
     expect(await screen.findByText(/Nursing logged/)).toBeInTheDocument()
   })
 
+  it('stopping a tummy time timer logs a tummy entry with bare minutes', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture({
+      timers: [{ id: 't-tummy', type: 'tummy', started_at: Date.now() - 12 * 60_000, user_id: 1, baby_id: null }],
+    }))
+    routes['POST /timer/stop'] = () => okJson({ ok: true, stopped: null })
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await screen.findByText('Tummy time · You')
+    await user.click(screen.getAllByText('Stop')[0])
+
+    expect(await screen.findByText(/Tummy time logged/)).toBeInTheDocument()
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].type).toBe('tummy')
+    expect(pushed.entries[0].detail).toBe('12') // minutes, sleep-style, stringified for the wire
+  })
+
   it('a timer someone else started never offers Stop', async () => {
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({ timers: [twoTimers()[1]] }))

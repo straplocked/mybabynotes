@@ -117,17 +117,17 @@ The household's running timers. `timers` lists every one — `{id, type, started
 { "type": "nurse", "baby_id": 10 }
 ```
 
-Starts a timer. `type` ∈ `nurse|pump|sleep`. Starting an identical session you already have running (same type, child, and starter) returns the running timer instead of a duplicate. Other members get their usual timer push.
+Starts a timer. `type` ∈ `nurse|pump|sleep|tummy`. Starting an identical session you already have running (same type, child, and starter) returns the running timer instead of a duplicate. Other members get their usual timer push.
 
 ### `DELETE /v1/timer` — `timer:write`
 
-Stops one timer — `?id=<timer id>` picks which; omitted, it stops your newest — returning what was running as `stopped` (null if nothing matched). **Does not write an entry** — the consumer logs the resulting nurse/pump/sleep entry itself via `POST /v1/entries`, exactly as the app does. (The [MCP `stop-timer` tool](mcp.md#tools) offers the log-on-stop convenience; raw REST keeps the two steps explicit.)
+Stops one timer — `?id=<timer id>` picks which; omitted, it stops your newest — returning what was running as `stopped` (null if nothing matched). **Does not write an entry** — the consumer logs the resulting nurse/pump/sleep/tummy entry itself via `POST /v1/entries`, exactly as the app does. (The [MCP `stop-timer` tool](mcp.md#tools) offers the log-on-stop convenience; raw REST keeps the two steps explicit.)
 
 ## Entry semantics
 
 An entry is `{id, user_id, baby_id, type, t, detail, deleted, rev}`.
 
-- **`type`** is a short string (≤20 chars), not an enum. Nine types are the app's convention:
+- **`type`** is a short string (≤20 chars), not an enum. Ten types are the app's convention:
 
   | Type | `detail` means |
   |---|---|
@@ -135,7 +135,8 @@ An entry is `{id, user_id, baby_id, type, t, detail, deleted, rev}`.
   | `nurse` | which side |
   | `pump` | amount in **oz** |
   | `wet`, `dirty`, `both` | — (diaper kinds) |
-  | `sleep` | duration in **minutes** |
+  | `sleep` | duration in **minutes** — bare (`45`) or with a nap/night tag (`Nap · 45m`) |
+  | `tummy` | tummy time duration in **minutes** |
   | `bath` | — |
   | `meds` | — |
 

@@ -112,6 +112,12 @@ class MqttTopology
                 $components['btn_sleep_start'] = $this->button("{$dev}_btn_sleep_start", 'Start sleep timer',
                     ['action' => 'timer_start', 'type' => 'sleep', 'baby_id' => $child->id], 'mdi:sleep');
             }
+            if ($tracks('tummy')) {
+                $components['last_tummy'] = $this->sensor("{$dev}_last_tummy", 'Last tummy time', "{$c}/tummy",
+                    deviceClass: 'timestamp', icon: 'mdi:baby-face-outline', attrTopic: "{$c}/tummy/attr");
+                $components['btn_tummy_start'] = $this->button("{$dev}_btn_tummy_start", 'Start tummy time timer',
+                    ['action' => 'timer_start', 'type' => 'tummy', 'baby_id' => $child->id], 'mdi:baby-face-outline');
+            }
             if ($tracks('bath')) {
                 $components['last_bath'] = $this->sensor("{$dev}_last_bath", 'Last bath', "{$c}/bath",
                     deviceClass: 'timestamp', icon: 'mdi:bathtub-outline', attrTopic: "{$c}/bath/attr");
@@ -170,6 +176,7 @@ class MqttTopology
                 'feeding' => self::FEEDS,
                 'diaper' => self::DIAPERS,
                 'sleep' => ['sleep'],
+                'tummy' => ['tummy'],
                 'bath' => ['bath'],
                 'meds' => ['meds'],
             ];

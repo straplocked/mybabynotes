@@ -26,6 +26,11 @@ const changes = `id,child_id,child_first_name,child_last_name,time,wet,solid,col
 const sleep = `id,child_id,child_first_name,child_last_name,start,end,duration,nap,notes,tags
 2,1,Robin,Doe,2025-01-15 12:00:00,2025-01-15 13:35:00,1:35:00,True,,
 9,1,Robin,Doe,2025-01-15 20:00:00,,,True,,
+14,1,Robin,Doe,2025-01-15 19:00:00,2025-01-16 05:00:00,10:00:00,False,,
+`
+const tummy = `id,child_id,child_first_name,child_last_name,start,end,duration,milestone,tags
+4,1,Robin,Doe,2025-01-15 09:30:00,2025-01-15 09:42:00,0:12:00,first roll,
+15,1,Robin,Doe,2025-01-15 17:00:00,,,,
 `
 const notes = `id,child_id,child_first_name,child_last_name,time,note,tags
 1,1,Robin,Doe,2025-01-15 12:00:00,"Hello, ""world""
@@ -36,6 +41,7 @@ const files = [
   { name: 'pumping.csv', text: pumping },
   { name: 'changes.csv', text: changes },
   { name: 'sleep.csv', text: sleep },
+  { name: 'tummy-time.csv', text: tummy },
   { name: 'notes.csv', text: notes },
 ]
 
@@ -84,6 +90,7 @@ describe('field parsers', () => {
     expect(detectModel(['id', 'time', 'wet', 'solid', 'amount'])).toBe('changes') // amount alone must not read as pumping
     expect(detectModel(['id', 'start', 'type', 'method', 'amount'])).toBe('feedings')
     expect(detectModel(['id', 'start', 'end', 'duration', 'nap'])).toBe('sleep')
+    expect(detectModel(['id', 'start', 'end', 'duration', 'milestone'])).toBe('tummy-time')
     expect(detectModel(['id', 'start', 'end', 'duration', 'amount'])).toBe('pumping')
     expect(detectModel(['id', 'time', 'note'])).toBe('notes')
     expect(detectModel(['id', 'weight'])).toBe('weight')
@@ -103,19 +110,27 @@ describe('mapBabyBuddy', () => {
       { type: 'wet', t: at(15, 11, 0), detail: null },
       { type: 'dirty', t: at(15, 13, 0), detail: null },
       { type: 'both', t: at(15, 15, 0), detail: null },
-      { type: 'sleep', t: at(15, 13, 35), detail: 95 }, // stamped at wake-up, bare minutes — 1h35m by hand
+      { type: 'sleep', t: at(15, 13, 35), detail: 'Nap · 95m' }, // stamped at wake-up, nap flag → tag — 1h35m by hand
+      { type: 'sleep', t: at(16, 5, 0), detail: 'Night · 600m' }, // nap=False reads as night sleep
+      { type: 'tummy', t: at(15, 9, 42), detail: 12 }, // stamped when the session ended, bare minutes
     ])
   })
 
+  it('sleep without a nap column stays untagged bare minutes', () => {
+    const legacy = 'id,child_id,child_first_name,child_last_name,start,end,duration\n2,1,Robin,Doe,2025-01-15 12:00:00,2025-01-15 12:40:00,0:40:00\n'
+    expect(mapBabyBuddy([{ name: 'sleep.csv', text: legacy }]).entries[0]).toMatchObject({ type: 'sleep', detail: 40 })
+  })
+
   it('counts imported and skipped, per model', () => {
-    expect(res.imported).toBe(8)
-    // skipped: parent-fed solids, dry change, endless sleep, the note row
-    expect(res.skipped).toBe(4)
+    expect(res.imported).toBe(10)
+    // skipped: parent-fed solids, dry change, endless sleep + tummy time, the note row
+    expect(res.skipped).toBe(5)
     expect(res.models).toEqual({
       feedings: { imported: 3, skipped: 1 },
       pumping: { imported: 1, skipped: 0 },
       changes: { imported: 3, skipped: 1 },
-      sleep: { imported: 1, skipped: 1 },
+      sleep: { imported: 2, skipped: 1 },
+      'tummy-time': { imported: 1, skipped: 1 },
       notes: { imported: 0, skipped: 1 },
     })
   })
@@ -123,7 +138,7 @@ describe('mapBabyBuddy', () => {
   it('makes uuid-shaped, unique, deterministic ids', () => {
     const ids = res.entries.map(e => e.id)
     expect(ids.every(id => /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id))).toBe(true)
-    expect(new Set(ids).size).toBe(8)
+    expect(new Set(ids).size).toBe(10)
     // re-importing the same files must upsert, not duplicate
     expect(mapBabyBuddy(files).entries.map(e => e.id)).toEqual(ids)
     // filename plays no part — renamed downloads still dedupe
@@ -131,7 +146,7 @@ describe('mapBabyBuddy', () => {
   })
 
   it('collapses the same rows picked twice in one import', () => {
-    expect(mapBabyBuddy([...files, ...files]).imported).toBe(8)
+    expect(mapBabyBuddy([...files, ...files]).imported).toBe(10)
   })
 })
 

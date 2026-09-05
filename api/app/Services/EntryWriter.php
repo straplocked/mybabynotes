@@ -21,7 +21,7 @@ class EntryWriter
     public const TYPE_LABELS = [
         'bottle' => 'a bottle', 'nurse' => 'nursing', 'pump' => 'a pump',
         'wet' => 'a wet diaper', 'dirty' => 'a dirty diaper', 'both' => 'a diaper',
-        'sleep' => 'sleep', 'bath' => 'a bath', 'meds' => 'meds',
+        'sleep' => 'sleep', 'tummy' => 'tummy time', 'bath' => 'a bath', 'meds' => 'meds',
     ];
 
     /**

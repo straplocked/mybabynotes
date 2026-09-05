@@ -10,14 +10,14 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[IsReadOnly]
-#[Description('List log entries, newest first. Detail semantics by type: bottle/pump = ounces, nurse = side, sleep = minutes.')]
+#[Description('List log entries, newest first. Detail semantics by type: bottle/pump = ounces, nurse = side, sleep/tummy = minutes.')]
 class ListEntries extends BabylogTool
 {
     public function schema(JsonSchema $schema): array
     {
         return [
             'baby_id' => $schema->integer()->description('Filter to one child (see list_children).'),
-            'types' => $schema->array()->description('Filter to entry types, e.g. ["bottle","nurse"]. Known types: bottle, nurse, pump, wet, dirty, both, sleep, bath, meds.'),
+            'types' => $schema->array()->description('Filter to entry types, e.g. ["bottle","nurse"]. Known types: bottle, nurse, pump, wet, dirty, both, sleep, tummy, bath, meds.'),
             'since' => $schema->string()->description('Only entries at/after this ISO 8601 time.'),
             'until' => $schema->string()->description('Only entries at/before this ISO 8601 time.'),
             'limit' => $schema->integer()->description('Max entries to return (default 50, max 200).'),

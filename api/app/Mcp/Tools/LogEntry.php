@@ -9,17 +9,17 @@ use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
 
-#[Description('Log one entry (a feed, diaper, sleep, bath, or meds). Detail semantics: bottle/pump = ounces, nurse = side (L/R), sleep = minutes.')]
+#[Description('Log one entry (a feed, diaper, sleep, tummy time, bath, or meds). Detail semantics: bottle/pump = ounces, nurse = side (L/R), sleep/tummy = minutes (sleep may carry a Nap/Night tag, e.g. "Nap · 45m").')]
 class LogEntry extends BabylogTool
 {
     public function schema(JsonSchema $schema): array
     {
         return [
             'type' => $schema->string()
-                ->enum(['bottle', 'nurse', 'pump', 'wet', 'dirty', 'both', 'sleep', 'bath', 'meds'])
+                ->enum(['bottle', 'nurse', 'pump', 'wet', 'dirty', 'both', 'sleep', 'tummy', 'bath', 'meds'])
                 ->description('What happened.')->required(),
             'time' => $schema->string()->description('When, ISO 8601 (default: now).'),
-            'detail' => $schema->string()->max(100)->description('Type-specific detail: ounces for bottle/pump, side for nurse, minutes for sleep.'),
+            'detail' => $schema->string()->max(100)->description('Type-specific detail: ounces for bottle/pump, side for nurse, minutes for sleep/tummy.'),
             'baby_id' => $schema->integer()->description('Which child (default: the primary child).'),
         ];
     }

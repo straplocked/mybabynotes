@@ -858,7 +858,8 @@
                         "enum": [
                             "nurse",
                             "pump",
-                            "sleep"
+                            "sleep",
+                            "tummy"
                         ]
                     },
                     "baby_id": {

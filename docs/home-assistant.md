@@ -32,7 +32,7 @@ One **household device** named "MyBabyNotes", plus one device per unarchived chi
 | Device | Entity | Kind | Notes |
 |---|---|---|---|
 | Household | On duty | sensor | Name of the on-duty member |
-| Household | Active timer | sensor | `none` / `nurse` / `pump` / `sleep` — the newest running timer; with several stacked, the full list rides the sensor's `timers` attribute (with `count`) |
+| Household | Active timer | sensor | `none` / `nurse` / `pump` / `sleep` / `tummy` — the newest running timer; with several stacked, the full list rides the sensor's `timers` attribute (with `count`) |
 | Household | Timer started | sensor (timestamp) | When the newest running timer started |
 | Household | Last pump | sensor (timestamp) | |
 | Household | Stop timer | button | Stops the newest running timer (the one the sensor shows); an MQTT command with `timer_id` can stop a specific one |
@@ -40,11 +40,13 @@ One **household device** named "MyBabyNotes", plus one device per unarchived chi
 | Per child | Last feeding | sensor (timestamp) | Latest of bottle/nurse |
 | Per child | Last diaper | sensor (timestamp) | Latest of wet/dirty/both |
 | Per child | Last sleep | sensor (timestamp) | Only while the sleep tracker is enabled |
+| Per child | Last tummy time | sensor (timestamp) | Only while the tummy time tracker is enabled |
 | Per child | Last bath | sensor (timestamp) | Only while the bath tracker is enabled |
 | Per child | Last meds | sensor (timestamp) | Only while the meds tracker is enabled |
 | Per child | Log wet / Log dirty | buttons | Log a diaper, stamped now |
 | Per child | Start nurse timer | button | |
 | Per child | Start sleep timer | button | Only while the sleep tracker is enabled |
+| Per child | Start tummy time timer | button | Only while the tummy time tracker is enabled |
 
 Details worth knowing:
 

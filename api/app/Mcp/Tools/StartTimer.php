@@ -14,7 +14,7 @@ class StartTimer extends BabylogTool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'type' => $schema->string()->enum(['nurse', 'pump', 'sleep'])->description('What the timer tracks.')->required(),
+            'type' => $schema->string()->enum(['nurse', 'pump', 'sleep', 'tummy'])->description('What the timer tracks.')->required(),
             'baby_id' => $schema->integer()->description('Which child (default: the primary child).'),
         ];
     }
@@ -25,8 +25,8 @@ class StartTimer extends BabylogTool
             return $denied;
         }
 
-        if (! in_array($request->get('type'), ['nurse', 'pump', 'sleep'], true)) {
-            return Response::error('type must be nurse, pump, or sleep.');
+        if (! in_array($request->get('type'), ['nurse', 'pump', 'sleep', 'tummy'], true)) {
+            return Response::error('type must be nurse, pump, sleep, or tummy.');
         }
 
         $timer = app(TimerService::class)->start(

@@ -6,7 +6,7 @@
 // starts with a header row (id, child_id, child_first_name, child_last_name,
 // then the model's own fields). Files are recognized by HEADER NAMES, never by
 // filename or column position, so renamed downloads like "export (1).csv"
-// still import. Models with no counterpart here (notes, tummy time, growth
+// still import. Models with no counterpart here (notes, growth
 // measurements…) are skipped and counted, never errors.
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
@@ -151,13 +151,25 @@ const MAPPERS = {
     return type ? { type, t } : null // a logged dry change has no diaper to count
   },
   sleep(r) {
-    // this app stamps sleep at wake-up with bare duration minutes in detail
-    // (matching the sleep timer's entry) — no end time means no wake-up to stamp
+    // this app stamps sleep at wake-up with duration minutes in detail
+    // (matching the sleep timer's entry) — no end time means no wake-up to
+    // stamp. Baby Buddy's nap flag becomes the Nap/Night tag ("Nap · 45m");
+    // exports without the column stay untagged bare minutes.
     const end = parseWhen(r.end)
     if (end == null) return null
     const start = parseWhen(r.start)
     const mins = parseDurationMins(r.duration) ?? (start != null ? minsBetween(start, end) : null)
-    return mins != null ? { type: 'sleep', t: end, detail: mins } : null
+    if (mins == null) return null
+    const tag = 'nap' in r ? (bool(r.nap) ? 'Nap' : 'Night') : null
+    return { type: 'sleep', t: end, detail: tag ? tag + ' · ' + mins + 'm' : mins }
+  },
+  'tummy-time'(r) {
+    // like sleep: stamped when the session ended, bare minutes in detail
+    const end = parseWhen(r.end)
+    if (end == null) return null
+    const start = parseWhen(r.start)
+    const mins = parseDurationMins(r.duration) ?? (start != null ? minsBetween(start, end) : null)
+    return mins != null ? { type: 'tummy', t: end, detail: mins } : null
   },
 }
 

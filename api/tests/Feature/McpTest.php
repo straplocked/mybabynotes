@@ -117,6 +117,8 @@ class McpTest extends TestCase
             ['id' => 'n1', 'type' => 'nurse', 't' => $t + 2, 'detail' => 'L'],
             ['id' => 'w1', 'type' => 'wet', 't' => $t + 3],
             ['id' => 's1', 'type' => 'sleep', 't' => $t + 4, 'detail' => '45'],
+            ['id' => 's2', 'type' => 'sleep', 't' => $t + 5, 'detail' => 'Nap · 95m'], // tagged sleep still counts its minutes
+            ['id' => 'tt1', 'type' => 'tummy', 't' => $t + 6, 'detail' => '12'],
         ]], $this->authed($app))->assertOk();
 
         Sanctum::actingAs($ben, ['mcp', 'entries:read']);
@@ -126,7 +128,8 @@ class McpTest extends TestCase
             ->assertSee('"bottle_oz":7.5')
             ->assertSee('"nursing_sessions":1')
             ->assertSee('"wet":1')
-            ->assertSee('"minutes":45');
+            ->assertSee('"sleep":{"sessions":2,"minutes":140}')
+            ->assertSee('"tummy_time":{"sessions":1,"minutes":12}');
     }
 
     // ── write tools + sync parity ──────────────────────────────────────────
@@ -195,6 +198,12 @@ class McpTest extends TestCase
         BabylogServer::tool(StartTimer::class, ['type' => 'pump'])->assertOk();
         BabylogServer::tool(StopTimer::class, ['log' => false])->assertOk();
         $this->assertSame(1, Entry::query()->count());
+
+        // tummy time logs elapsed minutes exactly like sleep
+        BabylogServer::tool(StartTimer::class, ['type' => 'tummy', 'baby_id' => $wrenId])->assertOk();
+        BabylogServer::tool(StopTimer::class)->assertOk();
+        $tummy = Entry::query()->where('type', 'tummy')->firstOrFail();
+        $this->assertIsNumeric($tummy->detail);
     }
 
     public function test_concurrent_timers_stop_by_id(): void
