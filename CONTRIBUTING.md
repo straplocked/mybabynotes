@@ -20,7 +20,7 @@ To keep that model possible, **all contributions require signing the [Contributo
 
 Signing is a one-time click via the CLA bot on your first pull request. If you're contributing on behalf of your employer, mention it in the PR so we can sort out a corporate signature.
 
-If that arrangement isn't for you, that's completely fair — the AGPL still gives you every right to fork and build on the project independently.
+If that arrangement isn't for you, that's completely fair — the AGPL still gives you every right to fork and build on the project independently. If you do run a modified build for other people, point its in-app source link at your own repository (`VITE_SOURCE_URL` at build time) — that's what the AGPL's network clause asks for, and it keeps your users pointed at the code they're actually running.
 
 ## Development setup
 
@@ -42,6 +42,16 @@ A few project invariants — [docs/architecture.md](docs/architecture.md) explai
 - Realtime is poke-to-pull: broadcast `HouseholdTouched::send()` after writes; never broadcast data payloads.
 - New API endpoints need auth, throttling, household scoping, and a feature test. New `/api/v1` endpoints also need an `ApiScopes` scope and a regenerated `docs/openapi.v1.json` (CI fails on a stale spec).
 - UI changes should follow the existing design system (see the palette and conventions in [CLAUDE.md](CLAUDE.md)).
+- **Every user-facing string goes through `t('English string', {params})`** from [src/i18n.js](src/i18n.js). English strings *are* the keys, so a new string means adding it to all 15 catalogs in [src/locales/](src/locales/) — `src/test/i18n.test.js` fails on a missing key or a dropped `{param}`. If you can't translate it, say so in the PR and copy the English into the other catalogs; a native-speaker correction to an existing translation is a very welcome PR on its own.
+- **New source files carry the licence header** — two lines at the top, matching the file's comment syntax:
+
+  ```
+  // SPDX-License-Identifier: AGPL-3.0-only
+  // Copyright (C) 2026 Chris Carvache
+  ```
+
+  Keep your own copyright line on files you author (the CLA covers the licensing, not the authorship). Laravel's untouched skeleton files (`api/config/*` except `babylog.php`, `api/bootstrap/`, `api/artisan`, `api/resources/`, the `0001_01_01_*` migrations) are MIT scaffolding and deliberately carry no header.
+- **The wire stays English.** Entry `detail` strings (`'Left · 30m'`, `'breastmilk'`), shift "until" labels, and anything regex-parsed store canonical English and translate at render time only — one household can have phones set to different languages, and the shared log has to survive that.
 
 ## Tests
 

@@ -33,16 +33,17 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 - Is the shift report card the right summary, or do you want different rows?
 
 ### Home & History
-- Are the four since-cards (Fed / Diaper / Slept / Bath) the right four?
+- The since-cards are now picked per household from seven (fed, pumped, diaper, slept, tummy time, bath, meds) — which did you actually keep, and is the picker discoverable?
 - Is 12 timeline entries enough per day? Do you reach for "older days" and hit the 7-day wall?
 - Is the feeds-rhythm insight ("roughly every 3h 23m") useful or noise?
 
 ### Feel
 - Anything that felt slow, janky, or mis-tapped on a real phone (tap targets, sheet height, keyboard overlap on inputs)?
-- Does the duckling aesthetic hold up on-device? Icon/splash on the home screen okay?
+- Does the peach/plum branding hold up on-device? Icon/splash on the home screen okay?
+- Set the app to another language for a day — does anything overflow, read wrong, or stay stubbornly English where it shouldn't?
 
 ## Iteration parking lot
 
-Bigger ideas that surfaced — no commitment implied. See also [docs/known-limitations.md](docs/known-limitations.md) for the remaining known gaps (no custom entry types or notes, no month view, household-level shifts, no admin tooling…).
+Bigger ideas that surfaced — no commitment implied. See also [docs/known-limitations.md](docs/known-limitations.md) for the remaining known gaps (no custom entry types or per-entry notes, no month view, household-level shifts and meds nudge, unreviewed translations…).
 
 - 

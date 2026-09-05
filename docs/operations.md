@@ -96,11 +96,17 @@ Host PHP on the dev machine lacks extensions — run all composer/artisan throug
 docker run --rm -v "$PWD/api:/app" -w /app composer:2 php artisan <cmd>
 ```
 
-Tests:
+Tests — both suites must pass before pushing (a push to `main` publishes images):
 
 ```bash
 docker run --rm -v "$PWD/api:/app" -w /app -e BROADCAST_CONNECTION=log composer:2 php artisan test --compact
 ```
+
+```bash
+npm test
+```
+
+Building a **modified** instance for other people? Set `VITE_SOURCE_URL` to your own repository at build time so the app's Settings → Source code link points at the code you're actually running (the AGPL's network clause); unset, it points at the upstream project.
 
 Two accounts in one browser: open `http://localhost:3500` and `http://127.0.0.1:3500` — different origins, separate sessions.
 
@@ -110,9 +116,11 @@ The [Home Assistant integration](home-assistant.md) needs a long-lived `php arti
 
 ## CI / images
 
-`.github/workflows/build-images.yml`: on every push to `main` (or manual `workflow_dispatch`), runs the API test suite, then (only if green) builds and pushes `ghcr.io/straplocked/mybabynotes-app` and `…-api` (`:main` + commit SHA).
+`.github/workflows/build-images.yml`: on every push to `main` (or manual `workflow_dispatch`), runs both test suites in parallel jobs — the API suite (plus an OpenAPI-spec freshness check that diff-fails a stale `docs/openapi.v1.json`) and the frontend Vitest suite — then (only if both are green) builds and pushes `ghcr.io/straplocked/mybabynotes-app` and `…-api` (`:main` + commit SHA). **Pull requests run the same two test jobs and stop there** — the build job is skipped, so a PR is gated on green tests without publishing anything.
 
-`.github/workflows/release.yml`: pushing a `v*` tag runs the same test suite, then builds and pushes all three images — `mybabynotes-app`, `mybabynotes-api`, and `mybabynotes-aio` — tagged `:vX.Y.Z` **and** `:latest` (releases own `:latest`; `main` builds never touch it), then creates a GitHub Release with generated notes, a `git archive` source tarball (`mybabynotes-vX.Y.Z.tar.gz`), and its sha256 in `checksums.txt`. The Unraid updater consumes that tarball + checksum; the images are the basis for the Unraid Community Apps template.
+`.github/workflows/release.yml`: pushing a `v*` tag runs the same two suites, then builds and pushes all three images — `mybabynotes-app`, `mybabynotes-api`, and `mybabynotes-aio` — tagged `:vX.Y.Z` **and** `:latest` (releases own `:latest`; `main` builds never touch it), then creates a GitHub Release with generated notes, a `git archive` source tarball (`mybabynotes-vX.Y.Z.tar.gz`), and its sha256 in `checksums.txt`. The Unraid updater consumes that tarball + checksum; the images are the basis for the Unraid Community Apps template.
+
+`.github/dependabot.yml`: weekly grouped npm + composer updates, monthly GitHub Actions and Docker base-image updates. They arrive as PRs, so they land on the same test gate as anything else — a green Dependabot PR is safe to merge, and merging it is what publishes new `:main` images.
 
 ### Home Assistant add-on release flow
 

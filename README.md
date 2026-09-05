@@ -1,5 +1,8 @@
 # mybabynotes 🐤
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![build](https://github.com/straplocked/mybabynotes/actions/workflows/build-images.yml/badge.svg)](https://github.com/straplocked/mybabynotes/actions/workflows/build-images.yml)
+
 **Your baby's data on your own server.** mybabynotes is a self-hosted baby tracker built for one household sharing its babies' log — two parents, or parents plus the caregivers they trust — with true realtime sync between every phone, offline logging that works at 3am with no signal, shift handoffs as a first-class flow, and CSV export of everything. One container, one SQLite file, no cloud account, no telemetry, no subscription rug-pulls.
 
 **Website: [mybabynotes.app](https://mybabynotes.app)**
@@ -22,6 +25,7 @@
 - **Notifications without a cloud.** Self-hosted Web Push (VAPID keys generate themselves — no FCM/APNs account): handoff requests and handbacks, a partner starting a timer, opt-in partner activity, feed-gap and wake-window reminders, a daily meds nudge, and quiet hours — all per-parent.
 - **Your data, portable.** Export the full log or per-day summaries as CSV through the native share sheet ("Share with your pediatrician"); switching from Baby Buddy? Settings imports its CSV exports, idempotently.
 - **Made yours.** Household-shared accent and background themes, oz/ml units, a nameable daily med, toggleable entry types (pump, diapers, sleep, tummy time, bath, meds), account settings (name, email, password, baby's name), and per-device dark mode that can ignore the OS schedule for that 3am feed.
+- **In your language.** The UI ships in the 15 most-spoken languages (English, Chinese, Hindi, Spanish, French, Arabic, Bengali, Portuguese, Russian, Urdu, Indonesian, German, Japanese, Marathi, Telugu), auto-detected from the browser and overridable per device — including right-to-left layout for Arabic and Urdu. The log itself stays canonical, so a household can mix languages and still share one history.
 - **Invite-only by design.** The first account claims the instance and invites the rest of the household (emailed code with SMTP, shareable on-screen code without) — each invite as a **parent** (full control) or a **caregiver** (logs, timers, and shifts, but can't touch settings or membership). Password reset works the same way. Up to six adults and ten children per household — enough for a doula and twins, still an appliance, not a platform.
 
 ## Honest comparison: Baby Buddy
@@ -34,12 +38,12 @@
 | Realtime partner sync | Live over websockets, both phones converge instantly | Refresh to see the other phone's entries |
 | Shift handoffs | First-class: request → plan → handback summary | — |
 | Household model | Up to 6 adults (parent/caregiver roles), up to 10 children | Many caregivers, multiple children |
-| Tracking breadth | 9 focused entry types | Broader: tummy time, growth + WHO percentiles, notes, more |
+| Tracking breadth | 10 focused entry types | Broader: growth + WHO percentiles, temperature, notes, more |
 | Integrations | Versioned REST API + OpenAPI spec, Home Assistant (MQTT devices + ingress add-on), built-in MCP server, CSV export; imports Baby Buddy CSV | REST API, Home Assistant, companion mobile apps, MCP (separate container) |
-| Languages | English only (so far) | 9 years of i18n, many languages |
+| Languages | 15, English first-party and the rest machine-translated | 9 years of community i18n |
 | License | AGPL-3.0 | BSD-2-Clause |
 
-If you want growth charts, WHO percentiles, or a non-English UI, run Baby Buddy — it's good software with nearly a decade of work behind it. mybabynotes optimizes for a narrower job: exhausted adults logging offline at 3am, seeing each other's entries instantly, and handing the baby off without a status interview. If that's your job, and you're switching, Settings → Import will read the CSV files Baby Buddy exports.
+If you want growth charts, WHO percentiles, or translations vetted by native speakers, run Baby Buddy — it's good software with nearly a decade of work behind it. mybabynotes optimizes for a narrower job: exhausted adults logging offline at 3am, seeing each other's entries instantly, and handing the baby off without a status interview. If that's your job, and you're switching, Settings → Import will read the CSV files Baby Buddy exports.
 
 ## Integrations
 
@@ -128,8 +132,12 @@ Bug reports, docs fixes, and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUT
 
 ## License
 
-mybabynotes' code is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). Copyright © 2026 Chris Carvache.
+mybabynotes' code is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). Copyright © 2026 Chris Carvache. First-party source files carry `SPDX-License-Identifier: AGPL-3.0-only`; Laravel's untouched skeleton files stay under its MIT terms and carry no header.
 
 You can self-host it, modify it, and redistribute it under the AGPL's terms. The **mybabynotes name** and any **hosted mybabynotes service** are not covered by the code license — if you distribute a modified version or run a public instance, please make clear it's your build, not the official project.
+
+Because the AGPL covers software used over a network, every instance offers its own source: **Settings → Source code** links to this repository. If you deploy a **modified** build, point that link at your source — build with `VITE_SOURCE_URL=https://your.host/your-fork npm run build` (or set the same variable in the image build) rather than shipping a link to code you aren't running.
+
+**Third-party components** keep their own licenses: React (MIT), Laravel and Reverb (MIT), Laravel Sanctum/MCP (MIT), `minishlink/web-push` (MIT), `php-mqtt/client` (MIT) — full dependency lists in [package.json](package.json) and [api/composer.json](api/composer.json). The UI loads two Google-hosted webfonts at runtime: [Nunito / Nunito Sans](https://fonts.google.com/specimen/Nunito) (SIL Open Font License 1.1) and [Material Symbols](https://github.com/google/material-design-icons) (Apache License 2.0).
 
 An official hosted edition (this codebase plus closed-source billing/tenancy components) is planned; the [CLA](CLA.md) is what lets community contributions ship in both editions. The open-source app is and stays fully functional on its own — nothing here is feature-gated.

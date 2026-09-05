@@ -1,32 +1,35 @@
 # Known limitations & candidate roadmap
 
-Honest list of what's missing, stubbed, or deliberately deferred — the starting backlog for post-trial iteration. Nothing here is a bug; they're scope lines we drew. (Items fixed during the 2026-09-02→04 batches have been removed; `git log docs/known-limitations.md` has the history.)
+Honest list of what's missing, stubbed, or deliberately deferred — the starting backlog for post-trial iteration. Nothing here is a bug; they're scope lines we drew. (Items fixed during the 2026-09-02→05 batches have been removed; `git log docs/known-limitations.md` has the history.)
 
 ## Things a user will notice
 
 - **Anything email needs SMTP.** Invites and password reset both work only with SMTP configured (see operations.md "Enabling email"); without it the inviter shares the on-screen code by hand, and a forgotten password takes the admin running `babylog:reset-password` (operations.md "Admin commands").
 - **Amounts are oz/ml only.** Household-synced unit setting; storage and sync stay oz, so ml renders round to the nearest 5 ml. The comp's `timeStep` and `smartPrefill` props remain unexposed.
 - **Home timeline shows the last 12 entries**, and stats tiles plus the bar charts stay on a fixed 7-day window — day drill-down pages back to the oldest logged day, but there's no month/calendar view.
-- **Entry types are fixed** (bottle, nursing, pump, wet, dirty, both, sleep, bath, meds). No custom types and no free-text notes on entries. (Households *can* switch off pump/diapers/sleep/bath/meds tracking and rename the daily med, but can't add types.)
+- **Entry types are fixed** (bottle, nursing, pump, wet, dirty, both, sleep, tummy time, bath, meds). No custom types and no free-text notes on entries; sleep's optional Nap/Night tag is the only per-entry label, and there's no equivalent on the other types. (Households *can* switch off pump/diapers/sleep/tummy-time/bath/meds tracking and rename the daily med, but can't add types.)
+- **Translations are unreviewed.** The UI ships in 15 languages, but only English is first-party — the other 14 catalogs are machine translations no native speaker has read, and none were checked in-layout, so a long string can still wrap badly on a narrow phone. Language is a per-device pref (never a household setting), so two phones in one household can disagree.
+- **Fonts load from Google's CDN.** `index.html` pulls Nunito and Material Symbols from `fonts.googleapis.com`; the service worker caches them, so only the first load on a fresh device touches a third party — but an instance that must make *no* outbound requests would need the fonts vendored into the image.
 - **Offline indicator is subtle** — a small "· offline" in the header, plus a dimmed dot on queued rows.
 - **Undo is one-shot**: only the single most recent add/edit/delete, and only while its toast is up.
+- **The Baby Buddy import is partial by design** — feedings (bottle/nursing), pumping, changes, sleep, and tummy time map over; solid/parent-fed feedings and the models with no counterpart here (notes, temperature, weight, height, head circumference, BMI) are counted as skipped and reported, never imported. Re-importing the same export is idempotent (ids are derived), but there's no undo for an import beyond deleting entries one at a time.
 
 ## Multi-member / multi-child edges
 
 - **The daily meds nudge is household-level** — one dose tracked, not per child. (Feed reminders *do* have per-child intervals.)
 - **Shifts are household-level** ("who has the kids"), not per child. The shift sheet's drafted plan and "Right now" rows read the currently selected child's rhythm; there's no explicit per-child or all-children framing in the sheet.
 - **Members removed before 2026-09-04** have no name snapshot in `households.former_members`, so their old entries render without an attribution chip. Not recoverable.
-- **Timer stop has no ownership check at the API layer** — the client only lets the member who started a timer stop it, but the endpoint itself would accept anyone's stop (of any timer, by id). Not reachable from the UI; noted in case it wants tightening server-side. (`/shifts/plan` is fine — it only ever touches the caller's own active shift.)
+- **Timer stop has no ownership check at the API layer** — the client only offers Stop on your own timers (on the Now cards and the Today rows alike), but the endpoint itself would accept anyone's stop (of any timer, by id). Not reachable from the UI; noted in case it wants tightening server-side. (`/shifts/plan` is fine — it only ever touches the caller's own active shift.)
 
 ## Shift-system edges
 
 - **"Until she wakes" and open-ended shifts arm nothing** by design — only a clock-time "until" resolves to a real timestamp and a once-only "shift over" push.
 - **Quiet-hours pings are dropped, not deferred** — a "shift over" (or reminder) that lands inside quiet hours never arrives.
-- **Push edges**: iOS needs the app installed to the Home Screen before push is offered; notifications deep-link to the app root (no per-kind screen); reminder copy is English-only like the rest of the app.
+- **Push edges**: iOS needs the app installed to the Home Screen before push is offered; notifications deep-link to the app root (no per-kind screen); and push copy is composed server-side, so it is **always English** no matter what language the receiving device is set to.
 
 ## Technical debt / release gates
 
 - **Community Apps entry not yet submitted.** [deploy/unraid/ca-template.xml](../deploy/unraid/ca-template.xml) and the runbook in [docs/ca-submission.md](ca-submission.md) are ready, but submission needs the `v1.0.0` tag pushed and the GHCR package flipped public first.
 - Rate limits key on the direct peer unless `TRUSTED_PROXIES` is set (operations.md "Remote access") — an unconfigured reverse-proxy setup gets instance-wide caps, which is safe but coarse.
-- Frontend tests (`npm test`, Vitest) cover the support modules and the app-shell flows — auth, boot-from-cache, offline, outbox flush — but not the deep UI (log sheet, history drill-down, shift sheet, settings). The class-component + `renderVals()` structure was chosen for design fidelity; extracting screens into components would make the rest testable.
+- Frontend tests (`npm test`, Vitest) cover the support modules (`s`, `fx`, `base`, `api`, `i18n`, the Baby Buddy importer), the app-shell flows (auth, boot-from-cache, offline, outbox flush, the source offer), the multi-timer Now screen, and the two lazy-loading settings cards (API tokens, Home Assistant). Still uncovered: most of the log sheet's paths, the History drill-down, and the shift sheet. The class-component + `renderVals()` structure was chosen for design fidelity; extracting screens into components would make the rest testable.
 - History rewrite note: pre-2026-09-02 commit SHAs changed when the leaked dev key was scrubbed. Old clones must re-clone.

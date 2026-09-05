@@ -11,6 +11,7 @@ Two-parent baby-tracking PWA (React) + Laravel API + Reverb websockets, deployed
   `npm test` (frontend: Vitest + Testing Library in `src/test/`)
 - **Never commit secrets.** Dev secrets live in git-ignored `.env` (see `.env.example`); production generates its own on the NAS. A leaked key here already cost us a history rewrite.
 - **Ports 3500–3502 belong to this project** on the dev machine; everything else in 3xxx is taken by other projects.
+- **Keep the AGPL source offer.** The repo is AGPL-3.0 and the app is served over a network, so Settings ends with a "Source code" link (`SOURCE_URL` in [src/App.jsx](src/App.jsx), overridable at build time via `VITE_SOURCE_URL` so modified builds can point at their own source). Don't delete it while tidying; `src/test/app.test.jsx` pins it. New first-party source files open with `SPDX-License-Identifier: AGPL-3.0-only` + a copyright line (Laravel's untouched skeleton files deliberately don't).
 
 ## Design system
 
