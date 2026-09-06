@@ -437,3 +437,73 @@ describe('dragging the log drawer', () => {
     await waitFor(() => expect(document.querySelector('[style*="z-index: 40"]')).toBeNull())
   })
 })
+
+// ── backfilling past midnight ───────────────────────────────────────────────
+// The nudges reach an hour back and the time picker reaches yesterday; the day
+// control is how a 3am "I never logged the 11pm feed" gets to the right night.
+// It's folded behind Advanced because the common path never needs it.
+describe('the log sheet’s day control', () => {
+  const DAY = 86400000
+  const dayKey = ms => {
+    const d = new Date(ms)
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+  }
+  const dateInput = () => document.querySelector('input[type="date"]')
+
+  const openSheet = async (seed = {}) => {
+    const user = userEvent.setup()
+    seedSignedIn(seed)
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    return user
+  }
+
+  it('stays folded away until Advanced is tapped', async () => {
+    const user = await openSheet()
+    expect(dateInput()).toBeNull()
+
+    await user.click(screen.getByText('Advanced'))
+    expect(dateInput()).not.toBeNull()
+    expect(screen.getByText('Day')).toBeInTheDocument()
+  })
+
+  it('logging yesterday keeps the time of day and moves the stamp a day back', async () => {
+    let pushed
+    const user = await openSheet()
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+
+    await user.click(screen.getByText('Advanced'))
+    const t0 = Date.now()
+    await user.click(screen.getByText('Yesterday'))
+    await user.click(screen.getByText(/Save bottle/))
+
+    await waitFor(() => expect(pushed).toBeTruthy())
+    // same clock time, one day earlier — the whole point of the control
+    expect(Math.abs(pushed.entries[0].t - (t0 - DAY))).toBeLessThan(60_000)
+  })
+
+  it('never offers a day that hasn’t happened', async () => {
+    const user = await openSheet()
+    await user.click(screen.getByText('Advanced'))
+    expect(dateInput().max).toBe(dayKey(Date.now()))
+  })
+
+  it('editing an entry from another day opens with the day already showing', async () => {
+    const user = userEvent.setup()
+    const then = Date.now() - 2 * DAY
+    seedSignedIn({ entries: [{ id: 'e-old', type: 'bottle', t: then, detail: '4', deleted: false, by: 1, babyId: null }] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    await user.click(screen.getByText('Bottle')) // the timeline row opens the edit sheet
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+
+    // no Advanced tap needed — on this entry the day is the field you came for
+    expect(dateInput()).not.toBeNull()
+    expect(dateInput().value).toBe(dayKey(then))
+    // and the stamp says which day, rather than a bare time two days adrift
+    expect(screen.getByText('Editing entry · 2 days ago')).toBeInTheDocument()
+  })
+})

@@ -264,6 +264,7 @@ export default class App extends React.Component {
       resetToken: null, resetEmail: '', resetPw: '', resetBusy: false, resetError: null, // ?reset=<token>&email= flow
       entries: [], // includes tombstones ({deleted:true}); views filter them
       sheet: false, sel: null, offset: 0, pickedT: null, detail: null, detail2: null, editId: null, historyDay: null, scrubDrag: null,
+      advanced: false, // the sheet's "Advanced" drawer (the day control) — per opening, never persisted
       // concurrent timers (twins!): [{id, type, started_at, user_id, baby_id}]
       // in start order; timerSides remembers each nurse timer's pre-picked side
       // by timer id. timerSpot is a DEVICE-LOCAL pref (like selectedChildId)
@@ -1632,7 +1633,7 @@ export default class App extends React.Component {
     if (!this.state.sheet && !window.history.state?.blSheet) {
       try { window.history.pushState({ blSheet: true }, '') } catch { /* history blocked — back just exits */ }
     }
-    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, ...fields })
+    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: false, ...fields })
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.state.sheet) this.setState({ sheetIn: true })
     }))
@@ -1760,6 +1761,29 @@ export default class App extends React.Component {
     if (t > Date.now() + 60000) t -= DAY
     this.setState({ pickedT: t + shift, offset: 0 })
   }
+  // ── the day, one tap deeper ────────────────────────────────────────────────
+  // Backfilling used to stop at the day boundary: the nudges reach an hour back
+  // and the time picker's midnight rule (a time later than now means last
+  // night) only ever reaches yesterday. "It's 3am and I never logged the 11pm
+  // feed — no, the one before that" is exactly where that runs out, so the day
+  // is its own control, behind Advanced because the common path has nothing to
+  // say about it.
+  setDay = d => {
+    // the day carries the time-of-day already on the sheet; the wire stamp
+    // keeps its span offset, so a nap still ends a duration after it starts
+    const shift = this.stampShift()
+    const at = new Date(this.stamp() - shift)
+    at.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
+    // today + a time that hasn't come round yet would log the future; the
+    // moment itself is the closest honest answer
+    this.setState({ pickedT: Math.min(at.getTime(), Date.now()) + shift, offset: 0 })
+  }
+  pickDayBack = n => () => { const d = new Date(); d.setDate(d.getDate() - n); this.setDay(d) }
+  pickDate = e => {
+    const [y, m, d] = e.target.value.split('-').map(Number)
+    if (!y || !m || !d) return
+    this.setDay(new Date(y, m - 1, d))
+  }
 
   save = () => {
     const key = this.state.sel || this.predict() || 'bottle'
@@ -1831,8 +1855,11 @@ export default class App extends React.Component {
   edit = id => () => {
     const e = this.state.entries.find(x => x.id === id)
     this._base = e.t
-    // seed the chip row from the entry so an untouched edit never re-homes it
-    this.mountSheet({ editId: id, sel: e.type, offset: 0, pickedT: null, sheetChildId: e.babyId ?? this.primaryChildId(), ...this.decompose(e.type, e.detail) })
+    // seed the chip row from the entry so an untouched edit never re-homes it.
+    // An entry from another day opens with the day control already out — on
+    // that entry it's the field you came for, not an advanced one
+    this.mountSheet({ editId: id, sel: e.type, offset: 0, pickedT: null, advanced: dayKey(startOf(e)) !== dayKey(Date.now()),
+      sheetChildId: e.babyId ?? this.primaryChildId(), ...this.decompose(e.type, e.detail) })
   }
   remove = () => {
     const id = this.state.editId
@@ -1889,6 +1916,7 @@ export default class App extends React.Component {
     // the nap began — the same top-down reading as the rows it will join
     const shownT = s.sheet ? stampT - this.stampShift(st.key) : stampT
     const backMin = s.sheet ? Math.max(0, Math.round((this._base - shownT) / 60000)) : 0
+    const dayBack = s.sheet ? this.dayOf(shownT) : '' // '' on today, else 'Yesterday' / '{n} days ago'
 
     const me = s.me, partner = s.partner, sh = s.serverShift
     const myName = me?.name || t('You')
@@ -2037,6 +2065,20 @@ export default class App extends React.Component {
 
     const nudges = [{ n: 0, label: t('now') }, { n: -step, label: '−' + step }, { n: -step * 3, label: '−' + step * 3 }, { n: -60, label: '−1h' }]
       .map(d => ({ label: d.label, onTap: this.nudge(d.n), ...this.chip(s.pickedT == null && s.offset === d.n, OLIVE) }))
+
+    // the day control behind Advanced: today, yesterday, and the calendar for
+    // anything older. Every chip reads the day the sheet is SHOWING, so a nap
+    // that started before midnight sits on yesterday even though it woke today
+    const dayAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d }
+    const shownDay = dayKey(shownT)
+    const dayChips = [0, 1].map(n => ({
+      label: n ? t('Yesterday') : t('Today'), onTap: this.pickDayBack(n),
+      ...this.chip(shownDay === dayKey(dayAgo(n)), OLIVE),
+    }))
+    const dateChip = {
+      label: new Date(shownT).toLocaleDateString(locale(), { month: 'short', day: 'numeric' }),
+      ...this.chip(shownDay !== dayKey(dayAgo(0)) && shownDay !== dayKey(dayAgo(1)), OLIVE),
+    }
 
     const kind = st.detail
     // scrubbable chips: few presets, the current custom value sorted in as its
@@ -2320,13 +2362,25 @@ export default class App extends React.Component {
       sheetGrab: this.sheetDrag,
       sheetTranslate: s.sheetDragY > 0 ? s.sheetDragY : (s.sheetTall ? Math.max(s.sheetDragY / 4, -18) : Math.max(s.sheetDragY / 2, -46)),
       sheetDragging: s.sheetDragging, sheetTall: s.sheetTall,
-      sheetKicker: s.editId ? t('Editing entry')
-        : (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
+      // a stamp on another day says so up front — "11:40 PM" alone is a trap at
+      // 3am, when the day is the thing you're most likely to have wrong
+      sheetKicker: s.editId ? t('Editing entry') + (dayBack ? ' · ' + dayBack : '')
+        : dayBack || (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
       stampTime: this.clock(shownT),
       stampHM: String(new Date(shownT).getHours()).padStart(2, '0') + ':' + String(new Date(shownT).getMinutes()).padStart(2, '0'),
       pickTime: this.pickTime,
-      showTimePicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
+      showPicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
       nudges, types,
+      // Advanced: hidden on the timer path (a live timer starts now, so there's
+      // no day to argue with) and closed unless this opening asked for it
+      canAdvanced: !timerFirst, advancedOpen: !timerFirst && s.advanced,
+      toggleAdvanced: () => this.setState(x => ({ advanced: !x.advanced })),
+      dayChips, dateChip, pickDate: this.pickDate,
+      dateValue: shownDay, dateMax: dayKey(Date.now()),
+      // what the entry will actually read as, spelled out — a span also shows
+      // where it ends, which is the half the sheet never prints
+      stampFull: new Date(shownT).toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' })
+        + ' · ' + this.clock(shownT) + (stampT > shownT ? ' → ' + this.clock(stampT) : ''),
       hasDetail: !!kind && !timerFirst, detailLabel: t(kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
       hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : kind2 === 'nap' ? 'Nap or night' : 'Duration'), detail2Options,
       scrubMove: this.scrubMove, scrubEnd: this.scrubEnd,
@@ -3931,7 +3985,7 @@ export default class App extends React.Component {
                       <div style={S("font-family:'Nunito',sans-serif;font-size:31px;font-weight:700;letter-spacing:-0.04em")}>{v.stampTime}</div>
                       <Sym style={{ fontSize: 15, color: 'var(--faint)' }}>edit</Sym>
                     </div>
-                    <input type="time" value={v.stampHM} onChange={v.pickTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                    <input type="time" value={v.stampHM} onChange={v.pickTime} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
                   </label>
                   <div style={S('display:flex;gap:6px;padding-bottom:6px')}>
                     {v.nudges.map((n, i) => (
@@ -3993,6 +4047,26 @@ export default class App extends React.Component {
                   </div>
                 )}
 
+                {/* Advanced: the day, and a plain reading of what will be
+                    saved. Sits above the button because it's a field, not an
+                    afterthought — the link that opens it is down by Cancel */}
+                {v.advancedOpen && (
+                  <div style={S('margin-top:14px;padding-top:12px;border-top:1px solid rgba(38,35,29,0.08)')}>
+                    <div style={S('display:flex;align-items:center;gap:8px;padding:0 2px;overflow:auto')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0;padding-right:2px")}>{t('Day')}</div>
+                      {v.dayChips.map((d, i) => (
+                        <button key={i} type="button" onClick={d.onTap} style={S(`flex-shrink:0;background:${d.bg};border:1px solid ${d.border};border-radius:999px;padding:8px 13px;font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:${d.fg};cursor:pointer`)}>{d.label}</button>
+                      ))}
+                      <label style={S(`position:relative;flex-shrink:0;display:flex;align-items:center;gap:4px;background:${v.dateChip.bg};border:1px solid ${v.dateChip.border};border-radius:999px;padding:8px 13px;font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:${v.dateChip.fg};cursor:pointer`)}>
+                        <Sym style={{ fontSize: 14, color: v.dateChip.fg }}>calendar_month</Sym>
+                        {v.dateChip.label}
+                        <input type="date" value={v.dateValue} max={v.dateMax} onChange={v.pickDate} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                      </label>
+                    </div>
+                    <div style={S('padding:10px 3px 0;font-size:12px;color:#8C8474;letter-spacing:-0.01em')}>{v.stampFull}</div>
+                  </div>
+                )}
+
                 {v.timerFirst ? (
                   <button type="button" onClick={v.startTimer} className="hov-olive" style={S('margin-top:16px;width:100%;height:66px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
                     <Sym style={{ fontSize: 23, color: 'var(--on-accent)' }}>play_arrow</Sym>
@@ -4012,6 +4086,13 @@ export default class App extends React.Component {
                   )}
                   {v.editing && (
                     <button type="button" onClick={v.remove} style={S("background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#A85A45;cursor:pointer")}>{t('Delete entry')}</button>
+                  )}
+                  {v.canAdvanced && (
+                    <button type="button" onClick={v.toggleAdvanced} aria-expanded={v.advancedOpen} style={S("display:flex;align-items:center;gap:2px;background:none;border:none;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#8C8474;cursor:pointer;padding:0")}>
+                      {t('Advanced')}
+                      {/* matches the label's #8C8474, which S() rewrites — a JS style object doesn't go through it */}
+                      <Sym style={{ fontSize: 14, color: 'var(--soft)' }}>{v.advancedOpen ? 'expand_less' : 'expand_more'}</Sym>
+                    </button>
                   )}
                 </div>
               </div>
@@ -4073,7 +4154,7 @@ export default class App extends React.Component {
                         <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
                           <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
                           <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
-                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
                         </label>
                         <button type="button" onClick={p.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                           <Sym style={{ fontSize: 22, color: p.toggleColor }}>{p.toggleIcon}</Sym>
@@ -4181,7 +4262,7 @@ export default class App extends React.Component {
                         <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
                           <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
                           <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
-                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
                         </label>
                         <button type="button" onClick={p.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                           <Sym style={{ fontSize: 22, color: p.toggleColor }}>{p.toggleIcon}</Sym>
@@ -4254,7 +4335,7 @@ export default class App extends React.Component {
                           <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
                             <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
                             <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
-                            <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                            <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
                           </label>
                         ) : (
                           <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
