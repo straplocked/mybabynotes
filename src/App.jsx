@@ -198,7 +198,7 @@ const STORE_KEY = 'babylog:v2'
 const PERSIST = ['screen', 'authMode', 'entries', 'babyName', 'nameField', 'inviteField', 'age',
   'me', 'partner', 'invitePending', 'inviteCode', 'inviteMailed', 'onDutyUserId', 'serverShift', 'dismissedShiftId',
   'outbox', 'lastSync', 'plan', 'until', 'handbackNote', 'askNote', 'settings', 'settingsDirty', 'babyBirthdate',
-  'notifyPrefs', 'notifyPrefsDirty', 'vapidKey', 'activeTimers', 'timerSides', 'timerSpot',
+  'notifyPrefs', 'notifyPrefsDirty', 'vapidKey', 'activeTimers', 'timerSides', 'timerSpot', 'advancedDefault',
   // multi-child household: the lists sync via /state; selectedChildId is a
   // DEVICE-LOCAL viewing preference (null = primary child) and never syncs
   'children', 'members', 'selectedChildId',
@@ -264,7 +264,10 @@ export default class App extends React.Component {
       resetToken: null, resetEmail: '', resetPw: '', resetBusy: false, resetError: null, // ?reset=<token>&email= flow
       entries: [], // includes tombstones ({deleted:true}); views filter them
       sheet: false, sel: null, offset: 0, pickedT: null, detail: null, detail2: null, editId: null, historyDay: null, scrubDrag: null,
-      advanced: false, // the sheet's "Advanced" drawer (the day control) — per opening, never persisted
+      // the sheet's "Advanced" drawer (the day control): `advanced` is per
+      // opening and never persisted; `advancedDefault` is the DEVICE-LOCAL pref
+      // for how each opening starts — off, because the common log is "now"
+      advanced: false, advancedDefault: false,
       // concurrent timers (twins!): [{id, type, started_at, user_id, baby_id}]
       // in start order; timerSides remembers each nurse timer's pre-picked side
       // by timer id. timerSpot is a DEVICE-LOCAL pref (like selectedChildId)
@@ -1633,7 +1636,7 @@ export default class App extends React.Component {
     if (!this.state.sheet && !window.history.state?.blSheet) {
       try { window.history.pushState({ blSheet: true }, '') } catch { /* history blocked — back just exits */ }
     }
-    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: false, ...fields })
+    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: !!this.state.advancedDefault, ...fields })
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.state.sheet) this.setState({ sheetIn: true })
     }))
@@ -1858,7 +1861,8 @@ export default class App extends React.Component {
     // seed the chip row from the entry so an untouched edit never re-homes it.
     // An entry from another day opens with the day control already out — on
     // that entry it's the field you came for, not an advanced one
-    this.mountSheet({ editId: id, sel: e.type, offset: 0, pickedT: null, advanced: dayKey(startOf(e)) !== dayKey(Date.now()),
+    this.mountSheet({ editId: id, sel: e.type, offset: 0, pickedT: null,
+      advanced: !!this.state.advancedDefault || dayKey(startOf(e)) !== dayKey(Date.now()),
       sheetChildId: e.babyId ?? this.primaryChildId(), ...this.decompose(e.type, e.detail) })
   }
   remove = () => {
@@ -2641,6 +2645,11 @@ export default class App extends React.Component {
         timerSpots: [['top', 'Top'], ['today', 'Today'], ['both', 'Both']].map(([key, label]) => ({
           key, label: t(label), on: (s.timerSpot || 'both') === key, onTap: () => this.setState({ timerSpot: key }),
         })),
+        // device-local too: whether the log sheet's Advanced drawer starts open.
+        // Off by default — most logs are "now", and the drawer costs a tap only
+        // on the nights it's the answer. On for whoever backfills often enough
+        // that the tap is the annoyance.
+        advancedLog: { on: !!s.advancedDefault, onToggle: () => this.setState(x => ({ advancedDefault: !x.advancedDefault })) },
         // device-local like theme mode — the night shift reading Spanish
         // shouldn't flip the partner's phone; setLang re-renders once the
         // catalog chunk lands
@@ -3536,6 +3545,16 @@ export default class App extends React.Component {
                   ))}
                 </div>
                 <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
+                  <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 95)' }}>tune</Sym>
+                  <div style={S('flex:1')}>
+                    <div style={S('font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Advanced log options')}</div>
+                    <div style={S('font-size:11.5px;color:#B5AC98;padding-top:1px')}>{t('The log sheet opens with the day picker already out')}</div>
+                  </div>
+                  <button type="button" onClick={v.appearance.advancedLog.onToggle} aria-label={t('Advanced log options')} aria-pressed={v.appearance.advancedLog.on} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
+                    <Sym style={{ fontSize: 22, color: v.appearance.advancedLog.on ? 'var(--accent)' : 'var(--dim)' }}>{v.appearance.advancedLog.on ? 'toggle_on' : 'toggle_off'}</Sym>
+                  </button>
+                </div>
+                <div style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                   <Sym style={{ fontSize: 18, color: 'oklch(0.60 0.075 130)' }}>language</Sym>
                   <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{t('Language')}</div>
                   {/* options render in each language's own name, so this row is
@@ -3546,7 +3565,9 @@ export default class App extends React.Component {
                     ))}
                   </select>
                 </div>
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t(v.canManage ? 'Colors are shared with your partner. Theme, tilt, language, and timer placement stay on this phone.' : 'Theme, tilt, language, and timer placement stay on this phone — colors are the household’s, set by a parent.')}</div>
+                {/* the line stopped enumerating when the fourth device pref landed —
+                    an incomplete list reads as "the rest of these do sync" */}
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t(v.canManage ? 'Colors are shared with your partner. Everything else here stays on this phone.' : 'Everything here stays on this phone — the colors are the household’s, set by a parent.')}</div>
               </div>
 
               {v.canManage && (

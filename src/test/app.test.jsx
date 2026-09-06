@@ -448,7 +448,9 @@ describe('the log sheet’s day control', () => {
     const d = new Date(ms)
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
   }
-  const dateInput = () => document.querySelector('input[type="date"]')
+  // scoped to the sheet: the Now screen carries its own date input (the "Born
+  // on" prompt) whenever the birthday is unset
+  const dateInput = () => document.querySelector('[style*="z-index: 40"] input[type="date"]')
 
   const openSheet = async (seed = {}) => {
     const user = userEvent.setup()
@@ -488,6 +490,30 @@ describe('the log sheet’s day control', () => {
     const user = await openSheet()
     await user.click(screen.getByText('Advanced'))
     expect(dateInput().max).toBe(dayKey(Date.now()))
+  })
+
+  // the drawer's default state is a device pref (Settings → Appearance), off
+  // out of the box: most logs are "now", so the day would be dead weight
+  it('is off out of the box, and opens with the sheet once the pref is on', async () => {
+    await openSheet()
+    expect(dateInput()).toBeNull()
+
+    document.body.innerHTML = ''
+    localStorage.clear()
+    await openSheet({ advancedDefault: true })
+    expect(dateInput()).not.toBeNull()
+  })
+
+  it('the Settings toggle flips the pref and survives a reload', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    await user.click(await screen.findByLabelText('Settings'))
+    await user.click(await screen.findByLabelText('Advanced log options'))
+
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('babylog:v2')).advancedDefault).toBe(true))
   })
 
   it('editing an entry from another day opens with the day already showing', async () => {
