@@ -117,6 +117,7 @@ Batch upsert from the client outbox (≤ 500 per call).
 ```
 - `type` ≤ 20 chars — one of `bottle nurse pump wet dirty both sleep tummy bath meds` (client-defined; server stores any short string).
 - `detail` nullable string ≤ 100 (amount for bottle/pump, side for nurse, minutes for sleep/tummy — sleep may carry a nap/night tag, e.g. `Nap · 45m`).
+- `t` ms epoch — when the session **started**, except `sleep`/`tummy`, which stamp when it **ended** (`t` − duration = the start the app shows and sorts by).
 - `baby_id` optional — must be one of the household's children; a foreign id is **dropped, never stored**. Absent (old single-child clients): a **create** lands on the primary (oldest) child, an **update** keeps the entry's stored `baby_id` — an old client editing an amount can't re-home the entry.
 - Ids colliding with **another household's** entry are silently skipped; within the household, last write wins and the original author's `user_id` is preserved.
 - Returns `{ ok, serverTime }`, broadcasts a poke.

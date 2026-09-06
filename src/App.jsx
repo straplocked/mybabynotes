@@ -222,6 +222,13 @@ const dSplit = d => {
 // sleep/tummy minutes, whichever way the wire spells them: bare leading number
 // (the timer's legacy format) or a "45m" token ("Nap · 45m") — null when absent
 const sleepMins = d => { const { n, mins } = dSplit(d); return mins ?? n }
+// sleep/tummy are the only types the wire stamps at the END of the session (t =
+// wake-up, duration in detail); every other type stamps its start. The log
+// reads top-down — a nap prints, sorts and buckets at the moment it STARTED, so
+// anything rendering an entry's own time goes through here. Measures of "how
+// long since it ended" (the since-cards, the wake window) keep reading e.t.
+const SPANS = ['sleep', 'tummy']
+const startOf = e => SPANS.includes(e.type) ? e.t - (sleepMins(e.detail) || 0) * 60000 : e.t
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'e' + Date.now() + Math.random().toString(36).slice(2, 9))
 const dayKey = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
 const csvEsc = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }
@@ -874,7 +881,7 @@ export default class App extends React.Component {
     return p.join(' · ')
   }
   subFor(e, noDay) {
-    const day = noDay ? '' : this.dayOf(e.t), p = []
+    const day = noDay ? '' : this.dayOf(startOf(e)), p = []
     if ((e.type === 'bottle' || e.type === 'pump') && e.detail != null) p.push(this.fmtDetail(e.detail) || String(e.detail))
     if (e.type === 'nurse') p.push(e.detail ? this.fmtDetail(e.detail) || String(e.detail) : t('either side'))
     if (e.type === 'sleep') {
@@ -1445,6 +1452,15 @@ export default class App extends React.Component {
     return 'wet'
   }
   stamp() { return this.state.pickedT ?? this._base + this.state.offset * 60000 }
+  // the sheet anchors on the wire stamp — which for sleep/tummy is the END of
+  // the session — but shows and picks its START, like every other type. This is
+  // the gap between the two: 0 for everything except a sleep/tummy sheet, where
+  // it's the duration currently on the scrub. The end stays anchored, so a
+  // longer duration reaches further back rather than into the future.
+  stampShift(k) {
+    k = k || this.state.sel
+    return SPANS.includes(k) ? (sleepMins(this.composeDetail(k)) || 0) * 60000 : 0
+  }
 
   openSheet = () => {
     this._base = Date.now()
@@ -1474,8 +1490,10 @@ export default class App extends React.Component {
     const r = this.state.exportRange
     let from = 0
     if (r !== 'all') { const d = new Date(); d.setHours(0, 0, 0, 0); from = d.getTime() - (r - 1) * DAY }
-    return this.live().filter(e => e.t >= from).sort((a, b) => a.t - b.t).map(e => {
-      const d = dSplit(e.detail), dt = new Date(e.t)
+    // rows carry the start of each session (a nap sits on the day it began), so
+    // the date column can never fall outside the range the chips asked for
+    return this.live().filter(e => startOf(e) >= from).sort((a, b) => startOf(a) - startOf(b)).map(e => {
+      const d = dSplit(e.detail), dt = new Date(startOf(e))
       return {
         key: e.type,
         date: dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()),
@@ -1697,16 +1715,22 @@ export default class App extends React.Component {
   pickTime = e => {
     const [h, m] = e.target.value.split(':').map(Number)
     if (Number.isNaN(h) || Number.isNaN(m)) return
-    const d = new Date(this.stamp()); d.setHours(h, m, 0, 0)
+    // the picker speaks start-time; convert back to the wire stamp on the way in
+    const shift = this.stampShift()
+    const d = new Date(this.stamp() - shift); d.setHours(h, m, 0, 0)
     let t = d.getTime()
     // picking 11:50 PM shortly after midnight means last night, not later today
     if (t > Date.now() + 60000) t -= DAY
-    this.setState({ pickedT: t, offset: 0 })
+    this.setState({ pickedT: t + shift, offset: 0 })
   }
 
   save = () => {
     const key = this.state.sel || this.predict() || 'bottle'
     const at = this.stamp(), detail = this.composeDetail(key)
+    // the wire stamp is unchanged; the toast names the time the log now shows,
+    // which for a sleep/tummy session is where it started (read before
+    // closeSheet clears the scrub the duration lives on)
+    const shownAt = at - this.stampShift(key)
     const babyId = this.state.sheetChildId ?? this.selChildId()
     this.closeSheet()
     if (this.state.editId) {
@@ -1727,7 +1751,7 @@ export default class App extends React.Component {
         screen: 'home',
         entries: [entry, ...s.entries],
         outbox: [...s.outbox, entry.id],
-        toast: t('{type} logged · {time}', { type: t(T(key).label), time: this.clock(at) }), undoAction: { kind: 'add', id: entry.id },
+        toast: t('{type} logged · {time}', { type: t(T(key).label), time: this.clock(shownAt) }), undoAction: { kind: 'add', id: entry.id },
       }), () => this.flushSoon())
     }
     this.bumpToast()
@@ -1805,7 +1829,8 @@ export default class App extends React.Component {
     const base = new Date(); base.setHours(0, 0, 0, 0)
     for (let d = 6; d >= 0; d--) {
       const from = base.getTime() - d * DAY
-      const n = live.filter(e => keys.includes(e.type) && e.t >= from && e.t < from + DAY).length
+      // same day bucket as the History drill-down these bars tap into
+      const n = live.filter(e => keys.includes(e.type) && startOf(e) >= from && startOf(e) < from + DAY).length
       out.push({ n, key: dayKey(from), day: d === 0 ? t('Today') : new Date(from).toLocaleDateString(locale(), { weekday: 'short' }) })
     }
     const max = Math.max(...out.map(o => o.n), 1)
@@ -1822,7 +1847,11 @@ export default class App extends React.Component {
     const st = T(s.sel || 'bottle')
     const step = Number(this.props.timeStep ?? 5) || 5
     const stampT = s.sheet ? this.stamp() : Date.now()
-    const backMin = s.sheet ? Math.max(0, Math.round((this._base - stampT) / 60000)) : 0
+    // what the sheet PRINTS: a sleep/tummy sheet anchors on the session's end
+    // (the wire stamp) but reads out its start, so "45m earlier" describes when
+    // the nap began — the same top-down reading as the rows it will join
+    const shownT = s.sheet ? stampT - this.stampShift(st.key) : stampT
+    const backMin = s.sheet ? Math.max(0, Math.round((this._base - shownT) / 60000)) : 0
 
     const me = s.me, partner = s.partner, sh = s.serverShift
     const myName = me?.name || t('You')
@@ -1878,8 +1907,8 @@ export default class App extends React.Component {
       const m = showBy ? this.memberById(e.by) : null
       return m ? { initial: initial(m.name), name: m.name, color: this.memberColor(m.id) } : null
     }
-    const entryRows = [...live].sort((a, b) => b.t - a.t).slice(0, 12).map(e => ({
-      t: e.t, time: this.clock(e.t), label: t(T(e.type).label), sub: this.subFor(e),
+    const entryRows = [...live].sort((a, b) => startOf(b) - startOf(a)).slice(0, 12).map(e => ({
+      t: startOf(e), time: this.clock(startOf(e)), label: t(T(e.type).label), sub: this.subFor(e),
       icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
       pending: pendingIds.has(e.id), byChip: byChipFor(e),
     }))
@@ -1907,7 +1936,7 @@ export default class App extends React.Component {
     // every day on the device, grouped for the History drill-down
     const fmtDay = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' }) }
     const byDay = new Map()
-    for (const e of live) { const k = dayKey(e.t); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e) }
+    for (const e of live) { const k = dayKey(startOf(e)); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e) }
     const daySummary = evs => {
       const feeds = evs.filter(e => FEEDS.includes(e.type))
       const dOz = feeds.reduce((a, e) => a + (e.type === 'bottle' ? dSplit(e.detail).n || 0 : 0), 0)
@@ -1930,8 +1959,8 @@ export default class App extends React.Component {
     const dayEvs = s.historyDay ? byDay.get(s.historyDay) || [] : []
     const dayView = s.historyDay ? {
       label: fmtDay(s.historyDay), sub: dayEvs.length ? daySummary(dayEvs) : t('nothing logged'),
-      rows: [...dayEvs].sort((a, b) => a.t - b.t).map(e => ({
-        time: this.clock(e.t), label: t(T(e.type).label), sub: this.subFor(e, true),
+      rows: [...dayEvs].sort((a, b) => startOf(a) - startOf(b)).map(e => ({
+        time: this.clock(startOf(e)), label: t(T(e.type).label), sub: this.subFor(e, true),
         icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
         pending: pendingIds.has(e.id), byChip: byChipFor(e),
       })),
@@ -2065,7 +2094,10 @@ export default class App extends React.Component {
     const hbName = myShiftReqId ? this.memberName(myShiftReqId, partnerName) : partnerName
     const shiftStart = (activeMine || activeTheirs || completed ? sh.started_at : null) || Date.now()
     const shiftEnd = completed ? sh.ended_at : null
-    const shiftEntries = live.filter(e => e.t >= shiftStart && (!shiftEnd || e.t <= shiftEnd)).sort((a, b) => a.t - b.t)
+    // whether a session counts for the shift still turns on when it ENDED (the
+    // wake-up is the bit the person on duty dealt with), but the order and the
+    // times printed below are start-based like every other list
+    const shiftEntries = live.filter(e => e.t >= shiftStart && (!shiftEnd || e.t <= shiftEnd)).sort((a, b) => startOf(a) - startOf(b))
     const matched = new Set()
     // my plan lives in s.plan (editable, pushed via /shifts/plan); the partner's
     // is read straight off the synced server shift — same rows, just read-only,
@@ -2097,7 +2129,7 @@ export default class App extends React.Component {
       return {
         label: t(ty.key === 'bottle' ? 'Feed' : ty.label) + ' · ' + this.clock(p.at).replace(':00', ''),
         icon: ty.icon, color: ty.color,
-        sub: done ? t('logged {time}', { time: this.clock(p.hit.t) }) + (p.hit.detail && FEEDS.includes(p.hit.type) ? ' · ' + (this.fmtDetail(p.hit.detail) || p.hit.detail) : '') : isNext ? (late ? t('running {rel} late', { rel }) : t('next up')) : t('later'),
+        sub: done ? t('logged {time}', { time: this.clock(startOf(p.hit)) }) + (p.hit.detail && FEEDS.includes(p.hit.type) ? ' · ' + (this.fmtDetail(p.hit.detail) || p.hit.detail) : '') : isNext ? (late ? t('running {rel} late', { rel }) : t('next up')) : t('later'),
         when: done ? t('done') : late ? t('now') : t('in {rel}', { rel }),
         stateIcon: done ? 'check_circle' : isNext ? 'schedule' : 'radio_button_unchecked',
         stateColor: done ? 'var(--accent)' : isNext ? (late ? 'var(--warn)' : 'var(--accent-deep)') : 'var(--dim)',
@@ -2139,7 +2171,7 @@ export default class App extends React.Component {
       { label: t('Total from bottles'), value: this.amt(sOz) + ' ' + this.unit() },
       ...(this.trackOn('diapers') ? [{ label: t('Diapers'), value: sd.length ? sd.length + ' · ' + sd.map(e => t(e.type === 'both' ? 'wet + dirty' : e.type)).join(', ') : t('none yet') }] : []),
       ...(this.trackOn('sleep') ? [{ label: t('Sleep logged'), value: ss.length ? this.dur(ss.reduce((a, e) => a + (sleepMins(e.detail) || 0), 0)) : t('none yet') }] : []),
-      { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
+      { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(startOf(shiftEntries[shiftEntries.length - 1])) : '—' },
     ]
     const reqMins = sh?.requested_at ? Math.round((Date.now() - sh.requested_at) / 60000) : 0
     // who an ask would go to, and whether they're working for us rather than
@@ -2238,8 +2270,8 @@ export default class App extends React.Component {
       sheetDragStart: this.sheetDragStart, sheetDragMove: this.sheetDragMove, sheetDragEnd: this.sheetDragEnd,
       sheetKicker: s.editId ? t('Editing entry')
         : (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
-      stampTime: this.clock(stampT),
-      stampHM: String(new Date(stampT).getHours()).padStart(2, '0') + ':' + String(new Date(stampT).getMinutes()).padStart(2, '0'),
+      stampTime: this.clock(shownT),
+      stampHM: String(new Date(shownT).getHours()).padStart(2, '0') + ':' + String(new Date(shownT).getMinutes()).padStart(2, '0'),
       pickTime: this.pickTime,
       showTimePicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
       nudges, types,

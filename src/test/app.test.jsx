@@ -215,6 +215,77 @@ describe('sleep tags and tummy time', () => {
     expect(pushed.entries[0].detail).toBe('Nap · 45m') // default 45m + the tag, nurse-style
   })
 
+  // sleep/tummy are the only types the wire stamps at the END of the session.
+  // The log reads top-down like every other type: a nap shows up where it began.
+  const clock = ms => {
+    const d = new Date(ms), ap = d.getHours() >= 12 ? 'PM' : 'AM'
+    return (d.getHours() % 12 || 12) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap
+  }
+  const hm = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+
+  it('a nap prints the time it started, and sorts there rather than at wake-up', () => {
+    const now = Date.now()
+    seedSignedIn({
+      entries: [
+        // a 60m nap that ended 30m ago — so it began 90m ago, before the bottle
+        { id: 'e-nap', type: 'sleep', t: now - 30 * 60_000, detail: 60, deleted: false, by: 1, babyId: null },
+        { id: 'e-bottle', type: 'bottle', t: now - 45 * 60_000, detail: '4', deleted: false, by: 1, babyId: null },
+      ],
+    })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    expect(screen.getByText(clock(now - 90 * 60_000))).toBeInTheDocument() // not the 30m-ago wake-up
+    // newest-first timeline: the bottle from 45m ago now sits above the nap
+    expect(screen.getAllByText(/^(Sleep|Bottle)$/).map(n => n.textContent)).toEqual(['Bottle', 'Sleep'])
+  })
+
+  it('the past-sleep sheet reads out the start while the wire keeps the wake-up', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    const t0 = Date.now()
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    await user.click(screen.getByText('Log a past sleep'))
+
+    // a 45m nap ending now started 45m ago, and that's what the stamp says
+    expect(screen.getByText('45m earlier')).toBeInTheDocument()
+    expect(screen.getByText(clock(t0 - 45 * 60_000))).toBeInTheDocument()
+
+    await user.click(screen.getByText(/Save sleep/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    // …while the entry still stamps the wake-up, the format old clients read
+    expect(pushed.entries[0].t).toBeGreaterThanOrEqual(t0)
+    expect(pushed.entries[0].detail).toBe('45')
+  })
+
+  it('editing a nap picks its start time, and an untouched edit leaves the wire alone', async () => {
+    const user = userEvent.setup()
+    const woke = Date.now() - 30 * 60_000
+    seedSignedIn({
+      entries: [{ id: 'e-nap', type: 'sleep', t: woke, detail: 'Nap · 60m', deleted: false, by: 1, babyId: null }],
+    })
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await user.click(screen.getByText('Sleep')) // the timeline row opens the edit sheet
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    // the picker is seeded with the start, matching the row that was tapped
+    expect(document.querySelector('input[type="time"]').value).toBe(hm(woke - 60 * 60_000))
+
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].t).toBe(woke) // start → end round-trip is lossless
+  })
+
   it('an untagged sleep save keeps the legacy bare-minutes wire format', async () => {
     const user = userEvent.setup()
     seedSignedIn()

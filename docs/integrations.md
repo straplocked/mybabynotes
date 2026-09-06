@@ -141,6 +141,7 @@ An entry is `{id, user_id, baby_id, type, t, detail, deleted, rev}`.
   | `meds` | — |
 
 - **`detail`** is a nullable string ≤100.
+- **`t`** is when the session **started** — except `sleep` and `tummy`, which stamp when it **ended** (the wake-up), with the duration in `detail`. Subtract the duration to get the start: that's what the app displays and sorts by, and what an integration should show if it wants to agree with it.
 - **`baby_id`** in responses is always a concrete child id — the API resolves the legacy "null means primary child" rule for you.
 - **Last write wins**, keyed by `rev` (server-stamped ms). Concurrent edits from the app, v1, MQTT, and MCP all converge through the same rule.
 - **Deletes are tombstones** (`deleted: true`); filter them in views, honor them in syncs.

@@ -13,6 +13,7 @@ Live-with-it notes for the testing period. Add entries as they happen — a one-
 | 2026-09-05 | C | Handoffs read backwards even after the duty fix. Root cause was authorship: `/shifts/request` only ever carried a *note*, and the structured plan was drafted by whoever **accepted**. So the person with the context (who last nursed, what's in the fridge) sent prose, and the person taking over invented the plan. → Fixed: the ask now carries the plan, the "until", an optional recipient, and a note; the receiver adjusts and accepts. "Ask X to take over" became a compose sheet instead of a one-tap send. | 🤔 |
 | 2026-09-05 | C | Unfinished plan items died with the shift — a 9am dose nobody got to just vanished when duty changed. → Fixed: non-feed items carry into the next draft at their original (now late) time. Feeds deliberately don't: they're rhythmic, not owed. | 💡 |
 | 2026-09-05 | C | Nothing in a plan could be changed — no way to retime an item, drop one, or add anything but another feed. Left over from when the plan was a machine guess the receiver rubber-stamped; once the *asker* authors it, "here's what needs to happen" without a time control is half a feature. → Fixed: every plan row's time is a tap-to-pick control on both sides of a handoff, pending items can be dropped, and "Add to plan" offers any scheduleable tracked type. Logged items freeze. | 🤔 |
+| 2026-09-05 | C | Every other entry marks when something *started* — a bottle is stamped at the first sip — but naps landed in the log at the wake-up, so a long nap sorted below feeds that happened during it and the timeline stopped reading top-down. → Fixed in the UI only: rows, day buckets, the shift report, CSV rows and the log sheet's stamp all read `t − duration`. The wire still stamps the wake-up (the timer, the import, the wake-window math and old installed clients all depend on it), and the "since last slept"/"Last nap ended" readouts still measure from the end, which is the point of them. | 🤔 |
 | | | | |
 
 ## Questions worth answering while we use it
@@ -44,6 +45,7 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 ### Home & History
 - The since-cards are now picked per household from seven (fed, pumped, diaper, slept, tummy time, bath, meds) — which did you actually keep, and is the picker discoverable?
 - Is 12 timeline entries enough per day? Do you reach for "older days" and hit the 7-day wall?
+- Naps now sit at their start time, but the "Slept" since-card still counts from the **wake-up** (that's the wake window, and it's the number you act on). Does the card showing 6:00 AM next to a row showing 3:00 AM read as two facts or as a bug? Same question for "Last nap ended" in a shift report.
 - Is the feeds-rhythm insight ("roughly every 3h 23m") useful or noise?
 
 ### Feel

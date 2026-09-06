@@ -39,8 +39,8 @@ One **household device** named "MyBabyNotes", plus one device per unarchived chi
 | Household | Start pump timer | button | |
 | Per child | Last feeding | sensor (timestamp) | Latest of bottle/nurse |
 | Per child | Last diaper | sensor (timestamp) | Latest of wet/dirty/both |
-| Per child | Last sleep | sensor (timestamp) | Only while the sleep tracker is enabled |
-| Per child | Last tummy time | sensor (timestamp) | Only while the tummy time tracker is enabled |
+| Per child | Last sleep | sensor (timestamp) | The **wake-up** (sleep entries stamp the end of the nap — the app's own rows show the start, `wake-up − duration`), so "time since last sleep" reads as the open wake window. Only while the sleep tracker is enabled |
+| Per child | Last tummy time | sensor (timestamp) | The end of the session, like Last sleep. Only while the tummy time tracker is enabled |
 | Per child | Last bath | sensor (timestamp) | Only while the bath tracker is enabled |
 | Per child | Last meds | sensor (timestamp) | Only while the meds tracker is enabled |
 | Per child | Log wet / Log dirty | buttons | Log a diaper, stamped now |
