@@ -59,9 +59,22 @@ class PhpMqttConnection implements MqttConnection
         $this->client->subscribe($topicFilter, fn ($topic, $message) => $handler($topic, $message));
     }
 
+    /**
+     * Drive the client for roughly $seconds, then hand control back.
+     *
+     * Deliberately not MqttClient::loop(): its exit conditions sit behind a
+     * `countSubscriptions() === 0` guard, so for a subscriber — which the
+     * listener always is — loop() never returns, and everything the caller
+     * does after it (heartbeat, periodic resync) never runs. loopOnce() does
+     * the same work per iteration, keepalive pings and pending resends
+     * included, and returns every ~100ms when idle.
+     */
     public function loopFor(int $seconds): void
     {
-        $this->client->loop(true, true, $seconds);
+        $startedAt = microtime(true);
+        do {
+            $this->client->loopOnce($startedAt, true);
+        } while (microtime(true) - $startedAt < $seconds);
     }
 
     public function disconnect(): void

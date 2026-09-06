@@ -9,7 +9,7 @@
 
 <!-- screenshots:start -->
 <p align="center">
-  <img src="docs/media/now.png" alt="Now screen — since-cards, today's timeline, and the on-duty chip" width="30%">
+  <img src="docs/media/now.png" alt="Now screen — the running shift's plan checklist, since-cards, and today's timeline" width="30%">
   <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="30%">
   <img src="docs/media/settings.png" alt="Settings screen — baby profile, appearance, and household options" width="30%">
 </p>
@@ -19,7 +19,12 @@
 
 - **Three taps from pocket to logged.** The entry sheet opens pre-stamped with the current time and a prediction of what you're about to log (alternating nursing sides, last bottle amount, feed-vs-diaper rhythm). Overriding the guess costs one tap; backfilling costs one nudge (−5/−15/−1h).
 - **The whole household, one log — live.** Everyone joins by invite and sees the same log in realtime over websockets; with multiple children, pills on Now and History switch between each child's log. Entries write locally first and sync when there's signal, so 3am logging never waits on the network; queued entries are marked until they flush.
-- **Shifts, not just a log.** "I need to sleep, take him" is a first-class flow: request a handoff with a note, the partner accepts with an auto-drafted plan from the baby's rhythm and an "until" time, logged feeds tick the plan off, the off-duty parent watches progress on a read-only shift card, a push pings both of you when the "until" passes, and handing back generates a shift summary instead of a "when did you…" conversation.
+- **Shifts, not just a log.** "I need to sleep, take him" is a first-class flow: request a handoff with a note, the partner accepts with an auto-drafted plan from the baby's rhythm and an "until" time, logged feeds tick the plan off, the off-duty parent watches progress on a read-only shift card, a push pings both of you when the "until" passes, and handing back generates a shift summary instead of a "when did you…" conversation. Whoever holds the baby can also just start a shift — no ask required — so the plan and the checklist belong to whoever's actually on.
+
+<p align="center">
+  <img src="docs/media/duty.png" alt="Now screen while on duty with nothing started — the drafted plan and a Start my shift button" width="30%">
+  <img src="docs/media/shift.png" alt="The duty sheet — where the baby is right now, a drafted plan you can toggle, an until time, and either start the shift yourself or ask your partner to take over" width="30%">
+</p>
 - **Live timers, shared across phones.** Nursing, pumping, sleep, and tummy time run as server-backed start/stop timers visible on both devices; stopping a nursing, sleep, or tummy time timer auto-logs the entry (sleep stamps the nap at wake-up), and stopping a pump timer opens the log sheet with the duration pre-filled so you can add the amount.
 - **Now & History.** Since-cards the household picks from seven (fed, pumped, diaper, slept, tummy time, bath, meds), today's totals, an editable timeline with one-shot undo (add, edit, or delete), 7-day stats and charts with tap-through day-by-day drill-down, a feeds-rhythm insight, and a live age header from the baby's birth date.
 - **Notifications without a cloud.** Self-hosted Web Push (VAPID keys generate themselves — no FCM/APNs account): handoff requests and handbacks, a partner starting a timer, opt-in partner activity, feed-gap and wake-window reminders, a daily meds nudge, and quiet hours — all per-parent.

@@ -205,6 +205,12 @@ class MqttIntegrationTest extends TestCase
 
     // ── listener ───────────────────────────────────────────────────────────
 
+    /**
+     * Note the limit of the fake: its loopFor() returns immediately, so this
+     * proves the command wiring but not that the real client hands control
+     * back (it didn't, once — see PhpMqttConnection::loopFor). Transport-level
+     * hangs only show up against a real broker.
+     */
     public function test_the_listener_connects_with_a_last_will_and_heartbeats(): void
     {
         [$ben] = $this->threeMemberHousehold();

@@ -461,8 +461,10 @@ export default class App extends React.Component {
         if (st.baby.age) next.age = st.baby.age
         if (st.baby.birthdate !== undefined) next.babyBirthdate = st.baby.birthdate
       }
-      // my active shift plan lives on the server copy
-      if (st.shift && st.shift.state === 'active' && st.user && st.shift.user_id === st.user.id) next.plan = st.shift.plan || []
+      // my active shift plan lives on the server copy; someone else's active
+      // shift means duty has moved on, so a plan left over from mine has to go
+      // (it would otherwise render my old checklist next to their live one)
+      if (st.shift && st.shift.state === 'active' && st.user) next.plan = st.shift.user_id === st.user.id ? (st.shift.plan || []) : []
       return next
     }, () => {
       this.ensureEcho()
@@ -1276,7 +1278,10 @@ export default class App extends React.Component {
         shift: undefined, handbackNote: '', plan, planDraft: null, planOff: [],
         onDutyUserId: st.me?.id ?? st.onDutyUserId,
         serverShift: { id: st.serverShift?.id ?? -1, state: 'active', user_id: st.me?.id, requester_id: st.serverShift?.state === 'requested' ? st.serverShift.requester_id : null, plan, until, until_at: untilAt, started_at: Date.now() },
-        toast: t('You’re on duty · {name} notified', { name: this.memberName(fromId, st.partner?.name) || t('your partner') }), undoAction: null,
+        // starting a shift while already holding duty isn't a takeover — don't
+        // announce a change that didn't happen
+        toast: t(fromId ? 'You’re on duty · {name} notified' : 'Shift started · {name} notified',
+          { name: this.memberName(fromId, st.partner?.name) || st.partner?.name || t('your partner') }), undoAction: null,
       }
     }, () => this.bumpToast())
     api.shiftAccept(plan, until, untilAt).then(r => this.setState({ serverShift: r.shift })).catch(this.shiftFail)
@@ -1923,6 +1928,17 @@ export default class App extends React.Component {
     const activeTheirs = !!(me && sh && sh.state === 'active' && sh.user_id !== me.id && this.memberById(sh.user_id))
     const completed = sh && sh.state === 'completed'
     const incomingReq = !!(me && sh && sh.state === 'requested' && sh.requester_id !== me.id && this.memberById(sh.requester_id))
+    // holding duty and having a shift open are different things: duty is seeded
+    // to the founding account at registration and handed straight back by
+    // /shifts/handback, and neither opens a shift. That gap used to render as
+    // nothing at all — whoever held duty without having accepted a handoff got
+    // no plan, no checklist, and a "your shift so far" sheet borrowing the
+    // other parent's window. Now it's a real state with its own card.
+    const onDuty = iAmOnDuty && !!partner
+    // my own outstanding ask: /state carries one shift, so a pending request
+    // hides an active shift of mine behind it while it's open
+    const myAsk = !!(me && sh && sh.state === 'requested' && sh.requester_id === me.id)
+    const dutyIdle = onDuty && !activeMine && !activeTheirs
     // the humans on the other side of each surface — with two members these
     // all collapse to "the partner", with more they name the right person
     const requesterName = incomingReq ? this.memberName(sh.requester_id, partnerName) : partnerName
@@ -1973,6 +1989,11 @@ export default class App extends React.Component {
     // (and acceptShift submits): the seeded draft when one exists, else the rhythm
     const draftSrc = s.planDraft || rhythm
     const requestPlan = draftSrc.filter(p => !s.planOff.includes(p.id)).map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
+    // what the on-duty-but-not-started card previews: my real plan when a
+    // pending ask is hiding my active shift, otherwise the same draft the
+    // start sheet opens with
+    const dutyPlan = (s.plan.length ? [...s.plan].sort((a, b) => a.at - b.at) : draftSrc.filter(p => !s.planOff.includes(p.id)))
+      .map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
     const requestPlanRows = draftSrc.map(p => {
       const off = s.planOff.includes(p.id)
       return { icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p), time: '~' + this.clock(p.at),
@@ -1990,6 +2011,9 @@ export default class App extends React.Component {
       { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
     ]
     const reqMins = sh?.requested_at ? Math.round((Date.now() - sh.requested_at) / 60000) : 0
+    const theirShiftLine = completed
+      ? t('{name} has been on since {time}', { name: dutyName, time: this.clock(sh.ended_at) })
+      : t('{name} has {baby} right now', { name: dutyName, baby: s.babyName || t('the baby') })
 
     // shiftUp keeps the sheet's content stable while it slides away
     const shiftUp = s.shiftOpen || s.shiftLeaving
@@ -2132,11 +2156,24 @@ export default class App extends React.Component {
       incoming: incomingReq && s.screen === 'home',
       mine: iAmOnDuty && !!partner && activeMine,
       theirs: activeTheirs && !iAmOnDuty,
+      // on duty with nothing open — the state that used to show nothing at all
+      dutyIdle,
+      dutyPlan,
+      dutyIdleSub: myAsk
+        ? t('Waiting for {name} to take over', { name: partnerName })
+        : t('Start a shift so {name} can see the plan and how it’s going.', { name: partnerName }),
+      dutyIdlePill: myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Not started'),
+      dutyIdleCta: myAsk ? t('Ask again') : t('Start my shift'),
+      // asking again refreshes the pending request and re-pings — deliberate
+      dutyIdleAction: myAsk ? this.requestHandoff : this.acceptShift,
       theirShiftSub: activeTheirs ? t('since {time}', { time: this.clock(shiftStart) }) + (sh.until ? ' · ' + (getLang() === 'en' ? t(sh.until).charAt(0).toLowerCase() + t(sh.until).slice(1) : t(sh.until)) : '') : '',
       dutyInitial: iAmOnDuty ? initial(me?.name) : initial(dutyHolder?.name || partner?.name),
       dutyColor: iAmOnDuty ? ME_COLOR : (s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR),
       dutyLabel: partner ? (iAmOnDuty ? t('You · on duty') : t('{name} · on duty', { name: dutyName })) : t('Just you so far'),
-      footerShiftLabel: t(iAmOnDuty ? 'Hand off' : 'Take over'),
+      // the footer names the action the sheet actually opens on
+      footerShiftLabel: activeMine ? t('Hand off')
+        : !iAmOnDuty ? t('Take over')
+          : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
       requestAgo: reqMins < 1 ? t('asked just now') : t('asked {n} min ago', { n: reqMins }),
       requestNote: (sh && sh.note) || t('Can you take {name}? Next feeds look like {t1} and {t2} — that’s the usual rhythm.', { name: s.babyName || t('the baby'), t1, t2 }),
       requestPlan, requestPlanRows,
@@ -2146,10 +2183,23 @@ export default class App extends React.Component {
         const on = s.until === u
         return { label: t(u), onTap: () => this.setState({ until: u }), ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
       }),
-      theirShiftLine: completed ? t('{name} has been on since {time}', { name: dutyName, time: this.clock(sh.ended_at) }) : t('{name} has {baby} right now', { name: dutyName, baby: s.babyName || t('the baby') }),
+      theirShiftLine,
       shiftMounted: shiftUp, shiftShown: s.shiftOpen && s.shiftIn,
-      sheetTheirs: shiftUp && !iAmOnDuty && !showReport,
-      sheetMine: shiftUp && iAmOnDuty && !showReport,
+      // one "open a shift" sheet, two framings: relieving someone, or starting
+      // your own while already holding duty. sheetMine is the running shift.
+      sheetStart: shiftUp && !showReport && !activeMine,
+      startPair: !iAmOnDuty, // the them→you handoff graphic only reads when duty moves
+      startTitle: !iAmOnDuty ? t('Take over from {name}', { name: dutyName })
+        : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start your shift'),
+      startSub: !iAmOnDuty ? theirShiftLine
+        : myAsk ? t('Waiting for {name} to take over', { name: partnerName })
+          : t('Plan what’s coming so {name} isn’t guessing.', { name: partnerName }),
+      startCta: myAsk ? t('Ask again') : iAmOnDuty ? t('Start my shift') : t('I’ve got him — start my shift'),
+      startAction: myAsk ? this.requestHandoff : this.acceptShift,
+      startFoot: iAmOnDuty
+        ? t('{name} sees your plan and how it’s going — without asking.', { name: partnerName })
+        : t('{name} gets a “you’re covered” ping and can sleep.', { name: dutyName }),
+      sheetMine: shiftUp && !showReport && activeMine,
       sheetReport: showReport,
       reportTitle: iHandedBack ? t('{name}’s back on', { name: dutyName }) : t('{name} handed back', { name: shiftOwnerName }),
       openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack, addPlanFeed: this.addPlanFeed,
@@ -2635,7 +2685,8 @@ export default class App extends React.Component {
                   <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.ageLabel} · {v.dateLabel}{v.offline ? ' · ' + t('offline') : ''}</div>
                 </div>
               </div>
-              <button type="button" onClick={v.openShift} className="hov-bd" style={S('display:flex;align-items:center;gap:8px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;padding:5px 13px 5px 6px;cursor:pointer;font-family:inherit')}>
+              {/* solo households have nobody to hand off to — the pill stays a label */}
+              <button type="button" disabled={!v.hasPartner} onClick={v.openShift} className={v.hasPartner ? 'hov-bd' : undefined} style={S(`display:flex;align-items:center;gap:8px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;padding:5px 13px 5px 6px;cursor:${v.hasPartner ? 'pointer' : 'default'};font-family:inherit`)}>
                 <div style={S(`width:24px;height:24px;border-radius:999px;background:${v.dutyColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#FCFBF6`)}>{v.dutyInitial}</div>
                 <div style={S('font-size:12.5px;color:#6E6659;font-weight:500')}>{v.dutyLabel}</div>
               </button>
@@ -2768,6 +2819,39 @@ export default class App extends React.Component {
                   ))}
                   <div style={S('display:flex;align-items:center;justify-content:center;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t(v.plan.length ? 'Their plan, live from the log — no need to ask' : 'No plan set — the log below updates live')}</div>
+                  </div>
+                </div>
+              )}
+
+              {v.dutyIdle && (
+                <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px')}>
+                  <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px')}>
+                    <div style={S('display:flex;align-items:center;gap:9px;min-width:0')}>
+                      <div style={S(`width:28px;height:28px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{v.myInitial}</div>
+                      <div style={S('display:flex;flex-direction:column;min-width:0')}>
+                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('You’re on duty')}</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;text-wrap:pretty")}>{v.dutyIdleSub}</div>
+                      </div>
+                    </div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474;background:rgba(38,35,29,0.06);border-radius:999px;padding:5px 11px;flex-shrink:0")}>{v.dutyIdlePill}</div>
+                  </div>
+                  <div style={S('display:flex;flex-direction:column;gap:6px')}>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
+                    <div style={S('display:flex;flex-wrap:wrap;gap:6px')}>
+                      {v.dutyPlan.map((p, i) => (
+                        <div key={i} style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px')}>
+                          <Sym style={{ fontSize: 16, color: p.color }}>{p.icon}</Sym>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{p.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={S('display:flex;gap:8px;padding-top:2px')}>
+                    <button type="button" onClick={v.dutyIdleAction} className="hov-olive" style={S('flex:1;height:50px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px rgba(var(--accent-rgb),0.28)')}>
+                      <Sym style={{ fontSize: 20, color: 'var(--on-accent)' }}>play_arrow</Sym>
+                      <div style={S('font-size:15px;font-weight:700;color:#FCFBF6')}>{v.dutyIdleCta}</div>
+                    </button>
+                    <button type="button" onClick={v.openShift} className="hov-cream" style={S('height:50px;padding:0 18px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:#6E6659')}>{t('Details')}</button>
                   </div>
                 </div>
               )}
@@ -3789,21 +3873,25 @@ export default class App extends React.Component {
             }}>
               <div style={S('width:38px;height:4px;border-radius:99px;background:rgba(38,35,29,0.16);margin:0 auto 14px')} />
 
-              {v.sheetTheirs && (
+              {v.sheetStart && (
                 <>
                   <div style={S('display:flex;align-items:center;justify-content:center;gap:14px;padding:6px 0 14px')}>
-                    <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
-                      <div style={S(`width:56px;height:56px;border-radius:999px;background:${v.relieveColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.relieveInitial}</div>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{v.relieveName}</div>
-                    </div>
-                    <Sym style={{ fontSize: 28, color: 'var(--faint)', marginBottom: 22 }}>arrow_forward</Sym>
+                    {v.startPair && (
+                      <>
+                        <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
+                          <div style={S(`width:56px;height:56px;border-radius:999px;background:${v.relieveColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.relieveInitial}</div>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{v.relieveName}</div>
+                        </div>
+                        <Sym style={{ fontSize: 28, color: 'var(--faint)', marginBottom: 22 }}>arrow_forward</Sym>
+                      </>
+                    )}
                     <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
                       <div style={S(`width:56px;height:56px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{t('You')}</div>
                     </div>
                   </div>
-                  <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{t('Take over from {name}', { name: v.relieveName })}</div>
-                  <div style={S('text-align:center;font-size:13.5px;color:#8C8474;padding-top:4px')}>{v.theirShiftLine}</div>
+                  <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{v.startTitle}</div>
+                  <div style={S('text-align:center;font-size:13.5px;color:#8C8474;padding-top:4px;text-wrap:pretty')}>{v.startSub}</div>
 
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px;margin-top:18px')}>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Right now')}</div>
@@ -3838,11 +3926,17 @@ export default class App extends React.Component {
                     </div>
                   </div>
 
-                  <button type="button" onClick={v.acceptShift} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
+                  <button type="button" onClick={v.startAction} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
                     <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>check</Sym>
-                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('I’ve got him — start my shift')}</div>
+                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.startCta}</div>
                   </button>
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px')}>{t('{name} gets a “you’re covered” ping and can sleep.', { name: v.relieveName })}</div>
+                  {v.canRequest && (
+                    <button type="button" onClick={v.requestHandoff} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
+                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>notifications</Sym>
+                      {v.askLabel}
+                    </button>
+                  )}
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{v.startFoot}</div>
                 </>
               )}
 

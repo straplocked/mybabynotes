@@ -9,6 +9,7 @@ Live-with-it notes for the testing period. Add entries as they happen — a one-
 | 2026-09-02 | C+K | Cluster feeding skews the feed-rhythm average — Maddux's "every 3h-and-change" window is wrong because back-to-back feeds count as separate rhythm beats. → Fixed: feeds within 45m now group into one session for the average/plan. | 🤔 |
 | 2026-09-02 | C+K | We don't track diapers (no health reason to) but the app assumes everyone tracks everything — "0.3 diapers/day" stats are noise. Want per-household on/off for metrics, ideally with the app suggesting it. → Fixed: "What you track" toggles in History + a low-usage nudge; entries are never deleted. | 🤔 |
 | 2026-09-02 | C+K | Want wake-window tracking, and the baby's actual DOB so the app tracks age in weeks (the onboarding "2–8 wks" label never advances). → Added: DOB at onboarding + History → About; header age computes live; wake-window avg tile + insight compared against age-typical ranges from docs/feeding-patterns.md. | 💡 |
+| 2026-09-05 | C | On duty and there's no checklist — K sees one, I never do, and the whole handoff direction reads backwards. Cause: the plan/checklist only ever existed for whoever *accepted* a handoff. Duty is seeded to the account that created the household and handed straight back by "Hand back", and neither opens a shift — so the person duty keeps returning to sits in a dead state forever, while the person who accepts gets the whole feature. → Fixed: "on duty, nothing started" is now a real state with a start card (drafted plan + "Start my shift") and its own sheet; a pending ask of yours reads "Waiting for {name}" instead of vanishing; "Your shift so far" no longer borrows the other parent's window. | 💔 |
 | | | | |
 
 ## Questions worth answering while we use it
@@ -27,7 +28,8 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 - Invite flow: was sharing the code manually awkward enough to justify real emails?
 
 ### Shifts
-- Does request → accept → hand back match how you two actually trade off, or is instant handoff ("you have him now") the real pattern?
+- Does request → accept → hand back match how you two actually trade off, or is instant handoff ("you have him now") the real pattern? (Partly answered 2026-09-05: neither — the common case is *nobody asked*, one of you just has the baby. Hence the start card. Still open: should handing back auto-start a shift for whoever receives it, or is one tap right?)
+- Should there be a way to say "K is usually the one with him" so duty defaults to the right person after a reset, or is the duty pill enough?
 - Is the auto-drafted plan (next feeds from rhythm + meds) believable? Right number of items?
 - Did you miss a handoff request because the app was closed? (→ push notifications priority)
 - Is the shift report card the right summary, or do you want different rows?
