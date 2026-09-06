@@ -183,6 +183,43 @@ describe('multi-timer rows', () => {
     expect(screen.queryByText('Nursing')).not.toBeInTheDocument()
   })
 
+  // "Slept · 4h ago" while the baby is asleep right now reads as a stale log.
+  // A running timer owns its since-card until it stops and becomes an entry.
+  it('a running timer takes over its since-card instead of reporting a stale log', async () => {
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({ timers: twoTimers() }))
+    renderApp()
+
+    // the feeds card and the sleep card go live; the ones with no timer don't
+    expect(await screen.findByText('Feeding now')).toBeInTheDocument()
+    expect(screen.getByText('Sleeping now')).toBeInTheDocument()
+    expect(screen.getByText('Diaper')).toBeInTheDocument()
+    expect(screen.queryByText('Fed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Slept')).not.toBeInTheDocument()
+    // counting up from the timer's start, not down from the last entry
+    expect(screen.getAllByText('so far')).toHaveLength(2)
+    expect(screen.getAllByText('ago')).toHaveLength(2) // diaper + bath, still "since last"
+    // someone else's session says whose it is
+    expect(screen.getByText(/^since .* · Kat$/)).toBeInTheDocument()
+  })
+
+  it('the card goes back to measuring from the log once the timer stops', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({
+      timers: [{ id: 't-sleep', type: 'sleep', started_at: Date.now() - 65_000, user_id: 1, baby_id: null }],
+    }))
+    routes['POST /timer/stop'] = () => okJson({ ok: true, stopped: null })
+    routes['POST /entries'] = () => okJson({ ok: true })
+    renderApp()
+
+    expect(await screen.findByText('Sleeping now')).toBeInTheDocument()
+    await user.click(screen.getAllByText('Stop')[0])
+
+    expect(await screen.findByText('Slept')).toBeInTheDocument()
+    expect(screen.queryByText('Sleeping now')).not.toBeInTheDocument()
+  })
+
   it('a pre-multi-timer server (singular `timer` key only) still renders its row', async () => {
     seedSignedIn()
     const legacy = stateFixture({ timer: { id: 't-old', type: 'pump', started_at: Date.now() - 30_000, user_id: 1, baby_id: null } })

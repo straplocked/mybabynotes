@@ -1881,11 +1881,34 @@ export default class App extends React.Component {
       ...childChip(c.id === sheetSelId),
     })) : null
 
+    // a running timer OWNS its card. "Slept · 4h ago" while the baby is asleep
+    // right now reads as a stale log, so the card flips to the live session —
+    // the stopwatch, when it started, and whose it is — until the timer stops
+    // and becomes an entry the card can measure from again. Same child rule as
+    // every other view: a null baby_id is the primary child.
+    const primId = this.primaryChildId()
+    const liveTimerFor = keys => s.activeTimers
+      .filter(tm => keys.includes(tm.type) && (selId == null || (tm.baby_id ?? primId) === selId))
+      .sort((a, b) => (a.started_at || 0) - (b.started_at || 0))[0]
     const cards = this.widgetKeys().map(k => {
       const c = WIDGETS.find(w => w.key === k)
+      const tm = liveTimerFor(c.keys)
+      if (tm) {
+        const tt = T(tm.type)
+        return {
+          // present tense, and deliberately NOT the timer card's own label —
+          // "Sleeping now" against "Slept" is the whole point of the swap
+          label: t(tm.type === 'nurse' ? 'Feeding now' : tm.type === 'sleep' ? 'Sleeping now' : tm.type === 'tummy' ? 'Tummy time now' : 'Pumping now'),
+          icon: tt.icon, color: tt.color, live: true,
+          elapsed: this.stopwatch(Date.now() - tm.started_at), unit: t('so far'),
+          at: t('since {time}', { time: this.clock(tm.started_at) })
+            + (me && tm.user_id === me.id ? '' : ' · ' + this.memberName(tm.user_id, partnerName)),
+        }
+      }
       const e = this.lastOf(c.keys)
       const day = e ? this.dayOf(e.t) : ''
-      return { label: t(c.label), icon: c.icon, color: c.color, elapsed: e ? this.elapsed(e.t) : '—',
+      return { label: t(c.label), icon: c.icon, color: c.color, live: false,
+        elapsed: e ? this.elapsed(e.t) : '—', unit: t('ago'),
         at: e ? this.clock(e.t) + (day ? ', ' + lower(day) : '') + ' · ' + t(T(e.type).label) : t('nothing logged yet') }
     })
 
@@ -2070,15 +2093,12 @@ export default class App extends React.Component {
     const incomingReq = !!(me && sh && sh.state === 'requested' && sh.requester_id !== me.id && this.memberById(sh.requester_id))
     // holding duty and having a shift open are different things: duty is seeded
     // to the founding account at registration and handed straight back by
-    // /shifts/handback, and neither opens a shift. That gap used to render as
-    // nothing at all — whoever held duty without having accepted a handoff got
-    // no plan, no checklist, and a "your shift so far" sheet borrowing the
-    // other parent's window. Now it's a real state with its own card.
-    const onDuty = iAmOnDuty && !!partner
+    // /shifts/handback, and neither opens a shift. Whoever lands in that gap
+    // opens the shift sheet on its "Start your shift" framing (sheetStart), so
+    // the plan and the checklist are always one tap away, never missing.
     // my own outstanding ask: /state carries one shift, so a pending request
     // hides an active shift of mine behind it while it's open
     const myAsk = !!(me && sh && sh.state === 'requested' && sh.requester_id === me.id)
-    const dutyIdle = onDuty && !activeMine && !activeTheirs
     // the humans on the other side of each surface — with two members these
     // all collapse to "the partner", with more they name the right person
     const requesterName = incomingReq ? this.memberName(sh.requester_id, partnerName) : partnerName
@@ -2151,11 +2171,6 @@ export default class App extends React.Component {
     // (or from before this shipped) carry none, and fall back as before.
     const draftSrc = s.planDraft || rhythm
     const requestPlan = draftSrc.filter(p => !s.planOff.includes(p.id)).map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
-    // what the on-duty-but-not-started card previews: my real plan when a
-    // pending ask is hiding my active shift, otherwise the same draft the
-    // start sheet opens with
-    const dutyPlan = (s.plan.length ? [...s.plan].sort((a, b) => a.at - b.at) : draftSrc.filter(p => !s.planOff.includes(p.id)))
-      .map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
     const requestPlanRows = draftSrc.map(p => {
       const off = s.planOff.includes(p.id)
       return { icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p), time: '~' + this.clock(p.at),
@@ -2323,23 +2338,24 @@ export default class App extends React.Component {
       hbName,
       // opens the compose sheet now — there's a plan to author, not just a note to fire
       askLabel: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off to someone else'),
+      // the one shift surface Now still owns: an ask needs answering, so it
+      // can't wait behind a tap. Your shift, their shift, and on-duty-with-
+      // nothing-open all moved into the sheet behind the header button.
       incoming: incomingReq && s.screen === 'home',
-      mine: iAmOnDuty && !!partner && activeMine,
       theirs: activeTheirs && !iAmOnDuty,
-      // on duty with nothing open — the state that used to show nothing at all
-      dutyIdle,
-      dutyPlan,
-      dutyIdleSub: myAsk
-        ? t('Waiting for {name} to take over', { name: partnerName })
-        : t('Start a shift so {name} can see the plan and how it’s going.', { name: partnerName }),
-      dutyIdlePill: myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Not started'),
-      dutyIdleCta: myAsk ? t('Ask again') : t('Start my shift'),
-      // asking again refreshes the pending request and re-pings — deliberate
-      dutyIdleAction: myAsk ? this.requestHandoff : this.acceptShift,
-      theirShiftSub: activeTheirs ? t('since {time}', { time: this.clock(shiftStart) }) + (sh.until ? ' · ' + (getLang() === 'en' ? t(sh.until).charAt(0).toLowerCase() + t(sh.until).slice(1) : t(sh.until)) : '') : '',
       dutyInitial: iAmOnDuty ? initial(me?.name) : initial(dutyHolder?.name || partner?.name),
       dutyColor: iAmOnDuty ? ME_COLOR : (s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR),
       dutyLabel: partner ? (iAmOnDuty ? t('You · on duty') : t('{name} · on duty', { name: dutyName })) : t('Just you so far'),
+      // the header's shift button. It names the action it opens on (same label
+      // as the footer shortcut) and only shouts — accent fill plus a pulsing
+      // dot — when someone is waiting on an answer from you
+      shiftBtnLabel: incomingReq ? t('{name} is handing off', { name: requesterName })
+        : activeMine ? t('Your shift') : activeTheirs ? t('{name}’s shift', { name: shiftOwnerName })
+          : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
+      shiftBtnBg: incomingReq ? 'rgba(var(--accent-rgb),0.16)' : 'var(--surface)',
+      shiftBtnBorder: incomingReq ? OLIVE : 'rgba(var(--ink-rgb),0.08)',
+      shiftBtnFg: incomingReq || activeMine ? 'var(--accent-deep)' : 'var(--muted)',
+      shiftBtnDot: incomingReq,
       // the footer names the action the sheet actually opens on
       footerShiftLabel: activeMine ? t('Hand off')
         : !iAmOnDuty ? t('Take over')
@@ -2876,11 +2892,22 @@ export default class App extends React.Component {
                   <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.ageLabel} · {v.dateLabel}{v.offline ? ' · ' + t('offline') : ''}</div>
                 </div>
               </div>
-              {/* solo households have nobody to hand off to — the pill stays a label */}
-              <button type="button" disabled={!v.hasPartner} onClick={v.openShift} className={v.hasPartner ? 'hov-bd' : undefined} style={S(`display:flex;align-items:center;gap:8px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;padding:5px 13px 5px 6px;cursor:${v.hasPartner ? 'pointer' : 'default'};font-family:inherit`)}>
-                <div style={S(`width:24px;height:24px;border-radius:999px;background:${v.dutyColor};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#FCFBF6`)}>{v.dutyInitial}</div>
-                <div style={S('font-size:12.5px;color:#6E6659;font-weight:500')}>{v.dutyLabel}</div>
-              </button>
+              <div style={S('display:flex;align-items:center;gap:8px;flex-shrink:0')}>
+                {/* the shift sheet, one tap from anywhere on Now — carries the
+                    state the old inline cards spelled out: accent + a pulsing
+                    dot when someone is asking you to take over. Solo households
+                    have nobody to hand off to, so they get no button at all. */}
+                {v.hasPartner && (
+                  <button type="button" onClick={v.openShift} aria-label={v.shiftBtnLabel} title={v.shiftBtnLabel} className="hov-bd" style={S(`position:relative;width:38px;height:38px;padding:0;background:${v.shiftBtnBg};border:1px solid ${v.shiftBtnBorder};border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;flex-shrink:0`)}>
+                    <Sym style={{ fontSize: 20, color: v.shiftBtnFg }}>swap_horiz</Sym>
+                    {v.shiftBtnDot && <div className="live-dot" style={S('position:absolute;top:2px;right:2px;width:9px;height:9px;border-radius:999px;background:var(--accent-deep);border:2px solid var(--surface)')} />}
+                  </button>
+                )}
+                {/* who has the baby (colour + initial), and a tap into your profile */}
+                <button type="button" onClick={v.goSettings} aria-label={t('Settings')} title={v.dutyLabel} className="hov-bd" style={S('width:38px;height:38px;padding:0;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;flex-shrink:0')}>
+                  <div style={S(`width:28px;height:28px;border-radius:999px;background:${v.dutyColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.dutyInitial}</div>
+                </button>
+              </div>
             </div>
 
             {v.childPills && (
@@ -2947,143 +2974,24 @@ export default class App extends React.Component {
                 </div>
               )}
 
-              {v.mine && (
-                <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px 8px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px')}>
-                  <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:6px')}>
-                    <div style={S('display:flex;align-items:center;gap:9px')}>
-                      <div style={S(`width:28px;height:28px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
-                      <div style={S('display:flex;flex-direction:column')}>
-                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('Your shift')}</div>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.shiftSince}</div>
-                      </div>
-                    </div>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
-                  </div>
-                  {v.plan.map((p, i) => (
-                    <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(38,35,29,0.06)')}>
-                      <Sym style={{ fontSize: 21, color: p.stateColor }}>{p.stateIcon}</Sym>
-                      <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
-                      <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
-                        <div style={S(`font-size:14.5px;font-weight:600;color:${p.textColor}`)}>{p.label}</div>
-                        <div style={S('font-size:12px;color:#8C8474')}>{p.sub}</div>
-                      </div>
-                      {p.editable ? (
-                        <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
-                          <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
-                          <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
-                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
-                        </label>
-                      ) : (
-                        <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
-                      )}
-                      {p.editable && (
-                        <button type="button" onClick={p.onRemove} aria-label={t('Remove')} style={S('background:none;border:none;padding:0 0 0 2px;cursor:pointer;display:flex')}>
-                          <Sym style={{ fontSize: 17, color: 'var(--dim)' }}>close</Sym>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {v.planAddLive.open && (
-                    <div style={S('display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid rgba(38,35,29,0.06)')}>
-                      {v.planAddLive.types.map(ty => (
-                        <button key={ty.key} type="button" onClick={ty.onTap} className="hov-cream" style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px;cursor:pointer;font-family:inherit')}>
-                          <Sym style={{ fontSize: 16, color: ty.color }}>{ty.icon}</Sym>
-                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{ty.label}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div style={S('display:flex;align-items:center;justify-content:space-between;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
-                    <button type="button" onClick={v.planAddLive.toggle} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
-                      <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>{v.planAddLive.open ? 'close' : 'add'}</Sym>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
-                    </button>
-                    <button type="button" onClick={v.openShift} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42")}>{t('Hand back')}</div>
-                      <Sym style={{ fontSize: 17, color: 'var(--accent-text)' }}>arrow_forward</Sym>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {v.theirs && (
-                <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px 8px;margin-bottom:12px;display:flex;flex-direction:column;gap:4px')}>
-                  <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:6px')}>
-                    <div style={S('display:flex;align-items:center;gap:9px')}>
-                      <div style={S(`width:28px;height:28px;border-radius:999px;background:${v.shiftOwnerColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.shiftOwnerInitial}</div>
-                      <div style={S('display:flex;flex-direction:column')}>
-                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('{name}’s shift', { name: v.shiftOwnerName })}</div>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.theirShiftSub}</div>
-                      </div>
-                    </div>
-                    {v.plan.length > 0 && (
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
-                    )}
-                  </div>
-                  {v.plan.map((p, i) => (
-                    <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(38,35,29,0.06)')}>
-                      <Sym style={{ fontSize: 21, color: p.stateColor }}>{p.stateIcon}</Sym>
-                      <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
-                      <div style={S('flex:1;display:flex;flex-direction:column;gap:1px')}>
-                        <div style={S(`font-size:14.5px;font-weight:600;color:${p.textColor}`)}>{p.label}</div>
-                        <div style={S('font-size:12px;color:#8C8474')}>{p.sub}</div>
-                      </div>
-                      <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
-                    </div>
-                  ))}
-                  <div style={S('display:flex;align-items:center;justify-content:center;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t(v.plan.length ? 'Their plan, live from the log — no need to ask' : 'No plan set — the log below updates live')}</div>
-                  </div>
-                </div>
-              )}
-
-              {v.dutyIdle && (
-                <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 16px 14px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px')}>
-                  <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px')}>
-                    <div style={S('display:flex;align-items:center;gap:9px;min-width:0')}>
-                      <div style={S(`width:28px;height:28px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{v.myInitial}</div>
-                      <div style={S('display:flex;flex-direction:column;min-width:0')}>
-                        <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('You’re on duty')}</div>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;text-wrap:pretty")}>{v.dutyIdleSub}</div>
-                      </div>
-                    </div>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474;background:rgba(38,35,29,0.06);border-radius:999px;padding:5px 11px;flex-shrink:0")}>{v.dutyIdlePill}</div>
-                  </div>
-                  <div style={S('display:flex;flex-direction:column;gap:6px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
-                    <div style={S('display:flex;flex-wrap:wrap;gap:6px')}>
-                      {v.dutyPlan.map((p, i) => (
-                        <div key={i} style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px')}>
-                          <Sym style={{ fontSize: 16, color: p.color }}>{p.icon}</Sym>
-                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{p.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={S('display:flex;gap:8px;padding-top:2px')}>
-                    <button type="button" onClick={v.dutyIdleAction} className="hov-olive" style={S('flex:1;height:50px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit;box-shadow:0 6px 16px rgba(var(--accent-rgb),0.28)')}>
-                      <Sym style={{ fontSize: 20, color: 'var(--on-accent)' }}>play_arrow</Sym>
-                      <div style={S('font-size:15px;font-weight:700;color:#FCFBF6')}>{v.dutyIdleCta}</div>
-                    </button>
-                    <button type="button" onClick={v.openShift} className="hov-cream" style={S('height:50px;padding:0 18px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:#6E6659')}>{t('Details')}</button>
-                  </div>
-                </div>
-              )}
-
+              {/* your shift, their shift, and on-duty-not-started all live in
+                  the shift sheet now (header swap_horiz) — Now keeps only the
+                  incoming ask above, because that one needs answering */}
               <div style={S('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
                 {v.sinceCards.map((c, i) => (
-                  <div key={i} style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 15px 13px;display:flex;flex-direction:column;gap:7px;position:relative;overflow:hidden')}>
-                    <div style={S(`position:absolute;inset:0;opacity:0.06;background:${c.color}`)} />
+                  <div key={i} style={S(`background:#FFFDF8;border:1px solid ${c.live ? c.color : 'rgba(38,35,29,0.07)'};border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:14px 15px 13px;display:flex;flex-direction:column;gap:7px;position:relative;overflow:hidden`)}>
+                    <div style={S(`position:absolute;inset:0;opacity:${c.live ? '0.1' : '0.06'};background:${c.color}`)} />
                     <div style={S('display:flex;align-items:center;gap:7px;position:relative')}>
-                      <div style={S('position:relative;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden')}>
+                      <div style={S('position:relative;width:26px;height:26px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0')}>
                         <div style={S(`position:absolute;inset:0;background:${c.color};opacity:0.18`)} />
                         <Sym style={{ position: 'relative', fontSize: 15, color: c.color }}>{c.icon}</Sym>
                       </div>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{c.label}</div>
+                      <div style={S("flex:1;min-width:0;font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}>{c.label}</div>
+                      {c.live && <div className="live-dot" style={S(`width:7px;height:7px;border-radius:999px;flex-shrink:0;background:${c.color}`)} />}
                     </div>
                     <div style={S('position:relative;display:flex;align-items:baseline;gap:4px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.04em")}>{c.elapsed}</div>
-                      <div style={S('font-size:11px;color:#8C8474')}>{t('ago')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.04em;font-variant-numeric:tabular-nums")}>{c.elapsed}</div>
+                      <div style={S('font-size:11px;color:#8C8474')}>{c.unit}</div>
                     </div>
                     <div style={S('position:relative;font-size:11.5px;color:#6E6659')}>{c.at}</div>
                   </div>
@@ -4186,6 +4094,29 @@ export default class App extends React.Component {
                   <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{v.startTitle}</div>
                   <div style={S('text-align:center;font-size:13.5px;color:#8C8474;padding-top:4px;text-wrap:pretty')}>{v.startSub}</div>
 
+                  {/* their running plan, read-only — the card this replaced on
+                      Now. It answers "what are they in the middle of?" before
+                      you decide to take over */}
+                  {v.theirs && v.plan.length > 0 && (
+                    <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 10px;margin-top:18px')}>
+                      <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 2px')}>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('{name}’s shift', { name: v.shiftOwnerName })}</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
+                      </div>
+                      {v.plan.map((p, i) => (
+                        <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(38,35,29,0.06)')}>
+                          <Sym style={{ fontSize: 21, color: p.stateColor }}>{p.stateIcon}</Sym>
+                          <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
+                          <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
+                            <div style={S(`font-size:14.5px;font-weight:600;color:${p.textColor}`)}>{p.label}</div>
+                            <div style={S('font-size:12px;color:#8C8474')}>{p.sub}</div>
+                          </div>
+                          <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px;margin-top:18px')}>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('Right now')}</div>
                     {v.handoffRows.map((r, i) => (
@@ -4257,10 +4188,60 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;gap:12px;padding:4px 4px 14px')}>
                     <div style={S(`width:48px;height:48px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
                     <div style={S('display:flex;flex-direction:column;gap:2px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>{t('Your shift so far')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>{t('Your shift')}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{v.shiftSince} · {v.shiftElapsed}</div>
                     </div>
                   </div>
+
+                  {/* the live checklist that used to sit on Now — same rows,
+                      same editable times, same one-tap drop */}
+                  <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 8px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px')}>
+                    <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 2px')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
+                    </div>
+                    {v.plan.map((p, i) => (
+                      <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(38,35,29,0.06)')}>
+                        <Sym style={{ fontSize: 21, color: p.stateColor }}>{p.stateIcon}</Sym>
+                        <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
+                        <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
+                          <div style={S(`font-size:14.5px;font-weight:600;color:${p.textColor}`)}>{p.label}</div>
+                          <div style={S('font-size:12px;color:#8C8474')}>{p.sub}</div>
+                        </div>
+                        {p.editable ? (
+                          <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
+                            <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                            <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
+                            <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                          </label>
+                        ) : (
+                          <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                        )}
+                        {p.editable && (
+                          <button type="button" onClick={p.onRemove} aria-label={t('Remove')} style={S('background:none;border:none;padding:0 0 0 2px;cursor:pointer;display:flex')}>
+                            <Sym style={{ fontSize: 17, color: 'var(--dim)' }}>close</Sym>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <div style={S('display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid rgba(38,35,29,0.06)')}>
+                      {v.planAddLive.open
+                        ? v.planAddLive.types.map(ty => (
+                          <button key={ty.key} type="button" onClick={ty.onTap} className="hov-cream" style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px;cursor:pointer;font-family:inherit')}>
+                            <Sym style={{ fontSize: 16, color: ty.color }}>{ty.icon}</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{ty.label}</div>
+                          </button>
+                        ))
+                        : (
+                          <button type="button" onClick={v.planAddLive.toggle} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:2px 0')}>
+                            <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>add</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
+                          </button>
+                        )}
+                    </div>
+                  </div>
+
+                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:0 4px 6px")}>{t('Your shift so far')}</div>
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px')}>
                     {v.reportRows.map((r, i) => (
                       <div key={i} style={S('display:flex;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>

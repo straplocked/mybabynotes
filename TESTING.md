@@ -14,6 +14,8 @@ Live-with-it notes for the testing period. Add entries as they happen — a one-
 | 2026-09-05 | C | Unfinished plan items died with the shift — a 9am dose nobody got to just vanished when duty changed. → Fixed: non-feed items carry into the next draft at their original (now late) time. Feeds deliberately don't: they're rhythmic, not owed. | 💡 |
 | 2026-09-05 | C | Nothing in a plan could be changed — no way to retime an item, drop one, or add anything but another feed. Left over from when the plan was a machine guess the receiver rubber-stamped; once the *asker* authors it, "here's what needs to happen" without a time control is half a feature. → Fixed: every plan row's time is a tap-to-pick control on both sides of a handoff, pending items can be dropped, and "Add to plan" offers any scheduleable tracked type. Logged items freeze. | 🤔 |
 | 2026-09-05 | C | Every other entry marks when something *started* — a bottle is stamped at the first sip — but naps landed in the log at the wake-up, so a long nap sorted below feeds that happened during it and the timeline stopped reading top-down. → Fixed in the UI only: rows, day buckets, the shift report, CSV rows and the log sheet's stamp all read `t − duration`. The wire still stamps the wake-up (the timer, the import, the wake-window math and old installed clients all depend on it), and the "since last slept"/"Last nap ended" readouts still measure from the end, which is the point of them. | 🤔 |
+| 2026-09-06 | C | The shift card ate the top of Now — on duty, mid-shift, or watching K's, there was always a fat card above the since-cards, and on a phone the actual log started below the fold. → Fixed: the shift surface moved into the sheet behind a `swap_horiz` button in the header, and the "X · on duty" pill shrank to a bare avatar that taps through to Settings. An incoming ask still gets an inline card — that one needs answering, not browsing. | 🤔 |
+| 2026-09-06 | C | With a nap running, the "Slept" card still read "4h ago" — the last *finished* nap — while the baby was visibly asleep. Same for a nursing timer against "Fed". Two live numbers on one screen disagreeing about the same fact. → Fixed: a card whose type has a running timer flips to that session — "Sleeping now", the stopwatch, "so far" instead of "ago", and whose it is. | 🤔 |
 | | | | |
 
 ## Questions worth answering while we use it
@@ -33,7 +35,8 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 
 ### Shifts
 - Does request → accept → hand back match how you two actually trade off, or is instant handoff ("you have him now") the real pattern? (Partly answered 2026-09-05: neither — the common case is *nobody asked*, one of you just has the baby. Hence the start card. Still open: should handing back auto-start a shift for whoever receives it, or is one tap right?)
-- Should there be a way to say "K is usually the one with him" so duty defaults to the right person after a reset, or is the duty pill enough?
+- Should there be a way to say "K is usually the one with him" so duty defaults to the right person after a reset, or is the duty avatar enough?
+- Now the shift lives behind a header button: does the running plan get *checked* as often as when it sat on Now, or does out-of-sight mean out-of-mind? Is the pulsing dot on an incoming ask loud enough on a locked-then-opened phone?
 - **The ask is heavier now** (plan + window + note) on the bet that it went unused *because* it carried nothing. Watch whether that's right: does composing a handoff actually happen, or does the extra step push you further toward one of you just taking the baby? It's built to be two taps if you accept the defaults — is it?
 - Does the receiver ever *change* the plan they're sent, or is it always accepted as-is? (If always as-is, the toggles are ceremony and the carer case wants the plan locked instead.)
 - Now that plan times are editable: do you actually retime items, or is the rhythm's guess always close enough? And is tapping the time discoverable, or does the pencil need to be louder?
@@ -43,6 +46,7 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 - Is the shift report card the right summary, or do you want different rows?
 
 ### Home & History
+- A running timer now takes over its since-card ("Sleeping now · 42:10 so far"). With timers also shown as top cards and Today rows, is that a third copy too many — should the top timer card go away when the since-card already says it?
 - The since-cards are now picked per household from seven (fed, pumped, diaper, slept, tummy time, bath, meds) — which did you actually keep, and is the picker discoverable?
 - Is 12 timeline entries enough per day? Do you reach for "older days" and hit the 7-day wall?
 - Naps now sit at their start time, but the "Slept" since-card still counts from the **wake-up** (that's the wake window, and it's the number you act on). Does the card showing 6:00 AM next to a row showing 3:00 AM read as two facts or as a bug? Same question for "Last nap ended" in a shift report.

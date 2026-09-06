@@ -108,6 +108,14 @@ html.dark .hov-dark:hover { background: #FBF7EF !important; } /* ink buttons inv
   from { opacity: 0; transform: translateY(8px); }
 }
 .toast-in { animation: bl-toast-in 0.26s cubic-bezier(0.32, 0.72, 0, 1); }
+
+/* the "this is running right now" dot on a live since-card and on the header's
+   shift button — colour comes from the element's own inline background */
+@keyframes bl-pulse {
+  50% { opacity: 0.3; transform: scale(0.8); }
+}
+.live-dot { animation: bl-pulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .toast-in { animation: none; }
+  .live-dot { animation: none; }
 }

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Chris Carvache
-// Duty and shifts on the Now screen. The rule these pin: holding duty and
-// having a shift open are different things — duty is seeded to the founding
-// account at registration and handed straight back by /shifts/handback, and
-// neither opens a shift. Whoever lands in that gap gets the "You're on duty"
-// start card, not a blank screen where the checklist should be.
+// Duty and shifts. The rule these pin: holding duty and having a shift open
+// are different things — duty is seeded to the founding account at registration
+// and handed straight back by /shifts/handback, and neither opens a shift.
+// Whoever lands in that gap gets the "Start your shift" framing of the shift
+// sheet, not a dead end where the checklist should be.
+//
+// Now itself keeps exactly one shift surface: an incoming ask, because that one
+// needs answering. Your shift, their shift, and on-duty-with-nothing-open all
+// live in the sheet behind the header's swap_horiz button (and the footer
+// shortcut) — which is what `openShiftSheet` below reaches for.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -71,6 +76,17 @@ const settled = async el => {
 // the open sheet, for queries whose text also appears on the Now screen behind it
 const sheet = () => within(document.querySelector('[style*="z-index: 50"]'))
 
+// the sheet keeps rendering while it slides out — the report is only marked
+// seen once that lands, so tests that reopen must wait for the unmount
+const sheetClosed = () => waitFor(() => expect(document.querySelector('[style*="z-index: 50"]')).toBeNull())
+
+// the header's icon button — its accessible name is the state it opens on
+const openShiftSheet = async (user, label) => {
+  await user.click(await screen.findByLabelText(label))
+  await settled(document.querySelector('[style*="z-index: 50"]').firstChild)
+  return sheet()
+}
+
 const activeShift = (userId, over = {}) => ({
   id: 11, state: 'active', user_id: userId, requester_id: null,
   plan: [{ id: 'p1', type: 'bottle', at: Date.now() + 40 * 60_000 }],
@@ -78,16 +94,17 @@ const activeShift = (userId, over = {}) => ({
 })
 
 describe('on duty with no shift open', () => {
-  it('offers the start card instead of leaving the checklist slot empty', async () => {
+  it('offers the start framing instead of leaving the checklist slot empty', async () => {
+    const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture())
     renderApp()
 
-    expect(await screen.findByText('You’re on duty')).toBeInTheDocument()
-    expect(screen.getByText('Not started')).toBeInTheDocument()
-    expect(screen.getByText('Start a shift so Sam can see the plan and how it’s going.')).toBeInTheDocument()
-    // the drafted plan is previewed on the card, so "start" is not a leap of faith
-    expect(screen.getAllByText(/^Feed ~/).length).toBeGreaterThan(0)
+    const s = await openShiftSheet(user, 'Start my shift')
+    expect(s.getByText('Start your shift')).toBeInTheDocument()
+    expect(s.getByText('Plan what’s coming so Sam isn’t guessing.')).toBeInTheDocument()
+    // the drafted plan is right there, so "start" is not a leap of faith
+    expect(s.getAllByText('Feed').length).toBeGreaterThan(0)
   })
 
   it('"Start my shift" opens a real shift with the drafted plan', async () => {
@@ -101,61 +118,78 @@ describe('on duty with no shift open', () => {
     }
     renderApp()
 
-    // the card's CTA and the footer shortcut share the label — take the card's
-    await user.click((await screen.findAllByText('Start my shift'))[0])
+    const s = await openShiftSheet(user, 'Start my shift')
+    await user.click(s.getByText('Start my shift'))
 
     await waitFor(() => expect(body).toBeTruthy())
     expect(body.plan.length).toBeGreaterThan(0)
     expect(body.plan.every(p => typeof p.at === 'number')).toBe(true)
     expect(body.until).toBe('Until she wakes') // canonical English on the wire
-    // the card gives way to the live checklist
-    expect(await screen.findByText('Your shift')).toBeInTheDocument()
-    expect(screen.queryByText('You’re on duty')).not.toBeInTheDocument()
+    // accepting closes the sheet; the header button now names the running shift
+    expect(await screen.findByLabelText('Your shift')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Start my shift')).not.toBeInTheDocument()
   })
 
   it('a pending ask of mine reads as waiting, not as "start"', async () => {
+    const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({
       shift: { id: 12, state: 'requested', requester_id: 1, user_id: null, note: 'Can you take him?', requested_at: Date.now() - 4 * 60_000 },
     }))
     renderApp()
 
-    // card pill and footer shortcut both name the wait
-    expect(await screen.findAllByText('Waiting for Sam')).toHaveLength(2)
-    expect(screen.getByText('Waiting for Sam to take over')).toBeInTheDocument()
+    // the footer shortcut names the wait, and so does the header button
+    expect(await screen.findByText('Waiting for Sam')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Waiting for Sam')
+    expect(s.getByText('Waiting for Sam to take over')).toBeInTheDocument()
     // accepting your own ask is a 422 server-side, so the CTA nudges instead
-    expect(screen.getByText('Ask again')).toBeInTheDocument()
-    expect(screen.queryByText('Start my shift')).not.toBeInTheDocument()
+    expect(s.getByText('Ask again')).toBeInTheDocument()
+    expect(s.queryByText('Start my shift')).not.toBeInTheDocument()
   })
 })
 
 describe('a shift that is actually open', () => {
-  it('my active shift shows the checklist, not the start card', async () => {
+  it('my active shift shows the checklist, not the start framing', async () => {
+    const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1) }))
     renderApp()
 
-    expect(await screen.findByText('Your shift')).toBeInTheDocument()
-    expect(screen.getByText('Add to plan')).toBeInTheDocument()
-    expect(screen.queryByText('You’re on duty')).not.toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Your shift')
+    expect(s.getByText('Your shift')).toBeInTheDocument()
+    expect(s.getByText('Add to plan')).toBeInTheDocument()
+    expect(s.queryByText('Start your shift')).not.toBeInTheDocument()
   })
 
   it('the partner’s active shift clears a plan left over from mine', async () => {
     // duty moved to Sam while this device was asleep; the cached plan must not
     // paint a second, stale checklist beside theirs
+    const user = userEvent.setup()
     seedSignedIn({ plan: [{ id: 'p9', type: 'bottle', at: Date.now() + 3600_000 }] })
     routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 2, shift: activeShift(2) }))
     renderApp()
 
-    expect(await screen.findByText('Sam’s shift')).toBeInTheDocument()
-    expect(screen.queryByText('Your shift')).not.toBeInTheDocument()
-    expect(screen.queryByText('You’re on duty')).not.toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Sam’s shift')
+    expect(s.getByText('Sam’s shift')).toBeInTheDocument()
+    expect(s.getByText('Take over from Sam')).toBeInTheDocument()
+    expect(s.queryByText('Your shift')).not.toBeInTheDocument()
+  })
+
+  it('Now itself stays clear of shift cards — only the header carries the state', async () => {
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1) }))
+    renderApp()
+
+    await screen.findByLabelText('Your shift')
+    // the sheet is unmounted, so nothing shift-shaped is on the page yet
+    expect(document.querySelector('[style*="z-index: 50"]')).toBeNull()
+    expect(screen.queryByText('Add to plan')).not.toBeInTheDocument()
   })
 })
 
 describe('the ask carries the plan its author wrote', () => {
   const openAsk = async user => {
-    await user.click((await screen.findAllByText('Start my shift')).at(-1)) // footer → duty sheet
+    await openShiftSheet(user, 'Start my shift')
     await user.click(await settled(await screen.findByText('Hand off to Sam')))
   }
 
@@ -191,6 +225,7 @@ describe('the ask carries the plan its author wrote', () => {
     }))
     renderApp()
 
+    // an incoming ask is the one shift card Now still owns — it needs answering
     expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
     expect(screen.getByText(/^Nursing ~/)).toBeInTheDocument()
     expect(screen.queryByText(/^Feed ~/)).not.toBeInTheDocument()
@@ -234,7 +269,7 @@ describe('the ask carries the plan its author wrote', () => {
 
 describe('the plan is editable, not take-it-or-leave-it', () => {
   const openAsk = async user => {
-    await user.click((await screen.findAllByText('Start my shift')).at(-1))
+    await openShiftSheet(user, 'Start my shift')
     await user.click(await settled(await screen.findByText('Hand off to Sam')))
   }
 
@@ -286,14 +321,15 @@ describe('the plan is editable, not take-it-or-leave-it', () => {
     routes['POST /shifts/plan'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
     renderApp()
 
-    expect(await screen.findByText('Your shift')).toBeInTheDocument()
-    await user.click(screen.getAllByLabelText('Remove')[0])
+    const s = await openShiftSheet(user, 'Your shift')
+    await user.click(s.getAllByLabelText('Remove')[0])
 
     await waitFor(() => expect(body).toBeTruthy())
     expect(body.plan.map(p => p.id)).toEqual(['p2'])
   })
 
   it('a logged item can no longer be moved or dropped', async () => {
+    const user = userEvent.setup()
     seedSignedIn({
       entries: [...feeds(), { id: 'done', type: 'bottle', t: Date.now() - 30 * 60_000, detail: 4, deleted: false, by: 1, babyId: null }],
     })
@@ -308,14 +344,15 @@ describe('the plan is editable, not take-it-or-leave-it', () => {
     }))
     renderApp()
 
-    expect(await screen.findByText('Your shift')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Your shift')
     // one row is done and frozen; only the pending one stays editable
-    expect(screen.getAllByLabelText('Remove')).toHaveLength(1)
+    expect(s.getAllByLabelText('Remove')).toHaveLength(1)
   })
 })
 
 describe('unfinished plan items outlive the shift', () => {
   it('a missed dose carries into the next draft; a missed feed does not', async () => {
+    const user = userEvent.setup()
     seedSignedIn()
     // Sam's shift ended with a meds item and a feed item, neither logged
     routes['GET /state'] = () => okJson(stateFixture({
@@ -333,17 +370,19 @@ describe('unfinished plan items outlive the shift', () => {
     }))
     renderApp()
 
-    // the start card's preview keeps the dose at its original (now late) time
-    expect(await screen.findByText('You’re on duty')).toBeInTheDocument()
-    expect(screen.getByText(/^Meds ~/)).toBeInTheDocument()
+    // the handback report auto-opens; dismiss it to reach the start framing
+    await user.click(await settled(await screen.findByText('Done')))
+    await sheetClosed()
+    const s = await openShiftSheet(user, 'Start my shift')
+    // the draft keeps the dose at its original (now late) time
+    expect(s.getByText('Meds')).toBeInTheDocument()
     // feeds are rhythmic, not owed — the two previewed feeds are fresh predictions
-    const feeds = screen.getAllByText(/^Feed ~/)
-    expect(feeds).toHaveLength(2)
+    expect(s.getAllByText('Feed')).toHaveLength(2)
   })
 })
 
 describe('after a hand back', () => {
-  it('the report lands first, and duty without a shift is a start card behind it', async () => {
+  it('the report lands first, and duty without a shift is a start framing behind it', async () => {
     const user = userEvent.setup()
     // Sam handed back: their shift is completed and duty is mine again — the
     // state that used to leave me with no plan and no way to start one
@@ -362,8 +401,10 @@ describe('after a hand back', () => {
     expect(screen.getByText('“took the 1am bottle slow”')).toBeInTheDocument()
 
     await user.click(await settled(screen.getByText('Done')))
+    await sheetClosed()
 
-    expect(await screen.findByText('You’re on duty')).toBeInTheDocument()
-    expect(screen.getAllByText('Start my shift').length).toBeGreaterThan(0)
+    expect(await screen.findByText('Start my shift')).toBeInTheDocument() // footer shortcut
+    const s = await openShiftSheet(user, 'Start my shift')
+    expect(s.getByText('Start your shift')).toBeInTheDocument()
   })
 })
