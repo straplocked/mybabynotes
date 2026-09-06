@@ -287,7 +287,7 @@ export default class App extends React.Component {
       // Home Assistant / MQTT bridge (settings, parents only) — ephemeral, fetched on expand
       mqttOpen: false, mqttCfg: null, mqttForm: null, mqttBusy: false, mqttTestResult: null, mqttError: null,
       notifyPrefs: null, notifyPrefsDirty: false, vapidKey: null, pushOn: false, pushBusy: false,
-      shiftOpen: false, shiftIn: false, shiftLeaving: false, shiftMode: null, planDraft: null, planOff: [], until: 'Until she wakes', plan: [], handbackNote: '',
+      shiftOpen: false, shiftIn: false, shiftLeaving: false, shiftDragY: 0, shiftDragging: false, shiftMode: null, planDraft: null, planOff: [], until: 'Until she wakes', plan: [], handbackNote: '',
       // the ask's note is its own field: a half-typed handback note must not
       // silently become the message you send asking for cover
       askNote: '', askTarget: null, askSeenId: null, planAddOpen: null,
@@ -306,6 +306,10 @@ export default class App extends React.Component {
     // in-flight timer start/stop request counter — while >0 the server's timer
     // list is stale and must not clobber our optimistic rows
     this._timerBusy = 0
+    // one drag gesture, two sheets (see sheetGestures) — the entry sheet has a
+    // tall detent, the shift sheet is one height, so it passes tall: null
+    this.sheetDrag = this.sheetGestures({ y: 'sheetDragY', dragging: 'sheetDragging', tall: 'sheetTall', close: () => this.closeSheet() })
+    this.shiftDrag = this.sheetGestures({ y: 'shiftDragY', dragging: 'shiftDragging', tall: null, close: () => this.closeShift() })
     // no token → cached signed-in screens are stale
     if (!getToken() && !['splash', 'auth'].includes(this.state.screen)) this.state.screen = 'splash'
     // arriving from a password-reset email: ?reset=<token>&email=<addr> — the
@@ -1283,7 +1287,7 @@ export default class App extends React.Component {
     if (!this.state.shiftOpen && !window.history.state?.blShift) {
       try { window.history.pushState({ blShift: true }, '') } catch { /* history blocked — back just exits */ }
     }
-    this.setState(s => ({ shiftOpen: true, shiftLeaving: false, shiftIn: reduceMotion(), ...(typeof fields === 'function' ? fields(s) : fields) }))
+    this.setState(s => ({ shiftOpen: true, shiftLeaving: false, shiftIn: reduceMotion(), shiftDragY: 0, shiftDragging: false, ...(typeof fields === 'function' ? fields(s) : fields) }))
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.state.shiftOpen) this.setState({ shiftIn: true })
     }))
@@ -1325,7 +1329,10 @@ export default class App extends React.Component {
   }
   dismissShift = () => {
     if (!this.state.shiftOpen) return
-    this.setState({ shiftOpen: false, shiftIn: false, shiftLeaving: true })
+    // clearing the drag here (not in the gesture's end) is what lets the exit
+    // animate: dragging pins `transition:none`, so it has to lift before the
+    // sheet is told to slide the rest of the way down
+    this.setState({ shiftOpen: false, shiftIn: false, shiftLeaving: true, shiftDragY: 0, shiftDragging: false })
     this._shiftTo = setTimeout(() => {
       this._shiftTo = null
       // marking the report dismissed waits for the exit — flipping it earlier
@@ -1637,55 +1644,74 @@ export default class App extends React.Component {
       this.setState({ sheetLeaving: false, sheetTall: false })
     }, reduceMotion() ? 0 : 340)
   }
-  // handle gestures: drag down dismisses, drag up expands, from tall a short down-drag collapses
-  sheetDragStart = e => {
-    this._sheetDrag = { y0: e.clientY, lastY: e.clientY, lastT: Date.now(), vel: 0 }
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* best-effort; drag still tracks */ }
-    this.setState({ sheetDragging: true })
-  }
-  sheetDragMove = e => {
-    const d = this._sheetDrag; if (!d) return
-    const now = Date.now()
-    d.vel = (e.clientY - d.lastY) / Math.max(1, now - d.lastT)
-    d.lastY = e.clientY; d.lastT = now
-    this.setState({ sheetDragY: e.clientY - d.y0 })
-  }
-  sheetDragEnd = () => {
-    const d = this._sheetDrag; if (!d) return
-    this._sheetDrag = null
-    const dy = this.state.sheetDragY, vel = d.vel
-    const reset = { sheetDragY: 0, sheetDragging: false }
-    // leave the drag state alone on dismiss — the sheet holds its dragged spot
-    // until the (async) animated close carries it the rest of the way down
-    if (dy > 110 || (dy > 30 && vel > 0.55)) return this.closeSheet()
-    if (dy < -40 || vel < -0.55) return this.setState({ ...reset, sheetTall: true })
-    if (this.state.sheetTall && dy > 40) return this.setState({ ...reset, sheetTall: false })
-    this.setState(reset)
-  }
-  // native-sheet gesture: a touch pull-down on the content works like the
-  // handle, but only when the content is scrolled to the top and the touch
-  // didn't start on a control (buttons scrub/tap; native scroll keeps pan-y)
-  sheetBodyDown = e => {
-    if (e.pointerType === 'mouse' || e.target.closest?.('button, input, label')) { this._bodyDrag = null; return }
-    this._bodyDrag = { y0: e.clientY, el: e.currentTarget, active: false }
-  }
-  sheetBodyMove = e => {
-    const b = this._bodyDrag; if (!b) return
-    if (!b.active) {
-      const dy = e.clientY - b.y0
-      if (b.el.scrollTop > 0 || dy < -6) { this._bodyDrag = null; return }
-      if (dy < 10) return
-      b.active = true
-      try { b.el.setPointerCapture(e.pointerId) } catch { /* drag still tracks */ }
-      // re-base at the activation point so the sheet doesn't jump by the slop
-      this._sheetDrag = { y0: e.clientY, lastY: e.clientY, lastT: Date.now(), vel: 0 }
-      this.setState({ sheetDragging: true })
+  // ── bottom-sheet drag ───────────────────────────────────────────────────────
+  // Both sheets grab the same way: drag down dismisses (distance OR a flick),
+  // and a touch pull-down on the content does the same once it's scrolled to
+  // the top. The only difference is the second detent — the entry sheet can be
+  // dragged up to `tall`, the shift sheet has one height, so an up-drag there
+  // rubber-bands and snaps back. `keys.tall` null opts out.
+  // Built once per sheet in the constructor so the handlers stay referentially
+  // stable across renders.
+  sheetGestures(keys) {
+    const { y, dragging, tall, close } = keys
+    const priv = {} // { drag, body } — per-sheet, so two sheets can't cross wires
+    const move = e => {
+      const d = priv.drag; if (!d) return
+      const now = Date.now()
+      d.vel = (e.clientY - d.lastY) / Math.max(1, now - d.lastT)
+      d.lastY = e.clientY; d.lastT = now
+      this.setState({ [y]: e.clientY - d.y0 })
     }
-    this.sheetDragMove(e)
-  }
-  sheetBodyUp = () => {
-    if (this._bodyDrag?.active) this.sheetDragEnd()
-    this._bodyDrag = null
+    const end = () => {
+      const d = priv.drag; if (!d) return
+      priv.drag = null
+      const dy = this.state[y], vel = d.vel
+      const reset = { [y]: 0, [dragging]: false }
+      // leave the drag state alone on dismiss — the sheet holds its dragged spot
+      // until the (async) animated close carries it the rest of the way down
+      if (dy > 110 || (dy > 30 && vel > 0.55)) return close()
+      if (tall) {
+        if (dy < -40 || vel < -0.55) return this.setState({ ...reset, [tall]: true })
+        if (this.state[tall] && dy > 40) return this.setState({ ...reset, [tall]: false })
+      }
+      this.setState(reset)
+    }
+    const grab = e => {
+      priv.drag = { y0: e.clientY, lastY: e.clientY, lastT: Date.now(), vel: 0 }
+      this.setState({ [dragging]: true })
+    }
+    return {
+      start: e => {
+        grab(e)
+        try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* best-effort; drag still tracks */ }
+      },
+      move,
+      end,
+      // native-sheet gesture: a touch pull-down on the content works like the
+      // handle, but only when the content is scrolled to the top and the touch
+      // didn't start on a control (buttons scrub/tap; native scroll keeps pan-y)
+      bodyDown: e => {
+        if (e.pointerType === 'mouse' || e.target.closest?.('button, input, label')) { priv.body = null; return }
+        priv.body = { y0: e.clientY, el: e.currentTarget, active: false }
+      },
+      bodyMove: e => {
+        const b = priv.body; if (!b) return
+        if (!b.active) {
+          const dy = e.clientY - b.y0
+          if (b.el.scrollTop > 0 || dy < -6) { priv.body = null; return }
+          if (dy < 10) return
+          b.active = true
+          try { b.el.setPointerCapture(e.pointerId) } catch { /* drag still tracks */ }
+          // re-base at the activation point so the sheet doesn't jump by the slop
+          grab(e)
+        }
+        move(e)
+      },
+      bodyUp: () => {
+        if (priv.body?.active) end()
+        priv.body = null
+      },
+    }
   }
   pick = k => () => this.setState(s => ({ sel: k, detail: s.sel === k ? s.detail : this.defaultDetail(k), detail2: s.sel === k ? s.detail2 : this.defaultDetail2(k) }))
   // ── chip scrub: tap picks the preset, drag up/down dials a custom value ────
@@ -2284,10 +2310,9 @@ export default class App extends React.Component {
 
       sheetOpen: s.sheet,
       sheetMounted: s.sheet || s.sheetLeaving, sheetShown: s.sheet && s.sheetIn,
-      sheetBodyDown: this.sheetBodyDown, sheetBodyMove: this.sheetBodyMove, sheetBodyUp: this.sheetBodyUp,
+      sheetGrab: this.sheetDrag,
       sheetTranslate: s.sheetDragY > 0 ? s.sheetDragY : (s.sheetTall ? Math.max(s.sheetDragY / 4, -18) : Math.max(s.sheetDragY / 2, -46)),
       sheetDragging: s.sheetDragging, sheetTall: s.sheetTall,
-      sheetDragStart: this.sheetDragStart, sheetDragMove: this.sheetDragMove, sheetDragEnd: this.sheetDragEnd,
       sheetKicker: s.editId ? t('Editing entry')
         : (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
       stampTime: this.clock(shownT),
@@ -2375,6 +2400,11 @@ export default class App extends React.Component {
       }),
       theirShiftLine,
       shiftMounted: shiftUp, shiftShown: s.shiftOpen && s.shiftIn,
+      // same grab as the entry sheet; with no tall detent an up-drag only
+      // rubber-bands, so it borrows the short sheet's /2 resistance
+      shiftGrab: this.shiftDrag,
+      shiftTranslate: s.shiftDragY > 0 ? s.shiftDragY : Math.max(s.shiftDragY / 2, -46),
+      shiftDragging: s.shiftDragging,
       // composing an ask — the plan/window/note you're proposing to someone else
       sheetAsk: shiftUp && !showReport && s.shiftMode === 'ask',
       askTitle: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off'),
@@ -3875,11 +3905,11 @@ export default class App extends React.Component {
                 <img className="bg-art" src="/art/sheet-bg.png" alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
                 <div className="bg-wash" style={S('position:absolute;inset:0;background:rgba(250,246,239,0.7);pointer-events:none')} />
               </div>
-              <div onPointerDown={v.sheetDragStart} onPointerMove={v.sheetDragMove} onPointerUp={v.sheetDragEnd} onPointerCancel={v.sheetDragEnd}
+              <div onPointerDown={v.sheetGrab.start} onPointerMove={v.sheetGrab.move} onPointerUp={v.sheetGrab.end} onPointerCancel={v.sheetGrab.end}
                 style={S('position:relative;z-index:1;flex-shrink:0;padding:13px 0 13px;margin:-10px -16px 0;cursor:grab;touch-action:none')}>
                 <div style={S('width:38px;height:4px;border-radius:99px;background:rgba(38,35,29,0.16);margin:0 auto')} />
               </div>
-              <div onPointerDown={v.sheetBodyDown} onPointerMove={v.sheetBodyMove} onPointerUp={v.sheetBodyUp} onPointerCancel={v.sheetBodyUp}
+              <div onPointerDown={v.sheetGrab.bodyDown} onPointerMove={v.sheetGrab.bodyMove} onPointerUp={v.sheetGrab.bodyUp} onPointerCancel={v.sheetGrab.bodyUp}
                 style={S('position:relative;z-index:1;flex:1;min-height:0;overflow:auto;touch-action:pan-y;overscroll-behavior:contain')}>
 
                 {v.sheetChildren && (
@@ -3991,11 +4021,19 @@ export default class App extends React.Component {
           <div style={{ ...S('position:absolute;inset:0;z-index:50'), pointerEvents: v.shiftShown ? 'auto' : 'none' }}>
             <div onClick={v.closeShift} style={{ ...S('position:absolute;inset:0;background:rgba(30,27,20,0.42);backdrop-filter:blur(2px);transition:opacity 0.3s ease'), opacity: v.shiftShown ? 1 : 0 }} />
             <div style={{
-              ...S('position:absolute;left:0;right:0;bottom:0;background:#FAF6EF;border-radius:34px 34px 0 0;padding:10px 16px 22px;box-shadow:0 -12px 40px rgba(0,0,0,0.18);max-height:min(760px, 88dvh);overflow:auto'),
-              transform: v.shiftShown ? 'translateY(0)' : 'translateY(105%)',
-              transition: 'transform 0.34s cubic-bezier(0.32,0.72,0,1)',
+              ...S('position:absolute;left:0;right:0;bottom:0;background:#FAF6EF;border-radius:34px 34px 0 0;padding:10px 16px 22px;box-shadow:0 -12px 40px rgba(0,0,0,0.18);max-height:min(760px, 88dvh);overflow:hidden;display:flex;flex-direction:column'),
+              transform: v.shiftShown ? `translateY(${v.shiftTranslate}px)` : 'translateY(105%)',
+              transition: v.shiftDragging ? 'none' : 'transform 0.34s cubic-bezier(0.32,0.72,0,1)',
             }}>
-              <div style={S('width:38px;height:4px;border-radius:99px;background:rgba(38,35,29,0.16);margin:0 auto 14px')} />
+              {/* the handle is its own non-scrolling strip (like the entry
+                  sheet's): grabbable across the full width, and it stays put
+                  instead of scrolling away with the plan */}
+              <div onPointerDown={v.shiftGrab.start} onPointerMove={v.shiftGrab.move} onPointerUp={v.shiftGrab.end} onPointerCancel={v.shiftGrab.end}
+                style={S('flex-shrink:0;padding:13px 0 13px;margin:-10px -16px 0;cursor:grab;touch-action:none')}>
+                <div style={S('width:38px;height:4px;border-radius:99px;background:rgba(38,35,29,0.16);margin:0 auto')} />
+              </div>
+              <div onPointerDown={v.shiftGrab.bodyDown} onPointerMove={v.shiftGrab.bodyMove} onPointerUp={v.shiftGrab.bodyUp} onPointerCancel={v.shiftGrab.bodyUp}
+                style={S('flex:1;min-height:0;overflow:auto;touch-action:pan-y;overscroll-behavior:contain')}>
 
               {v.sheetAsk && (
                 <>
@@ -4297,6 +4335,7 @@ export default class App extends React.Component {
                   </button>
                 </>
               )}
+              </div>
             </div>
           </div>
         )}

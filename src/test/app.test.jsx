@@ -5,7 +5,7 @@
 // The server is a route-table fetch mock speaking /state's real shape;
 // realtime is stubbed out (tests poke sync() the way Echo would: not at all).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../echo.js', () => ({
@@ -383,5 +383,57 @@ describe('outbox sync', () => {
 
     expect(await screen.findByText(/· offline/)).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem(STORE_KEY)).outbox).toEqual(['e-queued'])
+  })
+})
+
+// ── the entry drawer's grab ─────────────────────────────────────────────────
+// The log sheet and the hand-off sheet share one gesture (App.sheetGestures);
+// shifts.test.jsx pins the half they have in common. What only lives here is
+// the second detent — this drawer can be dragged up to tall, and dragged back
+// down out of it, which is the branch the shift sheet opts out of.
+describe('dragging the log drawer', () => {
+  const panel = () => document.querySelector('[style*="z-index: 40"]').lastChild
+  const handle = () => panel().children[1] // [0] is the background art layer
+
+  const openSheet = async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    return user
+  }
+
+  // jsdom's clock doesn't advance between synthetic events, so every move
+  // reads as an infinite-velocity flick. A final zero-delta move settles the
+  // velocity back to 0, which is what lets the distance branches be tested.
+  const settle = (el, y) => fireEvent.pointerMove(el, { clientY: y, pointerId: 1 })
+
+  it('a pull up expands it to tall, and a pull back down collapses it', async () => {
+    await openSheet()
+    expect(panel().style.height).toBe('auto')
+
+    fireEvent.pointerDown(handle(), { clientY: 400, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientY: 340, pointerId: 1 }) // -60, past the -40 detent
+    fireEvent.pointerUp(handle(), { clientY: 340, pointerId: 1 })
+    expect(panel().style.height).toBe('86vh')
+
+    // from tall, an unhurried pull down collapses rather than dismissing
+    fireEvent.pointerDown(handle(), { clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientY: 360, pointerId: 1 })
+    settle(handle(), 360)
+    fireEvent.pointerUp(handle(), { clientY: 360, pointerId: 1 })
+    expect(panel().style.height).toBe('auto')
+    expect(document.querySelector('[style*="z-index: 40"]')).not.toBeNull()
+  })
+
+  it('an unhurried pull past 110px dismisses it, same threshold as the hand-off drawer', async () => {
+    await openSheet()
+    fireEvent.pointerDown(handle(), { clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientY: 460, pointerId: 1 }) // 160
+    settle(handle(), 460)
+    fireEvent.pointerUp(handle(), { clientY: 460, pointerId: 1 })
+    await waitFor(() => expect(document.querySelector('[style*="z-index: 40"]')).toBeNull())
   })
 })

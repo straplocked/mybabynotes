@@ -408,3 +408,106 @@ describe('after a hand back', () => {
     expect(s.getByText('Start your shift')).toBeInTheDocument()
   })
 })
+
+// ── the grab ────────────────────────────────────────────────────────────────
+// The shift sheet is a drawer like the entry sheet, and it now grabs like one:
+// both run App.sheetGestures, so these pin the shared contract as much as the
+// shift sheet itself. The thresholds under test (110px, or 30px with a flick)
+// live in one place for both drawers.
+const shiftPanel = () => document.querySelector('[style*="z-index: 50"]').lastChild
+const handle = () => shiftPanel().firstElementChild
+const body = () => shiftPanel().children[1]
+const stillOpen = () => sheet().getByText('Plan what’s coming so Sam isn’t guessing.')
+// One pointer stroke. jsdom's clock never advances between synthetic events, so
+// any move reads as an infinite-velocity flick — `flick: false` ends on a
+// zero-delta move that settles velocity back to 0, which is what lets the
+// distance thresholds be tested apart from the velocity one.
+const drag = (el, dy, { flick = false } = {}) => {
+  fireEvent.pointerDown(el, { clientY: 400, pointerId: 1 })
+  fireEvent.pointerMove(el, { clientY: 400 + dy, pointerId: 1 })
+  if (!flick) fireEvent.pointerMove(el, { clientY: 400 + dy, pointerId: 1 })
+  fireEvent.pointerUp(el, { clientY: 400 + dy, pointerId: 1 })
+}
+
+describe('dragging the hand-off drawer', () => {
+  const openIt = async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+    await openShiftSheet(user, 'Start my shift')
+    return user
+  }
+
+  it('a pull down on the handle dismisses it', async () => {
+    await openIt()
+    drag(handle(), 160)
+    await sheetClosed()
+  })
+
+  it('a short pull springs back instead of dismissing', async () => {
+    await openIt()
+    drag(handle(), 20)
+    // still open, and parked at 0 rather than holding the dragged offset
+    expect(shiftPanel().style.transform).toBe('translateY(0px)')
+    expect(stillOpen()).toBeInTheDocument()
+  })
+
+  it('a flick dismisses on velocity, short of the distance threshold', async () => {
+    await openIt()
+    drag(handle(), 50, { flick: true }) // 50px in one frame — under 110, but fast
+    await sheetClosed()
+  })
+
+  it('follows the finger while dragging, with the slide-back transition off', async () => {
+    await openIt()
+    fireEvent.pointerDown(handle(), { clientY: 400, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientY: 460, pointerId: 1 })
+    expect(shiftPanel().style.transform).toBe('translateY(60px)')
+    expect(shiftPanel().style.transition).toBe('none')
+    fireEvent.pointerUp(handle(), { clientY: 460, pointerId: 1 })
+  })
+
+  it('rubber-bands upward rather than expanding — this drawer has one height', async () => {
+    await openIt()
+    fireEvent.pointerDown(handle(), { clientY: 400, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientY: 300, pointerId: 1 }) // -100
+    // halved and capped, unlike the entry sheet which would snap to tall here
+    expect(shiftPanel().style.transform).toBe('translateY(-46px)')
+    fireEvent.pointerUp(handle(), { clientY: 300, pointerId: 1 })
+    expect(shiftPanel().style.transform).toBe('translateY(0px)')
+    expect(stillOpen()).toBeInTheDocument()
+  })
+
+  it('a touch pull-down on the content dismisses too, once it is scrolled to the top', async () => {
+    await openIt()
+    fireEvent.pointerDown(body(), { clientY: 400, pointerId: 1, pointerType: 'touch' })
+    // the first move past the 10px slop only *arms* the drag — it re-bases
+    // there so the sheet doesn't jump, so the offset builds from 415, not 400
+    fireEvent.pointerMove(body(), { clientY: 415, pointerId: 1, pointerType: 'touch' })
+    fireEvent.pointerMove(body(), { clientY: 545, pointerId: 1, pointerType: 'touch' }) // 130
+    fireEvent.pointerMove(body(), { clientY: 545, pointerId: 1, pointerType: 'touch' }) // settle
+    fireEvent.pointerUp(body(), { clientY: 545, pointerId: 1, pointerType: 'touch' })
+    await sheetClosed()
+  })
+
+  it('a touch that starts on a control never becomes a drag', async () => {
+    await openIt()
+    // dispatched on the button, so it bubbles to the body handler with the
+    // button as e.target — the case that would otherwise swallow the tap
+    const btn = sheet().getByRole('button', { name: /Start my shift/i })
+    fireEvent.pointerDown(btn, { clientY: 400, pointerId: 1, pointerType: 'touch' })
+    fireEvent.pointerMove(btn, { clientY: 560, pointerId: 1, pointerType: 'touch' })
+    fireEvent.pointerUp(btn, { clientY: 560, pointerId: 1, pointerType: 'touch' })
+    expect(shiftPanel().style.transform).toBe('translateY(0px)')
+    expect(stillOpen()).toBeInTheDocument()
+  })
+
+  it('a mouse press on the content scrolls, it does not drag the drawer', async () => {
+    await openIt()
+    fireEvent.pointerDown(body(), { clientY: 400, pointerId: 1, pointerType: 'mouse' })
+    fireEvent.pointerMove(body(), { clientY: 560, pointerId: 1, pointerType: 'mouse' })
+    fireEvent.pointerUp(body(), { clientY: 560, pointerId: 1, pointerType: 'mouse' })
+    expect(shiftPanel().style.transform).toBe('translateY(0px)')
+  })
+})
