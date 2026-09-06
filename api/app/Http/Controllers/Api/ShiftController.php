@@ -57,13 +57,33 @@ class ShiftController extends Controller
      */
     public function request(Request $request): JsonResponse
     {
-        $data = $request->validate(['note' => ['nullable', 'string', 'max:500']]);
-        $household = $request->user()->household;
+        $data = $request->validate([
+            ...self::PLAN_RULES,
+            'note' => ['nullable', 'string', 'max:500'],
+            'until' => ['nullable', 'string', 'max:60'],
+            'until_at' => ['nullable', 'numeric'],
+            // who the ask is for; null fans it out to everyone, which is what a
+            // two-adult household always wants
+            'target_id' => ['nullable', 'integer'],
+        ]);
+
+        $user = $request->user();
+        $household = $user->household;
+
+        // an ask can only name someone who is actually in this household
+        $target = isset($data['target_id']) ? $household->othersFor($user)->firstWhere('id', $data['target_id']) : null;
 
         $pending = $household->shifts()->where('state', 'requested')->latest('id')->first();
         $values = [
-            'requester_id' => $request->user()->id,
+            'requester_id' => $user->id,
+            'target_id' => $target?->id,
             'note' => $data['note'] ?? null,
+            // the ask now carries the plan and the window the asker is proposing,
+            // on the columns an active shift already uses — the accepter adjusts
+            // and commits them rather than inventing them from scratch
+            'plan' => $this->intPlan($data['plan'] ?? null),
+            'until' => $data['until'] ?? null,
+            'until_at' => isset($data['until_at']) ? (int) round($data['until_at']) : null,
             'requested_at' => now()->getTimestampMs(),
         ];
         if ($pending) {
@@ -71,10 +91,11 @@ class ShiftController extends Controller
         } else {
             $household->shifts()->create(['state' => 'requested', ...$values]);
         }
-        // anyone in the household can answer the ask, so everyone hears it
+        // an addressed ask pings only its recipient; an open one goes to
+        // everyone, since anyone may answer it either way
         $this->pushHandoffToAll(
-            $household->othersFor($request->user()),
-            [':name is asking you to take over', ['name' => $request->user()->name]],
+            $target ? [$target] : $household->othersFor($user),
+            [':name is asking you to take over', ['name' => $user->name]],
             ($data['note'] ?? null) ?: ['Open mybabynotes to see the handoff.'],
         );
 
@@ -105,13 +126,22 @@ class ShiftController extends Controller
         }
         $shift ??= $household->shifts()->make(['requested_at' => null]);
 
+        // the asker seeds, the accepter adjusts: a client that sends its own
+        // plan/until wins, and one that sends nothing inherits what the ask
+        // proposed rather than silently dropping it
+        $plan = array_key_exists('plan', $data) ? $this->intPlan($data['plan']) : ($shift->plan ?? []);
+        $until = array_key_exists('until', $data) ? $data['until'] : $shift->until;
+        $untilAt = array_key_exists('until_at', $data)
+            ? (isset($data['until_at']) ? (int) round($data['until_at']) : null)
+            : $shift->until_at;
+
         $shift->fill([
             'household_id' => $household->id,
             'state' => 'active',
             'user_id' => $user->id,
-            'plan' => $this->intPlan($data['plan'] ?? null),
-            'until' => $data['until'] ?? null,
-            'until_at' => isset($data['until_at']) ? (int) round($data['until_at']) : null,
+            'plan' => $plan,
+            'until' => $until,
+            'until_at' => $untilAt,
             'until_notified_at' => null, // a fresh acceptance re-arms the once-only "shift over" ping
             'started_at' => now()->getTimestampMs(),
         ])->save();
@@ -119,7 +149,7 @@ class ShiftController extends Controller
         $household->update(['on_duty_user_id' => $user->id]);
 
         HouseholdTouched::send($household->id, 'shift');
-        $until = ($data['until'] ?? null) ?: null;
+        $until = $until ?: null; // an inherited-or-sent label, empty string included
         $requester = $shift->requester_id ? $household->users->firstWhere('id', $shift->requester_id) : null;
         foreach ($household->othersFor($user) as $other) {
             // the one who asked hears "you're covered"; the rest just learn who's on.
@@ -174,12 +204,16 @@ class ShiftController extends Controller
         // leave someone a stale incoming card
         $household->shifts()->where('state', 'requested')->update(['state' => 'cancelled']);
 
-        // duty returns to the shift's stored requester; a self-started shift
-        // (or a requester who has since been removed) falls back to the first
-        // other member — the old two-parent behavior — then to yourself
+        // duty returns to the shift's stored requester — whoever asked for the
+        // cover is owed it back, parent or caregiver alike. A self-started shift
+        // (or a requester who has since been removed) falls back to another
+        // *parent* first: "first other member by id" would hand a newborn to the
+        // night carer just because their account was created earlier.
         $requester = $shift?->requester_id ? $household->users->firstWhere('id', $shift->requester_id) : null;
+        $others = $household->othersFor($user);
         $to = ($requester && $requester->id !== $user->id ? $requester : null)
-            ?? $household->partnerOf($user)
+            ?? $others->first(fn (User $u) => $u->isParent())
+            ?? $others->first()
             ?? $user;
 
         $household->update(['on_duty_user_id' => $to->id]);

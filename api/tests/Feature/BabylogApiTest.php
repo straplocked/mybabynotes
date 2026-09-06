@@ -1146,6 +1146,120 @@ class BabylogApiTest extends TestCase
         $this->assertSame($katId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
     }
 
+    public function test_the_ask_carries_the_plan_and_window_the_asker_proposed(): void
+    {
+        [$ben, $kat] = $this->threeMemberHousehold();
+        $plan = [['id' => 'p1', 'type' => 'bottle', 'at' => 1788385718170.4], ['id' => 'p2', 'type' => 'meds', 'at' => 1788400000000]];
+
+        // the person handing off authors the plan — the receiver used to have to
+        // invent it from their own device's guess at the rhythm
+        $this->postJson('/api/shifts/request', [
+            'note' => 'bottle in the fridge', 'plan' => $plan, 'until' => 'Until 6 AM', 'until_at' => 1788400000000,
+        ], $this->authed($ben))->assertOk();
+
+        $asked = $this->getJson('/api/state', $this->authed($kat))->json('shift');
+        $this->assertSame('requested', $asked['state']);
+        $this->assertSame(1788385718170, $asked['plan'][0]['at']); // fractional ms coerced, same as accept
+        $this->assertSame('meds', $asked['plan'][1]['type']);
+        $this->assertSame('Until 6 AM', $asked['until']);
+
+        // accepting without sending a plan inherits what was proposed rather
+        // than silently blanking it
+        $this->postJson('/api/shifts/accept', [], $this->authed($kat))->assertOk();
+        $live = $this->getJson('/api/state', $this->authed($ben))->json('shift');
+        $this->assertSame('active', $live['state']);
+        $this->assertCount(2, $live['plan']);
+        $this->assertSame('Until 6 AM', $live['until']);
+        $this->assertSame(1788400000000, $live['until_at']);
+    }
+
+    public function test_the_accepter_can_override_the_plan_they_were_sent(): void
+    {
+        [$ben, $kat] = $this->threeMemberHousehold();
+        $this->postJson('/api/shifts/request', [
+            'plan' => [['id' => 'p1', 'type' => 'bottle', 'at' => 1788385718170]], 'until' => 'Until 6 AM',
+        ], $this->authed($ben))->assertOk();
+
+        // seeded, not binding: what the accepter commits is what sticks
+        $this->postJson('/api/shifts/accept', [
+            'plan' => [['id' => 'p9', 'type' => 'nurse', 'at' => 1788390000000]], 'until' => 'Open-ended',
+        ], $this->authed($kat))->assertOk();
+
+        $live = $this->getJson('/api/state', $this->authed($ben))->json('shift');
+        $this->assertCount(1, $live['plan']);
+        $this->assertSame('nurse', $live['plan'][0]['type']);
+        $this->assertSame('Open-ended', $live['until']);
+    }
+
+    public function test_an_addressed_ask_pings_only_its_target(): void
+    {
+        [$ben, $kat, $doula] = $this->threeMemberHousehold();
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        $fake = $this->fakePush();
+        $this->postJson('/api/shifts/request', ['note' => 'can you cover?', 'target_id' => $doulaId], $this->authed($ben))->assertOk();
+
+        // you ask the night carer, not the whole house
+        $this->assertCount(1, $fake->sent);
+        $this->assertSame($doulaId, $fake->sent[0]['user_id']);
+        $this->assertSame($doulaId, $this->getJson('/api/state', $this->authed($kat))->json('shift.target_id'));
+
+        // addressed, not reserved — anyone may still answer it
+        $this->postJson('/api/shifts/accept', [], $this->authed($kat))->assertOk();
+        $this->assertSame('active', $this->getJson('/api/state', $this->authed($ben))->json('shift.state'));
+    }
+
+    public function test_an_ask_cannot_be_addressed_outside_the_household(): void
+    {
+        [$ben, $kat] = $this->threeMemberHousehold();
+        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
+
+        $fake = $this->fakePush();
+        // a stranger's id, and your own — neither is a member you can address
+        $this->postJson('/api/shifts/request', ['target_id' => 99999], $this->authed($ben))->assertOk();
+        $this->assertNull($this->getJson('/api/state', $this->authed($kat))->json('shift.target_id'));
+
+        $this->postJson('/api/shifts/request', ['target_id' => $benId], $this->authed($ben))->assertOk();
+        $this->assertNull($this->getJson('/api/state', $this->authed($kat))->json('shift.target_id'));
+
+        // both fell back to the open ask: two members reached, twice, nobody else
+        $this->assertCount(4, $fake->sent);
+        $this->assertNotContains($benId, array_column($fake->sent, 'user_id'));
+    }
+
+    public function test_handback_falls_back_to_a_parent_not_a_caregiver(): void
+    {
+        // caregiver invited FIRST, so "the first other member by id" is the carer
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $codeCarer = $this->postJson('/api/invite', ['email' => 'doula@example.com', 'role' => 'caregiver'], $this->authed($ben))->json('code');
+        $carer = $this->postJson('/api/register', ['name' => 'Robin', 'email' => 'doula@example.com', 'password' => 'password123', 'invite' => $codeCarer])->json('token');
+        $codeKat = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $codeKat])->json('token');
+        $carerId = $this->getJson('/api/state', $this->authed($carer))->json('user.id');
+        $katId = $this->getJson('/api/state', $this->authed($kat))->json('user.id');
+
+        // Ben starts a shift himself — no requester to return duty to — and hands back
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($ben))->assertOk();
+        $this->postJson('/api/shifts/handback', [], $this->authed($ben))->assertOk();
+
+        $this->assertSame($katId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+        $this->assertNotSame($carerId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+    }
+
+    public function test_handback_still_returns_duty_to_a_caregiver_who_asked_for_it(): void
+    {
+        [$ben, $kat, $doula] = $this->threeMemberHousehold();
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        // preferring parents is a *fallback* rule — an explicit ask still wins,
+        // or a carer could never get a break mid-shift
+        $this->postJson('/api/shifts/request', ['note' => 'stepping out'], $this->authed($doula))->assertOk();
+        $this->postJson('/api/shifts/accept', [], $this->authed($kat))->assertOk();
+        $this->postJson('/api/shifts/handback', [], $this->authed($kat))->assertOk();
+
+        $this->assertSame($doulaId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+    }
+
     public function test_you_cannot_accept_your_own_handoff_request(): void
     {
         [$ben] = $this->threeMemberHousehold();

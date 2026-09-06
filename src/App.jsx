@@ -187,7 +187,7 @@ function applyTheme(theme) {
 const STORE_KEY = 'babylog:v2'
 const PERSIST = ['screen', 'authMode', 'entries', 'babyName', 'nameField', 'inviteField', 'age',
   'me', 'partner', 'invitePending', 'inviteCode', 'inviteMailed', 'onDutyUserId', 'serverShift', 'dismissedShiftId',
-  'outbox', 'lastSync', 'plan', 'until', 'handbackNote', 'settings', 'settingsDirty', 'babyBirthdate',
+  'outbox', 'lastSync', 'plan', 'until', 'handbackNote', 'askNote', 'settings', 'settingsDirty', 'babyBirthdate',
   'notifyPrefs', 'notifyPrefsDirty', 'vapidKey', 'activeTimers', 'timerSides', 'timerSpot',
   // multi-child household: the lists sync via /state; selectedChildId is a
   // DEVICE-LOCAL viewing preference (null = primary child) and never syncs
@@ -277,7 +277,10 @@ export default class App extends React.Component {
       // Home Assistant / MQTT bridge (settings, parents only) — ephemeral, fetched on expand
       mqttOpen: false, mqttCfg: null, mqttForm: null, mqttBusy: false, mqttTestResult: null, mqttError: null,
       notifyPrefs: null, notifyPrefsDirty: false, vapidKey: null, pushOn: false, pushBusy: false,
-      shiftOpen: false, shiftIn: false, shiftLeaving: false, planDraft: null, planOff: [], until: 'Until she wakes', plan: [], handbackNote: '',
+      shiftOpen: false, shiftIn: false, shiftLeaving: false, shiftMode: null, planDraft: null, planOff: [], until: 'Until she wakes', plan: [], handbackNote: '',
+      // the ask's note is its own field: a half-typed handback note must not
+      // silently become the message you send asking for cover
+      askNote: '', askTarget: null, askSeenId: null,
       fx: getFx(), // device-local (babylog:fx), not in PERSIST
     }
     const saved = loadSaved()
@@ -461,6 +464,14 @@ export default class App extends React.Component {
         if (st.baby.age) next.age = st.baby.age
         if (st.baby.birthdate !== undefined) next.babyBirthdate = st.baby.birthdate
       }
+      // an ask proposes a window as well as a plan; adopt it once per ask so
+      // accepting from the card commits what the card showed, while a later
+      // pick in the sheet still wins
+      if (st.shift && st.shift.state === 'requested' && st.user && st.shift.requester_id !== st.user.id
+        && st.shift.id !== s.askSeenId) {
+        next.askSeenId = st.shift.id
+        if (st.shift.until) next.until = st.shift.until
+      }
       // my active shift plan lives on the server copy; someone else's active
       // shift means duty has moved on, so a plan left over from mine has to go
       // (it would otherwise render my old checklist next to their live one)
@@ -637,7 +648,7 @@ export default class App extends React.Component {
       onDutyUserId: null, serverShift: null, dismissedShiftId: null,
       babyName: '', nameField: '', inviteField: '', sheet: false, sheetIn: false, sheetLeaving: false,
       shiftOpen: false, shiftIn: false, shiftLeaving: false, toast: null, toastLeaving: false,
-      plan: [], planDraft: null, planOff: [], handbackNote: '',
+      plan: [], planDraft: null, planOff: [], handbackNote: '', shiftMode: null, askNote: '', askTarget: null,
       settings: { tracking: {}, dismissed: [] }, settingsDirty: false,
       notifyPrefs: null, notifyPrefsDirty: false, pushOn: false,
       activeTimers: [], timerSides: {}, manualDur: false,
@@ -1111,13 +1122,35 @@ export default class App extends React.Component {
     // whole ms: plan timestamps built from this go to the server as integers
     return gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 3 * 3600000
   }
+  // items the last shift's plan never got to. Feeds are deliberately excluded:
+  // a feed isn't owed, it's rhythmic — the next one is always re-predicted from
+  // the last one that actually happened. A dose of anything *is* owed, and
+  // shouldn't evaporate because duty changed hands at 4am.
+  carryOver() {
+    const sh = this.state.serverShift
+    if (!sh || !Array.isArray(sh.plan) || !sh.plan.length) return []
+    const from = sh.started_at || 0, to = sh.ended_at || Date.now()
+    const done = this.live().filter(e => e.t >= from && e.t <= to).sort((a, b) => a.t - b.t)
+    const matched = new Set()
+    return sh.plan.filter(p => {
+      if (FEEDS.includes(p.type)) return false
+      const hit = done.find(e => e.type === p.type && !matched.has(e.id))
+      if (hit) matched.add(hit.id)
+      return !hit
+    })
+  }
   draftPlan() {
     const gap = this.feedGap(), feed = this.lastOf(FEEDS), now = Date.now()
     let t1 = (feed ? feed.t : now) + gap; while (t1 < now + 20 * 60000) t1 += gap
-    const out = [{ id: 'p1', type: 'bottle', at: t1 }, { id: 'p2', type: 'bottle', at: t1 + gap }]
+    // unfinished items keep their original time, so the checklist shows them
+    // running late rather than quietly rescheduling what someone missed
+    const carried = this.carryOver()
+    const out = [...carried, { id: 'p1', type: 'bottle', at: t1 }, { id: 'p2', type: 'bottle', at: t1 + gap }]
     const meds = new Date(); meds.setHours(9, 0, 0, 0); if (meds.getTime() < now) meds.setDate(meds.getDate() + 1)
-    if (this.trackOn('meds') && meds.getTime() - now < 11 * 3600000) out.push({ id: 'p3', type: 'meds', at: meds.getTime() })
-    return out
+    if (this.trackOn('meds') && meds.getTime() - now < 11 * 3600000 && !carried.some(p => p.type === 'meds')) {
+      out.push({ id: 'p3', type: 'meds', at: meds.getTime() })
+    }
+    return out.sort((a, b) => a.at - b.at)
   }
   // "Until 6 AM" → the next matching clock time as ms epoch, resolved here in
   // the accepter's own timezone; wake-dependent / open-ended labels have no
@@ -1240,9 +1273,47 @@ export default class App extends React.Component {
       if (this.state.shiftOpen) this.setState({ shiftIn: true })
     }))
   }
+  // the plan an incoming ask is proposing — what the sheet should open on,
+  // instead of this device's own guess at the rhythm
+  askedPlan() {
+    const sh = this.state.serverShift, me = this.state.me
+    return (sh && sh.state === 'requested' && me && sh.requester_id !== me.id
+      && Array.isArray(sh.plan) && sh.plan.length) ? sh.plan : null
+  }
   openShift = () => {
     if (!this.state.partner) return // no one to hand to yet
-    this.mountShift(s => ({ planDraft: s.planDraft || this.draftPlan() }))
+    const asked = this.askedPlan()
+    this.mountShift(s => ({
+      shiftMode: null,
+      planDraft: asked || s.planDraft || this.draftPlan(),
+      // an ask proposes a window too; adopt it so "confirm" is the default action
+      until: (asked && this.state.serverShift.until) || s.until,
+    }))
+  }
+  // composing a handoff: the plan, window, and note the *asker* is proposing.
+  // This used to be a one-tap link that fired prose — there was nothing to
+  // author, which is most of why it went unused.
+  openAsk = () => {
+    if (!this.state.partner) return
+    this.mountShift(s => ({ shiftMode: 'ask', planDraft: s.planDraft || this.draftPlan(), planOff: [] }))
+  }
+  sendAsk = () => {
+    const s = this.state
+    const plan = (s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
+    const until = s.until, untilAt = this.untilAt(until)
+    const note = s.askNote
+    const target = s.askTarget != null ? this.memberById(s.askTarget) : null
+    const others = s.members.filter(m => s.me && m.id !== s.me.id)
+    this.closeShift()
+    this.setState(st => ({
+      shiftMode: null, planDraft: null, planOff: [],
+      serverShift: { id: -3, state: 'requested', requester_id: st.me?.id, target_id: target?.id ?? null, note, plan, until, until_at: untilAt, requested_at: Date.now() },
+      toast: target
+        ? t('{who} will get your handoff ask', { who: target.name })
+        : t('{who} will get your handoff ask', { who: others.length > 1 ? t('Everyone else') : (st.partner?.name || t('Your partner')) }),
+      undoAction: null,
+    }), () => this.bumpToast())
+    api.shiftRequest(note, plan, until, untilAt, target?.id ?? null).catch(this.shiftFail)
   }
   closeShift = () => {
     // consume our history entry when it's on top; the popstate runs the
@@ -1259,13 +1330,17 @@ export default class App extends React.Component {
       // would swap the report to the take-over view mid-slide
       this.setState(s => ({
         shiftLeaving: false,
+        shiftMode: null, // a closed sheet always reopens on its default framing
         dismissedShiftId: (s.serverShift && s.serverShift.state === 'completed') ? s.serverShift.id : s.dismissedShiftId,
       }))
     }, reduceMotion() ? 0 : 340)
   }
   acceptShift = () => {
     const s = this.state
-    const plan = (s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
+    // same precedence the incoming card and the sheet render with: what you
+    // were shown is what gets submitted. Accepting straight from the card used
+    // to send this device's own draft instead of the plan its author wrote.
+    const plan = (this.askedPlan() || s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
     const until = s.until
     const untilAt = this.untilAt(until)
     this.closeShift()
@@ -1275,7 +1350,7 @@ export default class App extends React.Component {
       const fromId = st.serverShift?.state === 'requested' ? st.serverShift.requester_id
         : (st.onDutyUserId !== st.me?.id ? st.onDutyUserId : null)
       return {
-        shift: undefined, handbackNote: '', plan, planDraft: null, planOff: [],
+        shift: undefined, handbackNote: '', askNote: '', askTarget: null, shiftMode: null, plan, planDraft: null, planOff: [],
         onDutyUserId: st.me?.id ?? st.onDutyUserId,
         serverShift: { id: st.serverShift?.id ?? -1, state: 'active', user_id: st.me?.id, requester_id: st.serverShift?.state === 'requested' ? st.serverShift.requester_id : null, plan, until, until_at: untilAt, started_at: Date.now() },
         // starting a shift while already holding duty isn't a takeover — don't
@@ -1309,17 +1384,23 @@ export default class App extends React.Component {
     })
     api.shiftHandback(note).then(r => { if (r.shift) this.setState({ serverShift: r.shift }) }).catch(this.shiftFail)
   }
+  // "Ask again" — re-send the ask that's already outstanding, which the server
+  // treats as a deliberate nudge (refresh + re-ping). Nothing about it changes,
+  // so it resends the ask's own plan and note rather than whatever happens to
+  // be typed elsewhere in the sheet.
   requestHandoff = () => {
-    const note = this.state.handbackNote
-    const partner = this.state.partner
-    // the server fans the ask out to everyone else in the household
-    const others = this.state.members.filter(m => this.state.me && m.id !== this.state.me.id)
+    const s = this.state, sh = s.serverShift
+    const pending = sh && sh.state === 'requested' && s.me && sh.requester_id === s.me.id ? sh : null
+    if (!pending) return this.openAsk() // nothing outstanding — compose one instead
+    const to = pending.target_id != null ? this.memberById(pending.target_id) : null
+    const others = s.members.filter(m => s.me && m.id !== s.me.id)
     this.closeShift()
-    this.setState(s => ({
-      serverShift: { id: -3, state: 'requested', requester_id: s.me?.id, note, requested_at: Date.now() },
-      toast: t('{who} will get your handoff ask', { who: others.length > 1 ? t('Everyone else') : (partner?.name || t('Your partner')) }), undoAction: null,
-    }), () => this.bumpToast())
-    api.shiftRequest(note).catch(this.shiftFail)
+    this.setState({
+      toast: t('{who} will get your handoff ask', {
+        who: to ? to.name : (others.length > 1 ? t('Everyone else') : (s.partner?.name || t('Your partner'))),
+      }), undoAction: null,
+    }, () => this.bumpToast())
+    api.shiftRequest(pending.note, pending.plan || [], pending.until, pending.until_at, pending.target_id ?? null).catch(this.shiftFail)
   }
 
   // ── quick-log sheet ────────────────────────────────────────────────────────
@@ -1987,7 +2068,11 @@ export default class App extends React.Component {
     // one source for the incoming card's predicted chips and the accept sheet's
     // toggle rows — the card must preview exactly the plan the sheet opens with
     // (and acceptShift submits): the seeded draft when one exists, else the rhythm
-    const draftSrc = s.planDraft || rhythm
+    // an incoming ask now carries the plan its author proposed — that always
+    // wins over this device's own prediction, which is the whole point of
+    // moving authorship to the person handing off. Asks from an older client
+    // (or from before this shipped) carry none, and fall back as before.
+    const draftSrc = this.askedPlan() || s.planDraft || rhythm
     const requestPlan = draftSrc.filter(p => !s.planOff.includes(p.id)).map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
     // what the on-duty-but-not-started card previews: my real plan when a
     // pending ask is hiding my active shift, otherwise the same draft the
@@ -2011,6 +2096,12 @@ export default class App extends React.Component {
       { label: t('Last thing'), value: shiftEntries.length ? t(T(shiftEntries[shiftEntries.length - 1].type).label) + ' · ' + this.clock(shiftEntries[shiftEntries.length - 1].t) : '—' },
     ]
     const reqMins = sh?.requested_at ? Math.round((Date.now() - sh.requested_at) / 60000) : 0
+    // who an ask would go to, and whether they're working for us rather than
+    // co-parenting — the only place role changes anything the user reads
+    // (through memberById, since the derived `partner` carries no role)
+    const askTo = s.askTarget != null ? this.memberById(s.askTarget)
+      : (s.members.length > 2 ? null : (partner ? this.memberById(partner.id) || partner : null))
+    const askToCarer = !!askTo && askTo.role === 'caregiver'
     const theirShiftLine = completed
       ? t('{name} has been on since {time}', { name: dutyName, time: this.clock(sh.ended_at) })
       : t('{name} has {baby} right now', { name: dutyName, baby: s.babyName || t('the baby') })
@@ -2152,7 +2243,8 @@ export default class App extends React.Component {
       relieveInitial: initial(dutyHolder?.name || partner?.name),
       relieveColor: !iAmOnDuty && s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR,
       hbName,
-      askLabel: s.members.length > 2 ? t('Ask for someone to take over — sends your note') : t('Ask {name} to take over — sends your note', { name: partnerName }),
+      // opens the compose sheet now — there's a plan to author, not just a note to fire
+      askLabel: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off to someone else'),
       incoming: incomingReq && s.screen === 'home',
       mine: iAmOnDuty && !!partner && activeMine,
       theirs: activeTheirs && !iAmOnDuty,
@@ -2185,9 +2277,29 @@ export default class App extends React.Component {
       }),
       theirShiftLine,
       shiftMounted: shiftUp, shiftShown: s.shiftOpen && s.shiftIn,
+      // composing an ask — the plan/window/note you're proposing to someone else
+      sheetAsk: shiftUp && !showReport && s.shiftMode === 'ask',
+      askTitle: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off'),
+      // a carer is being told what needs doing; a partner is being asked a favor
+      askSub: askToCarer
+        ? t('They’ll get the plan and can adjust it if something changes.')
+        : t('They can adjust the plan before taking over.'),
+      askPlanLabel: askToCarer ? t('What needs to happen') : t('The plan for your shift'),
+      askNote: s.askNote,
+      setAskNote: e => this.setState({ askNote: e.target.value }),
+      askNotePlaceholder: t('e.g. she went down at 11, bottle’s in the fridge'),
+      // only worth choosing with three or more grown-ups; two adults have an
+      // obvious recipient and shouldn't be made to pick
+      askTargets: s.members.length > 2 ? [{ id: null, name: t('Anyone') }, ...s.members.filter(m => m.id !== me?.id)].map(m => {
+        const on = (s.askTarget ?? null) === (m.id ?? null)
+        return { key: m.id ?? 'any', label: m.name, onTap: () => this.setState({ askTarget: m.id ?? null }),
+          ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
+      }) : null,
+      askCta: askTo ? t('Send to {name}', { name: askTo.name }) : t('Send the ask'),
+      openAsk: this.openAsk, sendAsk: this.sendAsk,
       // one "open a shift" sheet, two framings: relieving someone, or starting
       // your own while already holding duty. sheetMine is the running shift.
-      sheetStart: shiftUp && !showReport && !activeMine,
+      sheetStart: shiftUp && !showReport && s.shiftMode !== 'ask' && !activeMine,
       startPair: !iAmOnDuty, // the them→you handoff graphic only reads when duty moves
       startTitle: !iAmOnDuty ? t('Take over from {name}', { name: dutyName })
         : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start your shift'),
@@ -2199,7 +2311,7 @@ export default class App extends React.Component {
       startFoot: iAmOnDuty
         ? t('{name} sees your plan and how it’s going — without asking.', { name: partnerName })
         : t('{name} gets a “you’re covered” ping and can sleep.', { name: dutyName }),
-      sheetMine: shiftUp && !showReport && activeMine,
+      sheetMine: shiftUp && !showReport && s.shiftMode !== 'ask' && activeMine,
       sheetReport: showReport,
       reportTitle: iHandedBack ? t('{name}’s back on', { name: dutyName }) : t('{name} handed back', { name: shiftOwnerName }),
       openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack, addPlanFeed: this.addPlanFeed,
@@ -3873,6 +3985,66 @@ export default class App extends React.Component {
             }}>
               <div style={S('width:38px;height:4px;border-radius:99px;background:rgba(38,35,29,0.16);margin:0 auto 14px')} />
 
+              {v.sheetAsk && (
+                <>
+                  <div style={S('display:flex;align-items:center;justify-content:center;gap:14px;padding:6px 0 14px')}>
+                    <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
+                      <div style={S(`width:56px;height:56px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{t('You')}</div>
+                    </div>
+                    <Sym style={{ fontSize: 28, color: 'var(--faint)', marginBottom: 22 }}>arrow_forward</Sym>
+                    <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
+                      <div style={S(`width:56px;height:56px;border-radius:999px;background:${v.relieveColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.partnerInitial}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{v.partnerName}</div>
+                    </div>
+                  </div>
+                  <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{v.askTitle}</div>
+                  <div style={S('text-align:center;font-size:13.5px;color:#8C8474;padding-top:4px;text-wrap:pretty')}>{v.askSub}</div>
+
+                  {v.askTargets && (
+                    <div style={S('display:flex;gap:6px;flex-wrap:wrap;padding-top:14px')}>
+                      {v.askTargets.map(c => (
+                        <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;min-width:80px;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:14px')}>
+                    <div style={S('display:flex;align-items:center;justify-content:space-between;padding:10px 0 4px')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.askPlanLabel}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#B5AC98")}>{t('from the usual rhythm')}</div>
+                    </div>
+                    {v.requestPlanRows.map((p, i) => (
+                      <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
+                        <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
+                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{p.label}</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
+                        <button type="button" onClick={p.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
+                          <Sym style={{ fontSize: 22, color: p.toggleColor }}>{p.toggleIcon}</Sym>
+                        </button>
+                      </div>
+                    ))}
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
+                    <div style={S('display:flex;gap:6px;padding-top:6px')}>
+                      {v.untilOptions.map((u, i) => (
+                        <button key={i} type="button" onClick={u.onTap} style={S(`flex:1;background:${u.bg};border:1px solid ${u.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${u.fg};cursor:pointer`)}>{u.label}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:12px 16px;margin-top:10px;display:flex;flex-direction:column;gap:8px')}>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Anything they should know')}</div>
+                    <input value={v.askNote} onChange={v.setAskNote} placeholder={v.askNotePlaceholder} style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
+                  </div>
+
+                  <button type="button" onClick={v.sendAsk} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
+                    <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>send</Sym>
+                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.askCta}</div>
+                  </button>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t('Duty moves when they accept — you stay on until then.')}</div>
+                </>
+              )}
+
               {v.sheetStart && (
                 <>
                   <div style={S('display:flex;align-items:center;justify-content:center;gap:14px;padding:6px 0 14px')}>
@@ -3931,8 +4103,8 @@ export default class App extends React.Component {
                     <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.startCta}</div>
                   </button>
                   {v.canRequest && (
-                    <button type="button" onClick={v.requestHandoff} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
-                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>notifications</Sym>
+                    <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
+                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>swap_horiz</Sym>
                       {v.askLabel}
                     </button>
                   )}
@@ -3966,8 +4138,8 @@ export default class App extends React.Component {
                     <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('Hand back to {name}', { name: v.hbName })}</div>
                   </button>
                   {v.canRequest && (
-                    <button type="button" onClick={v.requestHandoff} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
-                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>notifications</Sym>
+                    <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
+                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>swap_horiz</Sym>
                       {v.askLabel}
                     </button>
                   )}

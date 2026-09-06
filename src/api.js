@@ -66,7 +66,11 @@ export const api = {
   // baby_id absent → primary child; id is our client-generated timer id (entry-style)
   timerStart: (type, babyId, id) => call('/timer/start', { method: 'POST', body: { type, ...(babyId != null ? { baby_id: babyId } : {}), ...(id ? { id } : {}) } }),
   timerStop: id => call('/timer/stop', { method: 'POST', ...(id ? { body: { id } } : {}) }),
-  shiftRequest: note => call('/shifts/request', { method: 'POST', body: { note } }),
+  // the ask carries what the person handing off is proposing — plan, window,
+  // and optionally who it's for; the accepter adjusts before committing
+  shiftRequest: (note, plan, until, untilAt, targetId) => call('/shifts/request', {
+    method: 'POST', body: { note, plan, until, until_at: untilAt, target_id: targetId ?? null },
+  }),
   shiftAccept: (plan, until, untilAt) => call('/shifts/accept', { method: 'POST', body: { plan, until, until_at: untilAt } }), // until_at: ms epoch or null
   shiftPlan: plan => call('/shifts/plan', { method: 'POST', body: { plan } }),
   shiftHandback: note => call('/shifts/handback', { method: 'POST', body: { note } }),

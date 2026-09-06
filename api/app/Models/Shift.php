@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Shift extends Model
 {
     protected $fillable = [
-        'household_id', 'state', 'requester_id', 'user_id', 'note', 'plan', 'until',
+        'household_id', 'state', 'requester_id', 'target_id', 'user_id', 'note', 'plan', 'until',
         'until_at', 'until_notified_at', 'requested_at', 'started_at', 'ended_at', 'handback_note',
     ];
 

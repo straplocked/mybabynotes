@@ -93,7 +93,7 @@ The single polling/converge endpoint.
   "onDutyUserId": 1,
   "settings": { "tracking": {"diapers": false}, "dismissed": ["meds"], "widgets": ["feeds","sleep"],
                 "unit": "oz", "theme": {"accent":"plum","bg":"mist"}, "medName": "Vitamin D" },  // or null
-  "shift":   { "id": 3, "state": "requested|active|completed|cancelled", "requester_id": 1,
+  "shift":   { "id": 3, "state": "requested|active|completed|cancelled", "requester_id": 1, "target_id": null,
                "user_id": 2, "note": "…", "plan": [{"id":"p1","type":"bottle","at":1750000000000}],
                "until": "Until 6 AM", "until_at": 1750000000000, "until_notified_at": null,
                "requested_at": 0, "started_at": 0, "ended_at": 0,
@@ -173,16 +173,16 @@ The live nursing/pump/sleep/tummy-time timers. **Timers stack** — a nursing ti
 Shifts are household-level (who has the kids), not per child. Any member — parent or caregiver — can take part.
 
 ### `POST /shifts/request`
-`{ note? }` — any member (on duty or not — there's no ownership check) asks the rest of the household to take over; the push fans out to every other member. Asking again while a request is pending **refreshes it and re-pings** (a deliberate nudge, not a no-op).
+`{ note?, plan?: [{id,type,at}] (≤20), until?, until_at?, target_id? }` — any member (on duty or not — there's no ownership check) asks the household to take over. The ask **carries what the asker is proposing**: the plan (same `numeric` → int coercion on `at` as `/shifts/accept`), the window, and a note. `target_id` addresses it to one member and narrows the push to them; null (or an id outside the household, or your own) fans it out to every other member. Addressed or not, anyone may answer it. Asking again while a request is pending **refreshes it and re-pings** (a deliberate nudge, not a no-op).
 
 ### `POST /shifts/accept`
-`{ plan?: [{id,type,at}] (≤20), until?, until_at? }` — accepts the pending request (or starts a shift outright). Accepting **your own** request → 422, the ask stays open. Sets duty to caller, `state=active`, returns the shift; the requester is pushed "you're covered", everyone else "…is on duty now". `at` is `numeric` and coerced to integer ms — the client derives it from an averaged feed gap, and a fractional value must never reject the whole handoff.
+`{ plan?: [{id,type,at}] (≤20), until?, until_at? }` — accepts the pending request (or starts a shift outright). The asker seeds, the accepter commits: **omitted** `plan`/`until`/`until_at` inherit whatever the pending ask proposed, while any value you send wins (including an empty plan). Accepting **your own** request → 422, the ask stays open. Sets duty to caller, `state=active`, returns the shift; the requester is pushed "you're covered", everyone else "…is on duty now". `at` is `numeric` and coerced to integer ms — the client derives it from an averaged feed gap, and a fractional value must never reject the whole handoff.
 
 ### `POST /shifts/plan`
 `{ plan: [...] }` — replaces the plan on the caller's active shift (no-op if none). Same `numeric` → int coercion on `at`.
 
 ### `POST /shifts/handback`
-`{ note? }` — completes the caller's active shift, stores `handback_note`, and returns duty to **the shift's stored `requester_id`** (a self-started shift, or one whose requester was removed, falls back to the first other member, then to the caller). Cancels any still-pending request. Returns the shift. Clients render the report from synced entries between `started_at`/`ended_at`.
+`{ note? }` — completes the caller's active shift, stores `handback_note`, and returns duty to **the shift's stored `requester_id`** — whoever asked for the cover gets it back, parent or caregiver alike. A self-started shift (or one whose requester was removed) falls back to another **parent** first, then any other member, then the caller: duty must not land on a night carer just because their account is older. Cancels any still-pending request. Returns the shift. Clients render the report from synced entries between `started_at`/`ended_at`.
 
 ## Websockets
 

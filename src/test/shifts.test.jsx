@@ -61,6 +61,14 @@ const seedSignedIn = (over = {}) => {
 
 const renderApp = () => render(<App smartPrefill={true} timeStep="5" unit="oz" />)
 
+// the sheet mounts off-screen and only takes pointers after its two-frame
+// slide-up; every re-mount (e.g. switching into compose mode) repeats it
+const settled = async el => {
+  const overlay = el.closest('[style*="z-index: 50"]')
+  await waitFor(() => expect(getComputedStyle(overlay).pointerEvents).toBe('auto'))
+  return el
+}
+
 const activeShift = (userId, over = {}) => ({
   id: 11, state: 'active', user_id: userId, requester_id: null,
   plan: [{ id: 'p1', type: 'bottle', at: Date.now() + 40 * 60_000 }],
@@ -143,6 +151,113 @@ describe('a shift that is actually open', () => {
   })
 })
 
+describe('the ask carries the plan its author wrote', () => {
+  const openAsk = async user => {
+    await user.click((await screen.findAllByText('Start my shift')).at(-1)) // footer → duty sheet
+    await user.click(await settled(await screen.findByText('Hand off to Sam')))
+  }
+
+  it('composing a handoff sends the plan, window, and note — not just prose', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    let body
+    routes['POST /shifts/request'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await openAsk(user)
+    await user.type(await settled(await screen.findByPlaceholderText(/she went down at 11/)), 'bottle in the fridge')
+    await user.click(screen.getByText('Send to Sam'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.note).toBe('bottle in the fridge')
+    expect(body.plan.length).toBeGreaterThan(0)
+    expect(body.until).toBe('Until she wakes')
+    expect(body.target_id).toBeNull() // two adults — no one to disambiguate
+  })
+
+  it('the receiver sees the sender’s plan, not their own device’s guess', async () => {
+    seedSignedIn()
+    // Sam asks, proposing a nurse at a time this device would never predict
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: 2,
+      shift: {
+        id: 21, state: 'requested', requester_id: 2, target_id: null, note: 'so tired',
+        plan: [{ id: 'x1', type: 'nurse', at: Date.now() + 90 * 60_000 }],
+        until: 'Until 6 AM', until_at: null, requested_at: Date.now() - 60_000,
+      },
+    }))
+    renderApp()
+
+    expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
+    expect(screen.getByText(/^Nursing ~/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Feed ~/)).not.toBeInTheDocument()
+  })
+
+  it('accepting from the card submits the plan it showed, not a local draft', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    const proposed = [{ id: 'x1', type: 'nurse', at: Date.now() + 90 * 60_000 }]
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: 2,
+      shift: {
+        id: 24, state: 'requested', requester_id: 2, target_id: null, note: 'so tired',
+        plan: proposed, until: 'Until 6 AM', until_at: null, requested_at: Date.now() - 60_000,
+      },
+    }))
+    let body
+    routes['POST /shifts/accept'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true, shift: activeShift(1, { plan: proposed }) }) }
+    renderApp()
+
+    await user.click(await screen.findByText('I’ve got him'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.plan.map(p => p.type)).toEqual(['nurse'])
+    expect(body.until).toBe('Until 6 AM') // the window they proposed, not this device's default
+  })
+
+  it('an ask with no plan still falls back to the local draft', async () => {
+    // an installed client that predates plan-carrying asks
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: 2,
+      shift: { id: 22, state: 'requested', requester_id: 2, note: 'take him?', requested_at: Date.now() },
+    }))
+    renderApp()
+
+    expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
+    expect(screen.getAllByText(/^Feed ~/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('unfinished plan items outlive the shift', () => {
+  it('a missed dose carries into the next draft; a missed feed does not', async () => {
+    seedSignedIn()
+    // Sam's shift ended with a meds item and a feed item, neither logged
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: 1,
+      settings: { tracking: { meds: true }, dismissed: [] },
+      shift: {
+        id: 23, state: 'completed', user_id: 2, requester_id: 1,
+        plan: [
+          { id: 'm1', type: 'meds', at: Date.now() - 3 * 3600_000 },
+          { id: 'b1', type: 'bottle', at: Date.now() - 2 * 3600_000 },
+        ],
+        started_at: Date.now() - 5 * 3600_000, ended_at: Date.now() - 60_000,
+        handback_note: null,
+      },
+    }))
+    renderApp()
+
+    // the start card's preview keeps the dose at its original (now late) time
+    expect(await screen.findByText('You’re on duty')).toBeInTheDocument()
+    expect(screen.getByText(/^Meds ~/)).toBeInTheDocument()
+    // feeds are rhythmic, not owed — the two previewed feeds are fresh predictions
+    const feeds = screen.getAllByText(/^Feed ~/)
+    expect(feeds).toHaveLength(2)
+  })
+})
+
 describe('after a hand back', () => {
   it('the report lands first, and duty without a shift is a start card behind it', async () => {
     const user = userEvent.setup()
@@ -162,10 +277,7 @@ describe('after a hand back', () => {
     expect(await screen.findByText('Sam handed back')).toBeInTheDocument()
     expect(screen.getByText('“took the 1am bottle slow”')).toBeInTheDocument()
 
-    // the sheet only takes pointers once its two-frame slide-up has landed
-    const done = screen.getByText('Done')
-    await waitFor(() => expect(getComputedStyle(done.closest('[style*="z-index: 50"]')).pointerEvents).toBe('auto'))
-    await user.click(done)
+    await user.click(await settled(screen.getByText('Done')))
 
     expect(await screen.findByText('You’re on duty')).toBeInTheDocument()
     expect(screen.getAllByText('Start my shift').length).toBeGreaterThan(0)
