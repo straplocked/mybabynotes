@@ -6,7 +6,7 @@
 // neither opens a shift. Whoever lands in that gap gets the "You're on duty"
 // start card, not a blank screen where the checklist should be.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../echo.js', () => ({
@@ -68,6 +68,8 @@ const settled = async el => {
   await waitFor(() => expect(getComputedStyle(overlay).pointerEvents).toBe('auto'))
   return el
 }
+// the open sheet, for queries whose text also appears on the Now screen behind it
+const sheet = () => within(document.querySelector('[style*="z-index: 50"]'))
 
 const activeShift = (userId, over = {}) => ({
   id: 11, state: 'active', user_id: userId, requester_id: null,
@@ -227,6 +229,88 @@ describe('the ask carries the plan its author wrote', () => {
 
     expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
     expect(screen.getAllByText(/^Feed ~/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('the plan is editable, not take-it-or-leave-it', () => {
+  const openAsk = async user => {
+    await user.click((await screen.findAllByText('Start my shift')).at(-1))
+    await user.click(await settled(await screen.findByText('Hand off to Sam')))
+  }
+
+  it('a time you pick on a drafted row is the time that gets sent', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    let body
+    routes['POST /shifts/request'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await openAsk(user)
+    const [first] = await screen.findAllByDisplayValue(/^\d\d:\d\d$/)
+    await settled(first)
+    fireEvent.change(first, { target: { value: '02:15' } }) // what the native picker does
+    await user.click(screen.getByText('Send to Sam'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    const at = new Date(body.plan[0].at)
+    expect([at.getHours(), at.getMinutes()]).toEqual([2, 15])
+  })
+
+  it('adding to the plan lets you choose what, not just another feed', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ settings: { tracking: {}, dismissed: [] } })
+    routes['GET /state'] = () => okJson(stateFixture())
+    let body
+    routes['POST /shifts/request'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await openAsk(user)
+    await user.click(await settled(await screen.findByText('Add to plan')))
+    await user.click(sheet().getByText('Bath')) // "Bath" is also a since-card behind the sheet
+    await user.click(screen.getByText('Send to Sam'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.plan.map(p => p.type)).toContain('bath')
+  })
+
+  it('dropping an item from a running shift pushes the shorter plan', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    const plan = [
+      { id: 'p1', type: 'bottle', at: Date.now() + 40 * 60_000 },
+      { id: 'p2', type: 'meds', at: Date.now() + 4 * 3600_000 },
+    ]
+    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { plan }) }))
+    let body
+    routes['POST /shifts/plan'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    expect(await screen.findByText('Your shift')).toBeInTheDocument()
+    await user.click(screen.getAllByLabelText('Remove')[0])
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.plan.map(p => p.id)).toEqual(['p2'])
+  })
+
+  it('a logged item can no longer be moved or dropped', async () => {
+    seedSignedIn({
+      entries: [...feeds(), { id: 'done', type: 'bottle', t: Date.now() - 30 * 60_000, detail: 4, deleted: false, by: 1, babyId: null }],
+    })
+    routes['GET /state'] = () => okJson(stateFixture({
+      shift: activeShift(1, {
+        started_at: Date.now() - 90 * 60_000,
+        plan: [
+          { id: 'p1', type: 'bottle', at: Date.now() - 35 * 60_000 }, // matched by the logged feed
+          { id: 'p2', type: 'meds', at: Date.now() + 3 * 3600_000 },
+        ],
+      }),
+    }))
+    renderApp()
+
+    expect(await screen.findByText('Your shift')).toBeInTheDocument()
+    // one row is done and frozen; only the pending one stays editable
+    expect(screen.getAllByLabelText('Remove')).toHaveLength(1)
   })
 })
 

@@ -280,7 +280,7 @@ export default class App extends React.Component {
       shiftOpen: false, shiftIn: false, shiftLeaving: false, shiftMode: null, planDraft: null, planOff: [], until: 'Until she wakes', plan: [], handbackNote: '',
       // the ask's note is its own field: a half-typed handback note must not
       // silently become the message you send asking for cover
-      askNote: '', askTarget: null, askSeenId: null,
+      askNote: '', askTarget: null, askSeenId: null, planAddOpen: null,
       fx: getFx(), // device-local (babylog:fx), not in PERSIST
     }
     const saved = loadSaved()
@@ -464,13 +464,17 @@ export default class App extends React.Component {
         if (st.baby.age) next.age = st.baby.age
         if (st.baby.birthdate !== undefined) next.babyBirthdate = st.baby.birthdate
       }
-      // an ask proposes a window as well as a plan; adopt it once per ask so
-      // accepting from the card commits what the card showed, while a later
-      // pick in the sheet still wins
-      if (st.shift && st.shift.state === 'requested' && st.user && st.shift.requester_id !== st.user.id
-        && st.shift.id !== s.askSeenId) {
-        next.askSeenId = st.shift.id
+      // An incoming ask proposes both a plan and a window. Adopt them into the
+      // local draft once per ask, then leave them alone: from there they're
+      // *yours* to edit before accepting, and a re-poll must not stomp a time
+      // you just changed. Keyed on requested_at as well as id, so the asker
+      // re-sending a revised ask (same row, new stamp) re-seeds.
+      const askKey = st.shift && st.shift.state === 'requested' ? st.shift.id + ':' + (st.shift.requested_at || 0) : null
+      if (askKey && st.user && st.shift.requester_id !== st.user.id && askKey !== s.askSeenId) {
+        next.askSeenId = askKey
+        next.planOff = []
         if (st.shift.until) next.until = st.shift.until
+        if (Array.isArray(st.shift.plan) && st.shift.plan.length) next.planDraft = st.shift.plan
       }
       // my active shift plan lives on the server copy; someone else's active
       // shift means duty has moved on, so a plan left over from mine has to go
@@ -1273,29 +1277,16 @@ export default class App extends React.Component {
       if (this.state.shiftOpen) this.setState({ shiftIn: true })
     }))
   }
-  // the plan an incoming ask is proposing — what the sheet should open on,
-  // instead of this device's own guess at the rhythm
-  askedPlan() {
-    const sh = this.state.serverShift, me = this.state.me
-    return (sh && sh.state === 'requested' && me && sh.requester_id !== me.id
-      && Array.isArray(sh.plan) && sh.plan.length) ? sh.plan : null
-  }
   openShift = () => {
     if (!this.state.partner) return // no one to hand to yet
-    const asked = this.askedPlan()
-    this.mountShift(s => ({
-      shiftMode: null,
-      planDraft: asked || s.planDraft || this.draftPlan(),
-      // an ask proposes a window too; adopt it so "confirm" is the default action
-      until: (asked && this.state.serverShift.until) || s.until,
-    }))
+    this.mountShift(s => ({ shiftMode: null, planDraft: s.planDraft || this.draftPlan(), planAddOpen: null }))
   }
   // composing a handoff: the plan, window, and note the *asker* is proposing.
   // This used to be a one-tap link that fired prose — there was nothing to
   // author, which is most of why it went unused.
   openAsk = () => {
     if (!this.state.partner) return
-    this.mountShift(s => ({ shiftMode: 'ask', planDraft: s.planDraft || this.draftPlan(), planOff: [] }))
+    this.mountShift(s => ({ shiftMode: 'ask', planDraft: s.planDraft || this.draftPlan(), planOff: [], planAddOpen: null }))
   }
   sendAsk = () => {
     const s = this.state
@@ -1337,10 +1328,10 @@ export default class App extends React.Component {
   }
   acceptShift = () => {
     const s = this.state
-    // same precedence the incoming card and the sheet render with: what you
-    // were shown is what gets submitted. Accepting straight from the card used
-    // to send this device's own draft instead of the plan its author wrote.
-    const plan = (this.askedPlan() || s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
+    // the same draft the incoming card and the sheet render: what you were
+    // shown (and may have edited) is what gets submitted. Accepting straight
+    // from the card used to send this device's own guess instead.
+    const plan = (s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
     const until = s.until
     const untilAt = this.untilAt(until)
     this.closeShift()
@@ -1361,11 +1352,50 @@ export default class App extends React.Component {
     }, () => this.bumpToast())
     api.shiftAccept(plan, until, untilAt).then(r => this.setState({ serverShift: r.shift })).catch(this.shiftFail)
   }
-  addPlanFeed = () => this.setState(s => {
-    const last = s.plan.filter(p => FEEDS.includes(p.type)).sort((a, b) => b.at - a.at)[0]
-    const plan = [...s.plan, { id: 'p' + Date.now(), type: 'bottle', at: (last ? last.at : Date.now()) + this.feedGap() }]
-    return { plan, serverShift: s.serverShift ? { ...s.serverShift, plan } : s.serverShift }
-  }, () => api.shiftPlan(this.state.plan).catch(this.shiftFail))
+  // ── plan editing ───────────────────────────────────────────────────────────
+  // Two plans take the same three operations: the *draft* you're composing a
+  // handoff with (or about to accept), and the *live* plan on your running
+  // shift, which pushes through /shifts/plan. A drafted plan used to be
+  // take-it-or-leave-it — fine when it was only a machine guess, wrong once the
+  // person handing off is the one authoring it.
+  editPlan = (scope, fn) => {
+    const sort = p => [...p].sort((a, b) => a.at - b.at)
+    if (scope === 'live') {
+      this.setState(
+        s => { const plan = sort(fn(s.plan)); return { plan, serverShift: s.serverShift ? { ...s.serverShift, plan } : s.serverShift } },
+        () => api.shiftPlan(this.state.plan).catch(this.shiftFail),
+      )
+    } else {
+      this.setState(s => ({ planDraft: sort(fn(s.planDraft || this.draftPlan())) }))
+    }
+  }
+  // a picked "HH:MM" is a clock time near the one it replaces; dragging it well
+  // back past now means you meant tomorrow's, the same rule the "until" labels use
+  planAt(hm, was) {
+    const [h, m] = String(hm || '').split(':').map(Number)
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return was
+    const d = new Date(was); d.setHours(h, m, 0, 0)
+    if (d.getTime() < Date.now() - 12 * 3600000) d.setDate(d.getDate() + 1)
+    return d.getTime()
+  }
+  setPlanTime = (scope, id) => e => {
+    const hm = e.target.value
+    this.editPlan(scope, plan => plan.map(p => (p.id === id ? { ...p, at: this.planAt(hm, p.at) } : p)))
+  }
+  removePlanItem = (scope, id) => () => this.editPlan(scope, plan => plan.filter(p => p.id !== id))
+  addPlanItem = (scope, type) => () => {
+    this.setState({ planAddOpen: null })
+    this.editPlan(scope, plan => {
+      // a feed lands one rhythm-gap after the last planned feed; anything else
+      // is a one-off with no rhythm to infer, so it starts an hour out and
+      // waits for you to set the time you actually mean
+      const lastFeed = plan.filter(p => FEEDS.includes(p.type)).sort((a, b) => b.at - a.at)[0]
+      const at = FEEDS.includes(type)
+        ? (lastFeed ? lastFeed.at : Date.now()) + this.feedGap()
+        : Date.now() + 3600000
+      return [...plan, { id: 'p' + Date.now(), type, at }]
+    })
+  }
   handBack = () => {
     const note = this.state.handbackNote
     this.setState(s => {
@@ -2046,6 +2076,18 @@ export default class App extends React.Component {
       if (hit) matched.add(hit.id)
       return { ...p, hit }
     })
+    // plan rows carry an invisible <input type="time"> over their time, the
+    // same overlay the log sheet's stamp uses — tap the time, get the native
+    // picker, no new chrome
+    const hm = at => String(new Date(at).getHours()).padStart(2, '0') + ':' + String(new Date(at).getMinutes()).padStart(2, '0')
+    // what a plan can contain: things you schedule. Diapers happen to you.
+    const planAdd = scope => ({
+      open: s.planAddOpen === scope,
+      toggle: () => this.setState(st2 => ({ planAddOpen: st2.planAddOpen === scope ? null : scope })),
+      types: ['bottle', 'nurse', 'pump', 'sleep', 'tummy', 'bath', 'meds']
+        .filter(k => this.typeOn(k))
+        .map(k => ({ key: k, label: t(k === 'bottle' ? 'Feed' : T(k).label), icon: T(k).icon, color: T(k).color, onTap: this.addPlanItem(scope, k) })),
+    })
     let nextSeen = false
     const planRows = plan.map(p => {
       const ty = T(p.type), done = !!p.hit, isNext = !done && !nextSeen; if (isNext) nextSeen = true
@@ -2060,6 +2102,9 @@ export default class App extends React.Component {
         stateIcon: done ? 'check_circle' : isNext ? 'schedule' : 'radio_button_unchecked',
         stateColor: done ? 'var(--accent)' : isNext ? (late ? 'var(--warn)' : 'var(--accent-deep)') : 'var(--dim)',
         textColor: done ? 'var(--soft)' : 'var(--ink)', whenColor: done ? 'var(--soft)' : late ? 'var(--warn)' : 'var(--accent-deep)',
+        // a logged item is history — only what's still ahead can be moved or dropped
+        editable: !done && activeMine,
+        hm: hm(p.at), onTime: this.setPlanTime('live', p.id), onRemove: this.removePlanItem('live', p.id),
       }
     })
     const nextRow = planRows.find(r => r.stateIcon === 'schedule')
@@ -2072,7 +2117,7 @@ export default class App extends React.Component {
     // wins over this device's own prediction, which is the whole point of
     // moving authorship to the person handing off. Asks from an older client
     // (or from before this shipped) carry none, and fall back as before.
-    const draftSrc = this.askedPlan() || s.planDraft || rhythm
+    const draftSrc = s.planDraft || rhythm
     const requestPlan = draftSrc.filter(p => !s.planOff.includes(p.id)).map(p => ({ icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p) + ' ~' + this.clock(p.at) }))
     // what the on-duty-but-not-started card previews: my real plan when a
     // pending ask is hiding my active shift, otherwise the same draft the
@@ -2082,6 +2127,7 @@ export default class App extends React.Component {
     const requestPlanRows = draftSrc.map(p => {
       const off = s.planOff.includes(p.id)
       return { icon: T(p.type).icon, color: T(p.type).color, label: fmtPlanLabel(p), time: '~' + this.clock(p.at),
+        hm: hm(p.at), onTime: this.setPlanTime('draft', p.id),
         toggleIcon: off ? 'toggle_off' : 'toggle_on', toggleColor: off ? 'var(--dim)' : 'var(--accent)',
         onToggle: () => this.setState(st2 => ({ planOff: off ? st2.planOff.filter(x => x !== p.id) : [...st2.planOff, p.id] })) }
     })
@@ -2269,6 +2315,7 @@ export default class App extends React.Component {
       requestAgo: reqMins < 1 ? t('asked just now') : t('asked {n} min ago', { n: reqMins }),
       requestNote: (sh && sh.note) || t('Can you take {name}? Next feeds look like {t1} and {t2} — that’s the usual rhythm.', { name: s.babyName || t('the baby'), t1, t2 }),
       requestPlan, requestPlanRows,
+      planAddDraft: planAdd('draft'), planAddLive: planAdd('live'),
       // the stored `until` stays canonical English — untilAt() regex-parses it
       // and the partner's device re-translates it for display
       untilOptions: ['Until she wakes', 'Until 6 AM', 'Open-ended'].map(u => {
@@ -2314,7 +2361,7 @@ export default class App extends React.Component {
       sheetMine: shiftUp && !showReport && s.shiftMode !== 'ask' && activeMine,
       sheetReport: showReport,
       reportTitle: iHandedBack ? t('{name}’s back on', { name: dutyName }) : t('{name} handed back', { name: shiftOwnerName }),
-      openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack, addPlanFeed: this.addPlanFeed,
+      openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack,
       requestHandoff: this.requestHandoff,
       canRequest: iAmOnDuty && !!partner && !(sh && sh.state === 'requested'),
       shiftSince: t('since {time}', { time: this.clock(shiftStart) }), shiftElapsed: this.elapsed(shiftStart),
@@ -2884,16 +2931,39 @@ export default class App extends React.Component {
                     <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid rgba(38,35,29,0.06)')}>
                       <Sym style={{ fontSize: 21, color: p.stateColor }}>{p.stateIcon}</Sym>
                       <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
-                      <div style={S('flex:1;display:flex;flex-direction:column;gap:1px')}>
+                      <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
                         <div style={S(`font-size:14.5px;font-weight:600;color:${p.textColor}`)}>{p.label}</div>
                         <div style={S('font-size:12px;color:#8C8474')}>{p.sub}</div>
                       </div>
-                      <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                      {p.editable ? (
+                        <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
+                          <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                          <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
+                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                        </label>
+                      ) : (
+                        <div style={S(`font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:${p.whenColor}`)}>{p.when}</div>
+                      )}
+                      {p.editable && (
+                        <button type="button" onClick={p.onRemove} aria-label={t('Remove')} style={S('background:none;border:none;padding:0 0 0 2px;cursor:pointer;display:flex')}>
+                          <Sym style={{ fontSize: 17, color: 'var(--dim)' }}>close</Sym>
+                        </button>
+                      )}
                     </div>
                   ))}
+                  {v.planAddLive.open && (
+                    <div style={S('display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid rgba(38,35,29,0.06)')}>
+                      {v.planAddLive.types.map(ty => (
+                        <button key={ty.key} type="button" onClick={ty.onTap} className="hov-cream" style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px;cursor:pointer;font-family:inherit')}>
+                          <Sym style={{ fontSize: 16, color: ty.color }}>{ty.icon}</Sym>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{ty.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div style={S('display:flex;align-items:center;justify-content:space-between;padding:8px 0 4px;border-top:1px solid rgba(38,35,29,0.06)')}>
-                    <button type="button" onClick={v.addPlanFeed} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
-                      <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>add</Sym>
+                    <button type="button" onClick={v.planAddLive.toggle} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
+                      <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>{v.planAddLive.open ? 'close' : 'add'}</Sym>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
                     </button>
                     <button type="button" onClick={v.openShift} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:4px 0')}>
@@ -4017,13 +4087,32 @@ export default class App extends React.Component {
                     {v.requestPlanRows.map((p, i) => (
                       <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
-                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{p.label}</div>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
+                        <div style={S('flex:1;min-width:0;font-size:14px;font-weight:600;color:#4E4A3F')}>{p.label}</div>
+                        <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
+                          <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
+                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                        </label>
                         <button type="button" onClick={p.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                           <Sym style={{ fontSize: 22, color: p.toggleColor }}>{p.toggleIcon}</Sym>
                         </button>
                       </div>
                     ))}
+                    <div style={S('display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid rgba(38,35,29,0.07)')}>
+                      {v.planAddDraft.open
+                        ? v.planAddDraft.types.map(ty => (
+                          <button key={ty.key} type="button" onClick={ty.onTap} className="hov-cream" style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px;cursor:pointer;font-family:inherit')}>
+                            <Sym style={{ fontSize: 16, color: ty.color }}>{ty.icon}</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{ty.label}</div>
+                          </button>
+                        ))
+                        : (
+                          <button type="button" onClick={v.planAddDraft.toggle} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:2px 0')}>
+                            <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>add</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
+                          </button>
+                        )}
+                    </div>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
                     <div style={S('display:flex;gap:6px;padding-top:6px')}>
                       {v.untilOptions.map((u, i) => (
@@ -4083,13 +4172,32 @@ export default class App extends React.Component {
                     {v.requestPlanRows.map((p, i) => (
                       <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
                         <Sym style={{ fontSize: 18, color: p.color }}>{p.icon}</Sym>
-                        <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{p.label}</div>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
+                        <div style={S('flex:1;min-width:0;font-size:14px;font-weight:600;color:#4E4A3F')}>{p.label}</div>
+                        <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
+                          <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13.5px;color:#26231D")}>{p.time}</div>
+                          <Sym style={{ fontSize: 14, color: 'var(--faint)' }}>edit</Sym>
+                          <input type="time" value={p.hm} onChange={p.onTime} onClick={v.showTimePicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                        </label>
                         <button type="button" onClick={p.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                           <Sym style={{ fontSize: 22, color: p.toggleColor }}>{p.toggleIcon}</Sym>
                         </button>
                       </div>
                     ))}
+                    <div style={S('display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid rgba(38,35,29,0.07)')}>
+                      {v.planAddDraft.open
+                        ? v.planAddDraft.types.map(ty => (
+                          <button key={ty.key} type="button" onClick={ty.onTap} className="hov-cream" style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px;cursor:pointer;font-family:inherit')}>
+                            <Sym style={{ fontSize: 16, color: ty.color }}>{ty.icon}</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#4E4A3F")}>{ty.label}</div>
+                          </button>
+                        ))
+                        : (
+                          <button type="button" onClick={v.planAddDraft.toggle} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;padding:2px 0')}>
+                            <Sym style={{ fontSize: 17, color: 'var(--soft)' }}>add</Sym>
+                            <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{t('Add to plan')}</div>
+                          </button>
+                        )}
+                    </div>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
                     <div style={S('display:flex;gap:6px;padding-top:6px')}>
                       {v.untilOptions.map((u, i) => (

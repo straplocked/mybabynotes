@@ -9,7 +9,7 @@
 
 <!-- screenshots:start -->
 <p align="center">
-  <img src="docs/media/now.png" alt="Now screen — the running shift's plan checklist, since-cards, and today's timeline" width="30%">
+  <img src="docs/media/now.png" alt="Now screen — the running shift's plan checklist with editable times, since-cards, and today's timeline" width="30%">
   <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="30%">
   <img src="docs/media/settings.png" alt="Settings screen — baby profile, appearance, and household options" width="30%">
 </p>
@@ -19,11 +19,11 @@
 
 - **Three taps from pocket to logged.** The entry sheet opens pre-stamped with the current time and a prediction of what you're about to log (alternating nursing sides, last bottle amount, feed-vs-diaper rhythm). Overriding the guess costs one tap; backfilling costs one nudge (−5/−15/−1h).
 - **The whole household, one log — live.** Everyone joins by invite and sees the same log in realtime over websockets; with multiple children, pills on Now and History switch between each child's log. Entries write locally first and sync when there's signal, so 3am logging never waits on the network; queued entries are marked until they flush.
-- **Shifts, not just a log.** "I need to sleep, take him" is a first-class flow. The person handing off *authors* the handoff — a plan drafted from the baby's rhythm that they can toggle and add a note to, an "until" time, and (with three or more adults) a specific person to ask. It lands on the other phone as an actual plan rather than a sentence; they adjust it if they need to, accept, and duty moves. Logged feeds tick the plan off live, the off-duty parent watches progress on a read-only card without asking, a push pings both of you when the "until" passes, and handing back generates a shift summary instead of a "when did you…" conversation. Unfinished items — a dose that never happened — carry into the next shift's plan rather than evaporating with the handoff. Whoever already has the baby can also just start a shift, no ask required.
+- **Shifts, not just a log.** "I need to sleep, take him" is a first-class flow. The person handing off *authors* the handoff — a plan drafted from the baby's rhythm whose items you can retime, drop, or add to (feed, nursing, pump, sleep, tummy time, bath, meds), an "until" time, a note, and (with three or more adults) a specific person to ask. It lands on the other phone as an actual plan rather than a sentence; they adjust it if they need to, accept, and duty moves. Logged feeds tick the plan off live, the off-duty parent watches progress on a read-only card without asking, a push pings both of you when the "until" passes, and handing back generates a shift summary instead of a "when did you…" conversation. Unfinished items — a dose that never happened — carry into the next shift's plan rather than evaporating with the handoff. Whoever already has the baby can also just start a shift, no ask required.
 
 <p align="center">
   <img src="docs/media/duty.png" alt="Now screen while on duty with nothing started — the drafted plan and a Start my shift button" width="30%">
-  <img src="docs/media/handoff.png" alt="Composing a handoff — the plan you're proposing with toggles, an until time, and a note for your partner" width="30%">
+  <img src="docs/media/handoff.png" alt="Composing a handoff — the plan you're proposing, each item retimeable, plus an until time and a note for your partner" width="30%">
   <img src="docs/media/incoming.png" alt="The same handoff on the other phone — your note, the plan you wrote, and one tap to take over" width="30%">
 </p>
 - **Live timers, shared across phones.** Nursing, pumping, sleep, and tummy time run as server-backed start/stop timers visible on both devices; stopping a nursing, sleep, or tummy time timer auto-logs the entry (sleep stamps the nap at wake-up), and stopping a pump timer opens the log sheet with the duration pre-filled so you can add the amount.
