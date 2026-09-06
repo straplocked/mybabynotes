@@ -8,7 +8,8 @@ Honest list of what's missing, stubbed, or deliberately deferred — the startin
 - **Amounts are oz/ml only.** Household-synced unit setting; storage and sync stay oz, so ml renders round to the nearest 5 ml. The comp's `timeStep` and `smartPrefill` props remain unexposed.
 - **Home timeline shows the last 12 entries**, and stats tiles plus the bar charts stay on a fixed 7-day window — day drill-down pages back to the oldest logged day, but there's no month/calendar view.
 - **Entry types are fixed** (bottle, nursing, pump, wet, dirty, both, sleep, tummy time, bath, meds). No custom types and no free-text notes on entries; sleep's optional Nap/Night tag is the only per-entry label, and there's no equivalent on the other types. (Households *can* switch off pump/diapers/sleep/tummy-time/bath/meds tracking and rename the daily med, but can't add types.)
-- **Translations are unreviewed.** The UI ships in 15 languages, but only English is first-party — the other 14 catalogs are machine translations no native speaker has read, and none were checked in-layout, so a long string can still wrap badly on a narrow phone. Language is a per-device pref (never a household setting), so two phones in one household can disagree.
+- **Translations are unreviewed.** The UI ships in 15 languages and the server now matches it (push copy per device, validation and API errors per request, emails per account), but only English is first-party — the other 14 catalogs on each side are machine translations no native speaker has read, and none were checked in-layout, so a long string can still wrap badly on a narrow phone. Language is a per-device pref (never a household setting), so two phones in one household can disagree.
+- **A few surfaces stay English**, some by choice and some by omission: an invite email goes in the **inviter's** language (the invitee has no account yet to have a preference); Home Assistant's MQTT entity names and state values (`nurse`, `wet`, `none`) are wire identifiers that HA automations key on, so they're deliberately untranslated; and names and free text people type — children, members, the note on a handoff ask — are data, so they render exactly as written.
 - **Fonts load from Google's CDN.** `index.html` pulls Nunito and Material Symbols from `fonts.googleapis.com`; the service worker caches them, so only the first load on a fresh device touches a third party — but an instance that must make *no* outbound requests would need the fonts vendored into the image.
 - **Offline indicator is subtle** — a small "· offline" in the header, plus a dimmed dot on queued rows.
 - **Undo is one-shot**: only the single most recent add/edit/delete, and only while its toast is up.
@@ -25,7 +26,7 @@ Honest list of what's missing, stubbed, or deliberately deferred — the startin
 
 - **"Until she wakes" and open-ended shifts arm nothing** by design — only a clock-time "until" resolves to a real timestamp and a once-only "shift over" push.
 - **Quiet-hours pings are dropped, not deferred** — a "shift over" (or reminder) that lands inside quiet hours never arrives.
-- **Push edges**: iOS needs the app installed to the Home Screen before push is offered; notifications deep-link to the app root (no per-kind screen); and push copy is composed server-side, so it is **always English** no matter what language the receiving device is set to.
+- **Push edges**: iOS needs the app installed to the Home Screen before push is offered, and notifications deep-link to the app root (no per-kind screen).
 
 ## Technical debt / release gates
 
