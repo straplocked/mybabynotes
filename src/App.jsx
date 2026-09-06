@@ -2374,7 +2374,10 @@ export default class App extends React.Component {
       relieveColor: !iAmOnDuty && s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR,
       hbName,
       // opens the compose sheet now — there's a plan to author, not just a note to fire
-      askLabel: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off to someone else'),
+      askLabel: askTo ? t('Ask {name} to take over', { name: askTo.name }) : t('Ask someone else to take over'),
+      // a shift someone handed you is owed back; one you started yourself has
+      // nobody to hand it back TO, so asking is the only honest way out of it
+      handedToMe: !!myShiftReqId,
       // the one shift surface Now still owns: an ask needs answering, so it
       // can't wait behind a tap. Your shift, their shift, and on-duty-with-
       // nothing-open all moved into the sheet behind the header button.
@@ -2384,17 +2387,17 @@ export default class App extends React.Component {
       // state — which is also where "who has the baby" lives now that the duty
       // avatar is gone. It only shouts — accent fill plus a pulsing dot — when
       // someone is waiting on an answer from you.
+      // mirrors what the sheet opens on — with the footer shortcut gone this
+      // is the only place the duty state is spelled out, so it can't skip the
+      // "someone else has them" case the footer used to cover
       shiftBtnLabel: incomingReq ? t('{name} is handing off', { name: requesterName })
         : activeMine ? t('Your shift') : activeTheirs ? t('{name}’s shift', { name: shiftOwnerName })
-          : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
+          : !iAmOnDuty ? t('Take over from {name}', { name: dutyName })
+            : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
       shiftBtnBg: incomingReq ? 'rgba(var(--accent-rgb),0.16)' : 'var(--surface)',
       shiftBtnBorder: incomingReq ? OLIVE : 'rgba(var(--ink-rgb),0.08)',
       shiftBtnFg: incomingReq || activeMine ? 'var(--accent-deep)' : 'var(--muted)',
       shiftBtnDot: incomingReq,
-      // the footer names the action the sheet actually opens on
-      footerShiftLabel: activeMine ? t('Hand off')
-        : !iAmOnDuty ? t('Take over')
-          : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
       requestAgo: reqMins < 1 ? t('asked just now') : t('asked {n} min ago', { n: reqMins }),
       requestNote: (sh && sh.note) || t('Can you take {name}? Next feeds look like {t1} and {t2} — that’s the usual rhythm.', { name: s.babyName || t('the baby'), t1, t2 }),
       requestPlan, requestPlanRows,
@@ -2414,7 +2417,7 @@ export default class App extends React.Component {
       shiftDragging: s.shiftDragging,
       // composing an ask — the plan/window/note you're proposing to someone else
       sheetAsk: shiftUp && !showReport && s.shiftMode === 'ask',
-      askTitle: askTo ? t('Hand off to {name}', { name: askTo.name }) : t('Hand off'),
+      askTitle: askTo ? t('Ask {name} to take over', { name: askTo.name }) : t('Ask someone to take over'),
       // a carer is being told what needs doing; a partner is being asked a favor
       askSub: askToCarer
         ? t('They’ll get the plan and can adjust it if something changes.')
@@ -3877,14 +3880,6 @@ export default class App extends React.Component {
                 <div style={S(`font-size:11px;font-weight:600;color:${v.histTabFg};letter-spacing:0.01em`)}>{t('History')}</div>
               </button>
             </div>
-            {v.hasPartner && (
-              <div style={S('display:flex;justify-content:center;padding-top:6px;position:relative;z-index:1')}>
-                <button type="button" onClick={v.openShift} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;padding:4px 10px')}>
-                  <Sym style={{ fontSize: 16, color: 'var(--soft)' }}>pending_actions</Sym>
-                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.footerShiftLabel}</div>
-                </button>
-              </div>
-            )}
           </>
         )}
 
@@ -4297,21 +4292,38 @@ export default class App extends React.Component {
                       </div>
                     ))}
                   </div>
-                  <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:12px 16px;margin-top:10px;display:flex;flex-direction:column;gap:8px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Note for {name}', { name: v.hbName })}</div>
-                    <input value={v.handbackNote} onChange={v.setHandbackNote} placeholder={t('e.g. took the 1am bottle slow, fell asleep on me')} style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
-                  </div>
-                  <button type="button" onClick={v.handBack} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
-                    <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>swap_horiz</Sym>
-                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('Hand back to {name}', { name: v.hbName })}</div>
-                  </button>
-                  {v.canRequest && (
-                    <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
-                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>swap_horiz</Sym>
-                      {v.askLabel}
+                  {/* the note rides the handback, so it only shows when there
+                      IS one — a self-started shift has nobody to hand back to,
+                      and the ask sheet carries its own note */}
+                  {v.handedToMe && (
+                    <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:12px 16px;margin-top:10px;display:flex;flex-direction:column;gap:8px')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Note for {name}', { name: v.hbName })}</div>
+                      <input value={v.handbackNote} onChange={v.setHandbackNote} placeholder={t('e.g. took the 1am bottle slow, fell asleep on me')} style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
+                    </div>
+                  )}
+                  {/* two different things, and the verbs now say which is which:
+                      handing back moves duty on the spot (they asked you to
+                      cover, they're owed it back); asking waits for a yes */}
+                  {v.handedToMe ? (
+                    <>
+                      <button type="button" onClick={v.handBack} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
+                        <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>swap_horiz</Sym>
+                        <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('Hand back to {name} now', { name: v.hbName })}</div>
+                      </button>
+                      {v.canRequest && (
+                        <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
+                          <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>schedule_send</Sym>
+                          {v.askLabel}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button type="button" onClick={v.openAsk} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
+                      <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>schedule_send</Sym>
+                      <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.askLabel}</div>
                     </button>
                   )}
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t('They get this summary as a card — no scrolling the log, no “when did you…”')}</div>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t(v.handedToMe ? 'Handing back moves duty straight away. Asking waits for them to accept.' : 'Duty moves when they accept — you stay on until then.')}</div>
                 </>
               )}
 

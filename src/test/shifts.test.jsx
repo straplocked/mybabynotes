@@ -8,8 +8,10 @@
 //
 // Now itself keeps exactly one shift surface: an incoming ask, because that one
 // needs answering. Your shift, their shift, and on-duty-with-nothing-open all
-// live in the sheet behind the header's swap_horiz button (and the footer
-// shortcut) — which is what `openShiftSheet` below reaches for.
+// live in the sheet behind the header's one icon button — which is what
+// `openShiftSheet` below reaches for. There is no footer shortcut: two openers
+// labelled differently ("Hand off" over a sheet whose button said "Hand back")
+// was the confusion that removed it.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -138,8 +140,6 @@ describe('on duty with no shift open', () => {
     }))
     renderApp()
 
-    // the footer shortcut names the wait, and so does the header button
-    expect(await screen.findByText('Waiting for Sam')).toBeInTheDocument()
     const s = await openShiftSheet(user, 'Waiting for Sam')
     expect(s.getByText('Waiting for Sam to take over')).toBeInTheDocument()
     // accepting your own ask is a 422 server-side, so the CTA nudges instead
@@ -187,10 +187,61 @@ describe('a shift that is actually open', () => {
   })
 })
 
+// Two actions that both move duty, and used to sit side by side naming the
+// same person. Hand back is immediate and only exists when someone handed the
+// shift TO you — it's the cover being returned. Asking waits for a yes, and is
+// the only way out of a shift you started yourself.
+describe('handing back vs asking', () => {
+  it('a shift Sam handed me offers both, with verbs that say which waits', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: 2 }) }))
+    renderApp()
+
+    const s = await openShiftSheet(user, 'Your shift')
+    expect(s.getByText('Hand back to Sam now')).toBeInTheDocument()
+    expect(s.getByText('Ask Sam to take over')).toBeInTheDocument()
+    expect(s.getByText('Handing back moves duty straight away. Asking waits for them to accept.')).toBeInTheDocument()
+  })
+
+  it('a shift I started myself can only be asked away — there is nothing to hand back', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    // requester_id null: nobody handed me this, so "hand back to Sam" would be
+    // a transfer Sam never agreed to, dressed up as a return
+    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: null }) }))
+    renderApp()
+
+    const s = await openShiftSheet(user, 'Your shift')
+    expect(s.getByText('Ask Sam to take over')).toBeInTheDocument()
+    expect(s.queryByText(/^Hand back to/)).not.toBeInTheDocument()
+    // the handback note goes with it — the ask sheet carries its own
+    expect(s.queryByText('Note for Sam')).not.toBeInTheDocument()
+  })
+
+  it('handing back completes the shift and returns duty to whoever asked', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: 2 }) }))
+    let body
+    routes['POST /shifts/handback'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    const s = await openShiftSheet(user, 'Your shift')
+    await user.type(s.getByPlaceholderText(/took the 1am bottle slow/), 'she fed at 2')
+    await user.click(s.getByText('Hand back to Sam now'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.note).toBe('she fed at 2')
+    // duty moved on the spot — no waiting for Sam to answer
+    expect(await screen.findByLabelText('Take over from Sam')).toBeInTheDocument()
+  })
+})
+
 describe('the ask carries the plan its author wrote', () => {
   const openAsk = async user => {
     await openShiftSheet(user, 'Start my shift')
-    await user.click(await settled(await screen.findByText('Hand off to Sam')))
+    await user.click(await settled(await screen.findByText('Ask Sam to take over')))
   }
 
   it('composing a handoff sends the plan, window, and note — not just prose', async () => {
@@ -270,7 +321,7 @@ describe('the ask carries the plan its author wrote', () => {
 describe('the plan is editable, not take-it-or-leave-it', () => {
   const openAsk = async user => {
     await openShiftSheet(user, 'Start my shift')
-    await user.click(await settled(await screen.findByText('Hand off to Sam')))
+    await user.click(await settled(await screen.findByText('Ask Sam to take over')))
   }
 
   it('a time you pick on a drafted row is the time that gets sent', async () => {
@@ -403,7 +454,6 @@ describe('after a hand back', () => {
     await user.click(await settled(screen.getByText('Done')))
     await sheetClosed()
 
-    expect(await screen.findByText('Start my shift')).toBeInTheDocument() // footer shortcut
     const s = await openShiftSheet(user, 'Start my shift')
     expect(s.getByText('Start your shift')).toBeInTheDocument()
   })
