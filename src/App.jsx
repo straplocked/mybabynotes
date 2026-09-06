@@ -8,6 +8,13 @@ import { startEcho, stopEcho, isEchoConnected } from './echo'
 import { pushSupported, pushSubscription, subscribePush, deviceTz } from './push'
 import { getFx, setFx, initFx, isDark, askTiltPermission, reduceMotion } from './fx'
 import { mapBabyBuddy, chunk } from './bbimport'
+// imported, not referenced as /art/*.png, so the build content-hashes them into
+// /assets/. Unhashed art URLs let the service worker pair a *new* stylesheet
+// with a *stale* bitmap — and since these went from an opaque cream field to
+// bare motifs, that pairing paints a light slab over dark mode. A hashed URL
+// can't be stale, and the app no longer hardcodes an origin-root path.
+import appBgArt from './art/app-bg.png'
+import sheetBgArt from './art/sheet-bg.png'
 // t() renders English keys in the device language (see src/i18n.js); labels
 // in the constants below stay canonical English and translate at render time
 import { t, lower, locale, getLang, setLang, LANGS } from './i18n'
@@ -2753,7 +2760,7 @@ export default class App extends React.Component {
             from fx.js — each layer's negative inset covers its travel distance */}
         <div style={S('position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden')}>
           <div className="fx-layer fx-far" style={S('position:absolute;inset:-14px')}>
-            <img className="bg-art" src="/art/app-bg.png" alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
+            <img className="bg-art" src={appBgArt} alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
           </div>
           <div className="fx-layer fx-mid" style={S('position:absolute;inset:-24px')}>
             <div style={S('position:absolute;top:-8%;right:-16%;width:66%;aspect-ratio:1;border-radius:999px;background:radial-gradient(circle, rgba(var(--accent-rgb),0.16), rgba(var(--accent-rgb),0) 70%)')} />
@@ -3902,7 +3909,7 @@ export default class App extends React.Component {
               transition: v.sheetDragging ? 'none' : 'transform 0.34s cubic-bezier(0.32,0.72,0,1)',
             }}>
               <div style={S('position:absolute;inset:0;z-index:0')}>
-                <img className="bg-art" src="/art/sheet-bg.png" alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
+                <img className="bg-art" src={sheetBgArt} alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
                 <div className="bg-wash" style={S('position:absolute;inset:0;background:rgba(250,246,239,0.7);pointer-events:none')} />
               </div>
               <div onPointerDown={v.sheetGrab.start} onPointerMove={v.sheetGrab.move} onPointerUp={v.sheetGrab.end} onPointerCancel={v.sheetGrab.end}

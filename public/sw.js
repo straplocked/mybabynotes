@@ -6,8 +6,12 @@
 // bumping these purges old caches on activate — v1 served unhashed files
 // (manifest included) cache-first forever, so installs kept minting stale;
 // v4: the base-path-relative build changed asset URL shapes
-const SHELL = 'babylog-shell-v4'
-const RUNTIME = 'babylog-rt-v4'
+// v5: /art/*.png moved into the hashed /assets/ bundle. Runtime caches out
+// there still hold the pre-transparency bitmaps under the old unhashed URLs,
+// and serving one of those to the current stylesheet paints a light slab over
+// dark mode — so those entries have to go, not just age out.
+const SHELL = 'babylog-shell-v5'
+const RUNTIME = 'babylog-rt-v5'
 
 // '/'-rooted paths below are deliberate: this worker only ever registers at
 // the origin root (main.jsx skips registration under HA ingress, where the
