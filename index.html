@@ -9,7 +9,7 @@
        later mutations, so the pre-paint script below rewrites these before
        first paint; the media split lets the OS flip it while the app is open -->
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#FAF6EF" />
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1E1B16" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#161019" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/mark.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/face-192.png" />
@@ -31,7 +31,7 @@
       // the app's own mode (manual dark, light sensor) can disagree with the
       // OS scheme — make every theme-color tag match it before the bar paints
       var metas = document.querySelectorAll('meta[name="theme-color"]')
-      for (var i = 0; i < metas.length; i++) metas[i].content = dark ? '#1E1B16' : '#FAF6EF'
+      for (var i = 0; i < metas.length; i++) metas[i].content = dark ? '#161019' : '#FAF6EF'
     } catch (e) { /* default light */ }
   </script>
 </head>

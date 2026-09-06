@@ -147,14 +147,17 @@ const THEME_BGS = {
   sage: { label: 'Sage', bg: '#F4F8F1', rgb: '244,248,241' },
   lilac: { label: 'Lilac', bg: '#F9F5FC', rgb: '249,245,252' },
 }
-// dark counterparts keep each background's hue at ≈0.23 lightness, so the
-// household's tint survives the flip; neutrals flip in styles.css (html.dark)
+// Dark counterparts keep each background's hue so the household's tint survives
+// the flip; neutrals flip in styles.css (html.dark). Depth is the marketing
+// site's (mybabynotes.app, `--bg:#161019`): oklch ≈0.185 lightness / ≈0.020
+// chroma. The earlier ≈0.23/≈0.011 ladder read as grey rather than night —
+// cream is now that site value verbatim, the rest match its L/C at their hue.
 const THEME_BGS_DARK = {
-  cream: { bg: '#1E1B16', rgb: '30,27,22' },
-  blush: { bg: '#211A1B', rgb: '33,26,27' },
-  mist: { bg: '#171C20', rgb: '23,28,32' },
-  sage: { bg: '#191D16', rgb: '25,29,22' },
-  lilac: { bg: '#1D1A21', rgb: '29,26,33' },
+  cream: { bg: '#161019', rgb: '22,16,25' },
+  blush: { bg: '#1B0F11', rgb: '27,15,17' },
+  mist: { bg: '#0B141B', rgb: '11,20,27' },
+  sage: { bg: '#0F150B', rgb: '15,21,11' },
+  lilac: { bg: '#15101A', rgb: '21,16,26' },
 }
 let appliedThemeSig = null
 function applyTheme(theme) {

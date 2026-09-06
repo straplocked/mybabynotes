@@ -30,8 +30,8 @@
   --par-y: 0;
 }
 html.dark {
-  --bg: #1E1B16;
-  --bg-rgb: 30, 27, 22;
+  --bg: #161019;
+  --bg-rgb: 22, 16, 25;
   --surface: color-mix(in oklab, var(--bg) 90%, #EDE8DE);
   --hov-surface: color-mix(in oklab, var(--bg) 82%, #EDE8DE);
   --ink: #EDE8DE;
@@ -44,7 +44,7 @@ html.dark {
   --faint: #746C5F;
   --dim: #514B41;
   --warn: #D08069;
-  --frame: #0C0B09;
+  --frame: #0A070C;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
@@ -95,10 +95,11 @@ input { font-family: inherit; }
    schemes. In light the wash still paints over them (the comp's look: the
    pattern recedes behind the copy). In dark that order inverts: a wash the
    colour of the backdrop over dimmed art was flattening the whole screen to
-   grey, so the wash drops beneath and the motifs sit on top of it, eased back
-   with opacity instead of a brightness filter. */
+   grey, so the wash drops beneath and the motifs sit on top of it at the
+   marketing site's `<parallax-bg opacity="0.6">` — full colour, no dimming
+   filter, exactly how mybabynotes.app paints the same motifs on `#161019`. */
 html.dark .bg-wash { z-index: -1; }
-html.dark .bg-art { opacity: 0.55; }
+html.dark .bg-art { opacity: 0.6; }
 
 /* hover states carried over from the comp's style-hover attributes */
 .hov-olive:hover { background: var(--accent-hover) !important; }

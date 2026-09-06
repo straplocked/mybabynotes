@@ -7,7 +7,7 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FAF6EF",
-  "color_scheme_dark": { "theme_color": "#1E1B16", "background_color": "#1E1B16" },
+  "color_scheme_dark": { "theme_color": "#161019", "background_color": "#161019" },
   "icons": [
     { "src": "icons/mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "icons/face-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
