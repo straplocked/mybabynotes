@@ -24,6 +24,8 @@ class PushController extends Controller
             'keys.p256dh' => ['required', 'string', 'max:255'],
             'keys.auth' => ['required', 'string', 'max:255'],
             'tz' => ['nullable', 'timezone:all'],
+            // device language, like tz — push copy renders per subscription
+            'lang' => ['nullable', 'string', 'in:'.implode(',', config('babylog.locales', ['en']))],
         ]);
 
         // the endpoint identifies the device — re-subscribing (or a partner
@@ -35,6 +37,7 @@ class PushController extends Controller
                 'p256dh' => $data['keys']['p256dh'],
                 'auth' => $data['keys']['auth'],
                 'timezone' => $data['tz'] ?? null,
+                'lang' => $data['lang'] ?? null,
             ],
         );
 

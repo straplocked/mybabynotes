@@ -28,7 +28,7 @@ class EntryController extends Controller
         if (isset($data['baby_id'])) {
             // must be one of ours — a guessed id is a 422, not an empty list
             if (! $household->children()->whereKey((int) $data['baby_id'])->exists()) {
-                return response()->json(['message' => 'That child isn’t in this log.'], 422);
+                return response()->json(['message' => __('That child isn’t in this log.')], 422);
             }
             $babyId = (int) $data['baby_id'];
             $primaryId = $household->children()->orderBy('id')->value('id');

@@ -72,4 +72,16 @@ return [
 
     'vapid_subject' => env('VAPID_SUBJECT'),
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | Supported UI languages
+    |--------------------------------------------------------------------------
+    | Mirrors LANGS in src/i18n.js. The client sends its device language as
+    | X-App-Lang (request locale + users.lang) and on /push/subscribe (per-
+    | device push copy). Anything outside this list is ignored, never stored.
+    */
+
+    'locales' => ['en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'ur', 'id', 'de', 'ja', 'mr', 'te'],
+
 ];

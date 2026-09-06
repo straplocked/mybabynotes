@@ -634,9 +634,10 @@ class BabylogApiTest extends TestCase
         {
             public array $sent = [];
 
-            public function notify(User $user, string $tag, string $title, string $body): void
+            public function notify(User $user, string $tag, string|array $title, string|array $body): void
             {
-                $this->sent[] = ['user_id' => $user->id, 'tag' => $tag, 'title' => $title, 'body' => $body];
+                // render in English so assertions read like the copy always did
+                $this->sent[] = ['user_id' => $user->id, 'tag' => $tag, 'title' => self::render($title, 'en'), 'body' => self::render($body, 'en')];
             }
         };
         $this->app->instance(PushService::class, $fake);

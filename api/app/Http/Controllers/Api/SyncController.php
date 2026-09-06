@@ -79,7 +79,7 @@ class SyncController extends Controller
     {
         return $request->user()->isParent()
             ? null
-            : response()->json(['message' => 'Only a parent can change that.'], 403);
+            : response()->json(['message' => __('Only a parent can change that.')], 403);
     }
 
     public function setBaby(Request $request): JsonResponse
@@ -133,11 +133,11 @@ class SyncController extends Controller
             // the id must be one of ours — a guessed id from another household is a 422, not a write
             $child = $household->children()->find($data['id']);
             if (! $child) {
-                return response()->json(['message' => 'That child isn’t in this log.'], 422);
+                return response()->json(['message' => __('That child isn’t in this log.')], 422);
             }
         } else {
             if ($household->children()->count() >= config('babylog.max_children')) {
-                return response()->json(['message' => 'This log is at its limit of children.'], 422);
+                return response()->json(['message' => __('This log is at its limit of children.')], 422);
             }
             $child = $household->children()->make();
         }
@@ -172,7 +172,7 @@ class SyncController extends Controller
 
         $user = $request->user();
         if (! $user->isParent()) {
-            return response()->json(['message' => 'Only a parent can invite people to this log.'], 403);
+            return response()->json(['message' => __('Only a parent can invite people to this log.')], 403);
         }
 
         $household = $user->household;
@@ -182,7 +182,7 @@ class SyncController extends Controller
         // replaces its row, so that one doesn't count against the cap
         $pendingOthers = $household->invites()->where('email', '!=', $email)->count();
         if ($household->users()->count() + $pendingOthers >= config('babylog.max_household_users')) {
-            return response()->json(['message' => 'This log is full.'], 422);
+            return response()->json(['message' => __('This log is full.')], 422);
         }
 
         // single-use code, shown once to the inviter; the invitee enters it at sign-up
@@ -206,7 +206,9 @@ class SyncController extends Controller
         $mailed = false;
         if (AppMail::configured()) {
             try {
-                Mail::to($email)->send(new PartnerInvite(
+                // the invitee has no account yet — the inviter's language
+                // (this request's locale) is the best available guess
+                Mail::to($email)->locale(app()->getLocale())->send(new PartnerInvite(
                     $user->name,
                     $household->baby?->name,
                     $code,
@@ -256,11 +258,11 @@ class SyncController extends Controller
         $user = $request->user();
         $household = $user->household;
         if ((int) $data['user_id'] === $user->id) {
-            return response()->json(['message' => 'You can’t remove yourself from your own log.'], 422);
+            return response()->json(['message' => __('You can’t remove yourself from your own log.')], 422);
         }
         $target = $household->users()->find($data['user_id']);
         if (! $target) {
-            return response()->json(['message' => 'That person isn’t in this log.'], 422);
+            return response()->json(['message' => __('That person isn’t in this log.')], 422);
         }
 
         $target->tokens()->delete();            // every session 401s from here on

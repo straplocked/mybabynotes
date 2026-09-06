@@ -147,12 +147,16 @@ class EntryWriter
             } catch (\Throwable) {
                 $at = Carbon::createFromTimestampMs($first['t'])->format('g:i A');
             }
-            $bits = array_filter([
+            // detail + time are data; only the "+N more" tail and the type
+            // label translate (the label nests so it lands in-language)
+            $start = implode(' · ', array_filter([
                 isset($first['detail']) && $first['detail'] !== '' ? (string) $first['detail'] : null,
                 $at,
-                count($live) > 1 ? '+'.(count($live) - 1).' more' : null,
-            ]);
-            app(PushService::class)->notify($other, 'partner', $user->name.' logged '.$label, implode(' · ', $bits));
+            ]));
+            $body = count($live) > 1
+                ? ($start === '' ? ['+:n more', ['n' => count($live) - 1]] : [':start · +:n more', ['start' => $start, 'n' => count($live) - 1]])
+                : $start;
+            app(PushService::class)->notify($other, 'partner', [':name logged :type', ['name' => $user->name, 'type' => [$label]]], $body);
         }
     }
 }

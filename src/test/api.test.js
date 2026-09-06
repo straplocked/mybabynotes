@@ -26,12 +26,14 @@ describe('token storage', () => {
 })
 
 describe('request shape', () => {
-  it('GETs /state under /api with only the Accept header when signed out', async () => {
+  it('GETs /state under /api with only Accept + device language when signed out', async () => {
     await api.state(1234)
     const [url, opts] = fetch.mock.calls[0]
     expect(url).toBe('/api/state?since=1234')
     expect(opts.method).toBe('GET')
-    expect(opts.headers).toEqual({ Accept: 'application/json' })
+    // X-App-Lang always rides — it localizes validation errors and is the
+    // account's email-language fallback server-side
+    expect(opts.headers).toEqual({ Accept: 'application/json', 'X-App-Lang': 'en' })
     expect(opts.body).toBeUndefined()
   })
 
@@ -48,6 +50,7 @@ describe('request shape', () => {
       Accept: 'application/json',
       Authorization: 'Bearer tok-2',
       'X-Socket-ID': 'sock-9',
+      'X-App-Lang': 'en',
     })
   })
 

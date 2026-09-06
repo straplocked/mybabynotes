@@ -31,7 +31,7 @@ class MqttController extends Controller
     {
         return $request->user()->isParent()
             ? null
-            : response()->json(['message' => 'Only a parent can change that.'], 403);
+            : response()->json(['message' => __('Only a parent can change that.')], 403);
     }
 
     private function publicConfig(array $config): array
@@ -73,7 +73,7 @@ class MqttController extends Controller
 
         $config = $this->merge($request, $stored, $data);
         if ($config['enabled'] && $config['host'] === '') {
-            return response()->json(['message' => 'A broker host is required to enable MQTT.'], 422);
+            return response()->json(['message' => __('A broker host is required to enable MQTT.')], 422);
         }
         $household->update(['mqtt_config' => $config]);
 
@@ -101,7 +101,7 @@ class MqttController extends Controller
         $household = $request->user()->household;
         $config = $this->merge($request, $household->mqtt_config ?? [], $data);
         if ($config['host'] === '') {
-            return response()->json(['ok' => false, 'message' => 'Enter a broker host first.']);
+            return response()->json(['ok' => false, 'message' => __('Enter a broker host first.')]);
         }
 
         try {
@@ -110,7 +110,7 @@ class MqttController extends Controller
             $connection->publish(($config['base_topic'] ?? 'babylog')."/{$household->id}/test", 'ok');
             $connection->disconnect();
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => 'Couldn’t reach the broker: '.$e->getMessage()]);
+            return response()->json(['ok' => false, 'message' => __('Couldn’t reach the broker: :err', ['err' => $e->getMessage()])]);
         }
 
         return response()->json(['ok' => true]);

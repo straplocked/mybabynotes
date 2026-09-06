@@ -4,6 +4,7 @@
 // (nginx proxies to the api container; base ≠ '/' only under HA ingress).
 import { socketId } from './echo'
 import { APP_BASE } from './base.js'
+import { getLang } from './i18n.js'
 
 const TOKEN_KEY = 'babylog:token'
 
@@ -19,6 +20,9 @@ async function call(path, { method = 'GET', body } = {}) {
       ...(getToken() ? { Authorization: 'Bearer ' + getToken() } : {}),
       // lets the server broadcast toOthers() so we don't get poked by our own writes
       ...(socketId() ? { 'X-Socket-ID': socketId() } : {}),
+      // device language: localizes validation/API errors and is remembered
+      // account-side as the email-language fallback
+      'X-App-Lang': getLang(),
     },
     body: body ? JSON.stringify(body) : undefined,
   })

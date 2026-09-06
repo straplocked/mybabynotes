@@ -31,7 +31,7 @@ class PasswordResetLink extends Mailable
     {
         return new Envelope(
             from: new Address(config('mail.from.address'), 'mybabynotes'),
-            subject: 'Reset your mybabynotes password',
+            subject: __('Reset your mybabynotes password'),
         );
     }
 

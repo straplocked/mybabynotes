@@ -42,7 +42,7 @@ class AccountController extends Controller
         $user = $request->user();
         if (! Hash::check($data['password'], $user->password)) {
             throw ValidationException::withMessages([
-                'password' => ['That’s not your current password — nothing was changed.'],
+                'password' => [__('That’s not your current password — nothing was changed.')],
             ]);
         }
 
@@ -51,7 +51,7 @@ class AccountController extends Controller
         $email = strtolower($data['email']);
         if (User::where('email', $email)->where('id', '!=', $user->id)->exists()) {
             throw ValidationException::withMessages([
-                'email' => ['That email already belongs to an account here.'],
+                'email' => [__('That email already belongs to an account here.')],
             ]);
         }
 
@@ -72,7 +72,7 @@ class AccountController extends Controller
         $user = $request->user();
         if (! Hash::check($data['current_password'], $user->password)) {
             throw ValidationException::withMessages([
-                'current_password' => ['That’s not your current password — nothing was changed.'],
+                'current_password' => [__('That’s not your current password — nothing was changed.')],
             ]);
         }
 

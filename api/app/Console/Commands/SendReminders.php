@@ -85,22 +85,24 @@ class SendReminders extends Command
             $requester = $shift->requester_id ? $household->users->firstWhere('id', $shift->requester_id) : null;
             $counterpart = ($requester && $requester->id !== $holder->id ? $requester : null)
                 ?? $household->partnerOf($holder);
-            $baby = $household->children->first()?->name ?? 'the baby';
-            $said = $shift->until ? lcfirst($shift->until) : 'until about now';
+            // name is data; the until label and "the baby" fallback are catalog
+            // keys, nested so each recipient device reads them in its language
+            $baby = $household->children->first()?->name ?? ['the baby'];
+            $said = [$shift->until ? lcfirst($shift->until) : 'until about now'];
             if ($holder->notifyPrefs()['handoff'] && ! $holder->inQuietHours()) {
                 $push->notify(
                     $holder,
                     'shift',
-                    'Shift over — hand back?',
-                    'You said '.$said.' — nothing changes until you hand '.$baby.' back.',
+                    ['Shift over — hand back?'],
+                    ['You said :said — nothing changes until you hand :baby back.', ['said' => $said, 'baby' => $baby]],
                 );
             }
             if ($counterpart && $counterpart->notifyPrefs()['handoff'] && ! $counterpart->inQuietHours()) {
                 $push->notify(
                     $counterpart,
                     'shift',
-                    $holder->name.'’s shift is up',
-                    'They said '.$said.' — ready to take '.$baby.' back?',
+                    [':name’s shift is up', ['name' => $holder->name]],
+                    ['They said :said — ready to take :baby back?', ['said' => $said, 'baby' => $baby]],
                 );
             }
         }
@@ -151,8 +153,8 @@ class SendReminders extends Command
             $push->notify(
                 $user,
                 'feed',
-                ($child->name ?? 'The baby').' is probably getting hungry',
-                'Last fed '.$this->dur($now - end($ts)).' ago — usually every ~'.$this->dur($gap).'.',
+                [':name is probably getting hungry', ['name' => $child->name ?? ['The baby']]],
+                ['Last fed :ago ago — usually every ~:gap.', ['ago' => $this->dur($now - end($ts)), 'gap' => $this->dur($gap)]],
             );
             $dirty = true;
         }
@@ -200,8 +202,8 @@ class SendReminders extends Command
             $push->notify(
                 $user,
                 'wake',
-                ($child->name ?? 'The baby').' has been awake a while',
-                'About '.$this->dur($awake).' since the last logged nap — typical max for their age is '.$this->dur($maxWake).'.',
+                [':name has been awake a while', ['name' => $child->name ?? ['The baby']]],
+                ['About :awake since the last logged nap — typical max for their age is :max.', ['awake' => $this->dur($awake), 'max' => $this->dur($maxWake)]],
             );
             $dirty = true;
         }
@@ -235,7 +237,7 @@ class SendReminders extends Command
         $given = $hh->entries()->where('type', 'meds')->where('deleted', false)
             ->where('t', '>=', $local->copy()->startOfDay()->getTimestampMs())->exists();
         if (! $given) {
-            $push->notify($user, 'meds', 'Meds time', 'Nothing logged for '.($hh->children->first()?->name ?? 'the baby').' yet today.');
+            $push->notify($user, 'meds', ['Meds time'], ['Nothing logged for :name yet today.', ['name' => $hh->children->first()?->name ?? ['the baby']]]);
         }
 
         return true;

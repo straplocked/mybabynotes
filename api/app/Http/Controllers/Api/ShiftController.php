@@ -18,7 +18,7 @@ class ShiftController extends Controller
      * Handoff pushes deliberately ignore quiet hours — this is one grown-up
      * addressing another directly, not the app nagging.
      */
-    private function pushHandoff(?User $to, string $title, string $body): void
+    private function pushHandoff(?User $to, string|array $title, string|array $body): void
     {
         if ($to && $to->notifyPrefs()['handoff']) {
             app(PushService::class)->notify($to, 'shift', $title, $body);
@@ -26,7 +26,7 @@ class ShiftController extends Controller
     }
 
     /** Same handoff push, fanned out to a set of members. */
-    private function pushHandoffToAll(iterable $users, string $title, string $body): void
+    private function pushHandoffToAll(iterable $users, string|array $title, string|array $body): void
     {
         foreach ($users as $to) {
             $this->pushHandoff($to, $title, $body);
@@ -74,8 +74,8 @@ class ShiftController extends Controller
         // anyone in the household can answer the ask, so everyone hears it
         $this->pushHandoffToAll(
             $household->othersFor($request->user()),
-            $request->user()->name.' is asking you to take over',
-            ($data['note'] ?? null) ?: 'Open mybabynotes to see the handoff.',
+            [':name is asking you to take over', ['name' => $request->user()->name]],
+            ($data['note'] ?? null) ?: ['Open mybabynotes to see the handoff.'],
         );
 
         HouseholdTouched::send($household->id, 'shift');
@@ -101,7 +101,7 @@ class ShiftController extends Controller
         // any member except the asker may answer — accepting your own ask
         // would just quietly re-crown you
         if ($shift && $shift->requester_id === $user->id) {
-            return response()->json(['message' => 'You asked for this handoff — someone else has to take it.'], 422);
+            return response()->json(['message' => __('You asked for this handoff — someone else has to take it.')], 422);
         }
         $shift ??= $household->shifts()->make(['requested_at' => null]);
 
@@ -122,13 +122,18 @@ class ShiftController extends Controller
         $until = ($data['until'] ?? null) ?: null;
         $requester = $shift->requester_id ? $household->users->firstWhere('id', $shift->requester_id) : null;
         foreach ($household->othersFor($user) as $other) {
-            // the one who asked hears "you're covered"; the rest just learn who's on
+            // the one who asked hears "you're covered"; the rest just learn who's on.
+            // the stored until label is canonical English ('Until 6 AM') — the
+            // lcfirst'd form is its own catalog key, so it lands mid-sentence
+            // correctly in every language
             $this->pushHandoff(
                 $other,
                 $other->id === $requester?->id
-                    ? $user->name.' took over — you’re covered'
-                    : $user->name.' is on duty now',
-                $until ? 'On duty '.lcfirst($until).'.' : ($other->id === $requester?->id ? 'Get some rest.' : 'Duty just changed hands.'),
+                    ? [':name took over — you’re covered', ['name' => $user->name]]
+                    : [':name is on duty now', ['name' => $user->name]],
+                $until
+                    ? ['On duty :until.', ['until' => [lcfirst($until)]]]
+                    : ($other->id === $requester?->id ? ['Get some rest.'] : ['Duty just changed hands.']),
             );
         }
 
@@ -183,8 +188,8 @@ class ShiftController extends Controller
         if ($to->id !== $user->id) {
             $this->pushHandoff(
                 $to,
-                $user->name.' handed '.($household->baby?->name ?? 'the baby').' back',
-                ($data['note'] ?? null) ?: 'Their shift report is waiting in the app.',
+                [':name handed :baby back', ['name' => $user->name, 'baby' => $household->baby?->name ?? ['the baby']]],
+                ($data['note'] ?? null) ?: ['Their shift report is waiting in the app.'],
             );
         }
 

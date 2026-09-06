@@ -1,14 +1,14 @@
-Hi,
+{{ __('Hi,') }}
 
-{{ $inviterName }} set up a shared baby log{{ $babyName ? ' for '.$babyName : '' }} and saved you a seat.
-Three taps, then back to the baby — both of you, one log.
+{{ $babyName ? __(':name set up a shared baby log for :baby and saved you a seat.', ['name' => $inviterName, 'baby' => $babyName]) : __(':name set up a shared baby log and saved you a seat.', ['name' => $inviterName]) }}
+{{ __('Three taps, then back to the baby — both of you, one log.') }}
 
-Sign up with this email address here:
+{{ __('Sign up with this email address here:') }}
 
   {{ $url }}
 
-Your invite code: {{ $code }}
+{{ __('Your invite code: :code', ['code' => $code]) }}
 
-The code works once, and only for this address. Not expecting this? Just ignore it.
+{{ __('The code works once, and only for this address. Not expecting this? Just ignore it.') }}
 
 — mybabynotes

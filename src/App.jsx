@@ -668,7 +668,8 @@ export default class App extends React.Component {
     try {
       const sub = await pushSubscription()
       if (sub && getToken()) {
-        await api.pushSubscribe({ endpoint: sub.endpoint, keys: sub.toJSON().keys, tz: deviceTz() })
+        // lang rides like tz — push copy renders per device on the server
+        await api.pushSubscribe({ endpoint: sub.endpoint, keys: sub.toJSON().keys, tz: deviceTz(), lang: getLang() })
         this.setState({ pushOn: true })
       } else this.setState({ pushOn: false })
     } catch { /* offline — the toggle still reflects the browser's side */ }
@@ -686,7 +687,7 @@ export default class App extends React.Component {
         this.setState({ pushOn: false, toast: t('Notifications off for this phone'), undoAction: null })
       } else {
         const sub = await subscribePush(this.state.vapidKey)
-        await api.pushSubscribe({ endpoint: sub.endpoint, keys: sub.toJSON().keys, tz: deviceTz() })
+        await api.pushSubscribe({ endpoint: sub.endpoint, keys: sub.toJSON().keys, tz: deviceTz(), lang: getLang() })
         this.setState({ pushOn: true, toast: t('This phone will get pings'), undoAction: null })
         this.setNotify({}) // stamp the device tz into prefs right away
       }
@@ -2291,7 +2292,9 @@ export default class App extends React.Component {
         // catalog chunk lands
         lang: getLang(),
         langs: LANGS,
-        setLang: e => setLang(e.target.value).then(() => this.setState(x => ({ tick: x.tick + 1 }))),
+        // re-subscribing pushes the new language to the server right away, so
+        // the next lock-screen ping arrives in it too
+        setLang: e => setLang(e.target.value).then(() => { this.setState(x => ({ tick: x.tick + 1 })); this.refreshPush() }),
       },
       exportLog: this.exportLog, exportSummary: this.exportSummary,
       importBB: e => this.importBabyBuddy(e.currentTarget), importBusy: s.importBusy,

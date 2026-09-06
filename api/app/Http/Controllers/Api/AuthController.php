@@ -41,12 +41,12 @@ class AuthController extends Controller
             $code = strtoupper(preg_replace('/[^a-z0-9]/i', '', (string) ($data['invite'] ?? '')));
             if ($code === '' || ! hash_equals((string) $invite->code_hash, hash('sha256', $code))) {
                 throw ValidationException::withMessages([
-                    'invite' => ['Check the invite code your partner was shown when they invited you.'],
+                    'invite' => [__('Check the invite code your partner was shown when they invited you.')],
                 ]);
             }
             if ($invite->household->users()->count() >= config('babylog.max_household_users')) {
                 throw ValidationException::withMessages([
-                    'email' => ['This log is full.'],
+                    'email' => [__('This log is full.')],
                 ]);
             }
         }
@@ -96,7 +96,7 @@ class AuthController extends Controller
 
         $user = User::where('email', strtolower($data['email']))->first();
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            throw ValidationException::withMessages(['email' => ['These details don’t match a log we know.']]);
+            throw ValidationException::withMessages(['email' => [__('These details don’t match a log we know.')]]);
         }
 
         return response()->json(['token' => $user->createToken('app')->plainTextToken]);
@@ -115,7 +115,9 @@ class AuthController extends Controller
         Password::sendResetLink(
             ['email' => strtolower($data['email'])],
             function (User $user, string $token) {
-                Mail::to($user->email)->send(new PasswordResetLink($user->name, $user->email, $token));
+                // the reset request comes from a logged-out page, so the account's
+                // last-seen language beats this request's header
+                Mail::to($user->email)->locale($user->lang ?: app()->getLocale())->send(new PasswordResetLink($user->name, $user->email, $token));
             },
         );
 
@@ -141,7 +143,7 @@ class AuthController extends Controller
 
         if ($status !== Password::PASSWORD_RESET) {
             throw ValidationException::withMessages([
-                'email' => ['That reset link has expired or was already used — ask for a fresh one from “Forgot password?”.'],
+                'email' => [__('That reset link has expired or was already used — ask for a fresh one from “Forgot password?”.')],
             ]);
         }
 

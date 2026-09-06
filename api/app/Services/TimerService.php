@@ -66,7 +66,11 @@ class TimerService
                 ? $household->children()->whereKey($validBabyId)->value('name')
                 : $household->children()->value('name'); // children() is id-ordered, so first = primary
         }
-        $title = $user->name.' started '.self::LABELS[$type].($childName ? ' for '.$childName : '');
+        // the activity word ('nursing', 'a sleep timer') is its own catalog
+        // key, nested so it lands translated inside the sentence
+        $title = $childName
+            ? [':name started :what for :child', ['name' => $user->name, 'what' => [self::LABELS[$type]], 'child' => $childName]]
+            : [':name started :what', ['name' => $user->name, 'what' => [self::LABELS[$type]]]];
 
         // let the rest of the household know they're occupied — informational,
         // so it honors quiet hours (unlike a direct handoff ask)
@@ -76,7 +80,7 @@ class TimerService
                     $other,
                     'timer',
                     $title,
-                    'Timer running in mybabynotes.',
+                    ['Timer running in mybabynotes.'],
                 );
             }
         }

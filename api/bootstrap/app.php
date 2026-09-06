@@ -28,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // TLS terminates at the reverse proxy (nginx / NPM)
         $middleware->trustProxies(at: '*');
 
+        // localize each request from the device's X-App-Lang header
+        $middleware->api(append: \App\Http\Middleware\SetLocale::class);
+
         // API-only app: no login page exists. The framework default redirects
         // guests to route('login'), which throws RouteNotFoundException (a 500)
         // for header-less probes; null lets the 401 render as JSON instead.

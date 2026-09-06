@@ -50,10 +50,10 @@ class TokenController extends Controller
         ]);
 
         if ($user->tokens()->where('name', '!=', 'app')->count() >= self::MAX_TOKENS) {
-            return response()->json(['message' => 'You already have '.self::MAX_TOKENS.' tokens — revoke one first.'], 422);
+            return response()->json(['message' => __('You already have :n tokens — revoke one first.', ['n' => self::MAX_TOKENS])], 422);
         }
         if ($user->tokens()->where('name', $data['name'])->exists()) {
-            return response()->json(['message' => 'You already have a token with that name.'], 422);
+            return response()->json(['message' => __('You already have a token with that name.')], 422);
         }
 
         // default 90 days; an explicit null means no expiry (the callback in
@@ -82,7 +82,7 @@ class TokenController extends Controller
             ->where('id', $data['id'])
             ->delete();
         if (! $deleted) {
-            return response()->json(['message' => 'That token doesn’t exist.'], 422);
+            return response()->json(['message' => __('That token doesn’t exist.')], 422);
         }
 
         return response()->json(['ok' => true]);

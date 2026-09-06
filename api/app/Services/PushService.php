@@ -24,15 +24,46 @@ class PushService
 
     private ?array $keys = null;
 
-    public function notify(User $user, string $tag, string $title, string $body): void
+    /**
+     * Copy is either a plain string (data — a user-typed note, a name) or a
+     * translatable `[key, params]` pair rendered per SUBSCRIPTION in that
+     * device's language (lang/{code}.json, English keys, English fallback).
+     * A param value may itself be a `[key]`/`[key, params]` pair — that's how
+     * type labels and "the baby" fallbacks land in the recipient's language
+     * inside an already-translated sentence.
+     */
+    public static function render(string|array $copy, ?string $lang): string
+    {
+        if (is_string($copy)) {
+            return $copy;
+        }
+        $params = $copy[1] ?? [];
+        foreach ($params as $k => $v) {
+            if (is_array($v)) {
+                $params[$k] = self::render($v, $lang);
+            }
+        }
+
+        return __($copy[0], $params, $lang ?: 'en');
+    }
+
+    public function notify(User $user, string $tag, string|array $title, string|array $body): void
     {
         try {
             $subs = $user->pushSubscriptions;
             if ($subs->isEmpty()) {
                 return;
             }
-            $payload = json_encode(['title' => $title, 'body' => $body, 'tag' => $tag]);
             foreach ($subs as $sub) {
+                // per-device language, falling back to the account's last-seen
+                // one — a Spanish phone and an English phone on the same
+                // account each get their own copy of the same event
+                $lang = $sub->lang ?: ($user->lang ?: 'en');
+                $payload = json_encode([
+                    'title' => self::render($title, $lang),
+                    'body' => self::render($body, $lang),
+                    'tag' => $tag,
+                ]);
                 $report = $this->client()->sendOneNotification(
                     Subscription::create([
                         'endpoint' => $sub->endpoint,

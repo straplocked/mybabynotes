@@ -1,10 +1,9 @@
-Hi {{ $name }},
+{{ __('Hi :name,', ['name' => $name]) }}
 
-Someone asked to reset the password for your mybabynotes account. If that was
-you, set a new one here — the link is good for about an hour:
+{{ __('Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:') }}
 
   {{ $url }}
 
-If it wasn't you, you can ignore this and your password stays put.
+{{ __("If it wasn't you, you can ignore this and your password stays put.") }}
 
 — mybabynotes
