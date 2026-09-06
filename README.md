@@ -9,7 +9,7 @@
 
 <!-- screenshots:start -->
 <p align="center">
-  <img src="docs/media/now.png" alt="Now screen — since-cards, today's timeline, and the header's shift and profile buttons" width="30%">
+  <img src="docs/media/now.png" alt="Now screen — since-cards, today's timeline, and the header's shift and settings buttons" width="30%">
   <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="30%">
   <img src="docs/media/settings.png" alt="Settings screen — baby profile, appearance, and household options" width="30%">
 </p>

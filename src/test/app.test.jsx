@@ -177,6 +177,36 @@ describe('signed-in boot', () => {
   })
 })
 
+// Settings has exactly one door and one way back. It used to open from a cog
+// on History and return there; the cog moved to Now (where an avatar had been
+// standing in for it, which read as a profile switcher), so "back" follows.
+describe('getting into and out of Settings', () => {
+  it('opens from the Now header and returns to Now', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    await user.click(await screen.findByLabelText('Settings'))
+    expect(await screen.findByText('Appearance')).toBeInTheDocument()
+
+    await user.click(screen.getByText('arrow_back')) // the header's back control
+    expect(await screen.findByText('Fed')).toBeInTheDocument() // a Now since-card
+    expect(screen.queryByText('Last 7 days')).not.toBeInTheDocument()
+  })
+
+  it('History no longer carries its own cog', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    await user.click(await screen.findByText('History'))
+    expect(await screen.findByText('Last 7 days')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Settings')).not.toBeInTheDocument()
+  })
+})
+
 describe('sleep tags and tummy time', () => {
   it('renders a tagged sleep and a tummy time entry from the cache', () => {
     seedSignedIn({

@@ -90,8 +90,15 @@ input { font-family: inherit; }
   .fx-layer { transform: none; }
 }
 
-/* the cream illustrations glare on a dark backdrop — dim, don't swap assets */
-html.dark .bg-art { filter: brightness(0.42) saturate(0.85); }
+/* The background illustrations carry no field of their own — only the motifs,
+   on transparency — so the household background tint shows through in both
+   schemes. In light the wash still paints over them (the comp's look: the
+   pattern recedes behind the copy). In dark that order inverts: a wash the
+   colour of the backdrop over dimmed art was flattening the whole screen to
+   grey, so the wash drops beneath and the motifs sit on top of it, eased back
+   with opacity instead of a brightness filter. */
+html.dark .bg-wash { z-index: -1; }
+html.dark .bg-art { opacity: 0.55; }
 
 /* hover states carried over from the comp's style-hover attributes */
 .hov-olive:hover { background: var(--accent-hover) !important; }

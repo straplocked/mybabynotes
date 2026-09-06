@@ -334,13 +334,14 @@ export default class App extends React.Component {
     initFx(() => applyTheme(this.state.settings.theme)) // OS scheme / light sensor changes re-resolve dark
     applyTheme(this.state.settings.theme)
     // Android back gesture closes overlays in stacking order: sheet first,
-    // then the settings screen back to history — never straight out of the app.
+    // then the settings screen back to Now (the only place it opens from)
+    // — never straight out of the app.
     // A stale entry can survive a reload mid-overlay — drop it so back exits.
     this._pop = () => {
       if (this.state.sheet) return this.dismissSheet()
       if (this.state.shiftOpen) return this.dismissShift()
       if (this.state.screen === 'history' && this.state.historyDay) return this.setState({ historyDay: null })
-      if (this.state.screen === 'settings') this.setState({ screen: 'history' })
+      if (this.state.screen === 'settings') this.setState({ screen: 'home' })
     }
     window.addEventListener('popstate', this._pop)
     if (window.history.state?.blSheet || window.history.state?.blShift || window.history.state?.blSettings || window.history.state?.blDay) {
@@ -2224,7 +2225,8 @@ export default class App extends React.Component {
       settingsBack: () => {
         // consume our entry so the button and the back gesture stay in step
         if (window.history.state?.blSettings) return window.history.back()
-        this.setState({ screen: 'history' })
+        // Now is the only door into Settings, so it's the only way back out
+        this.setState({ screen: 'home' })
       },
       showTabs: ['home', 'history', 'settings'].includes(s.screen),
       isSplash: s.screen === 'splash', isAuth: s.screen === 'auth', isLogin: s.authMode === 'login', isSignup: s.authMode === 'signup',
@@ -2343,12 +2345,10 @@ export default class App extends React.Component {
       // nothing-open all moved into the sheet behind the header button.
       incoming: incomingReq && s.screen === 'home',
       theirs: activeTheirs && !iAmOnDuty,
-      dutyInitial: iAmOnDuty ? initial(me?.name) : initial(dutyHolder?.name || partner?.name),
-      dutyColor: iAmOnDuty ? ME_COLOR : (s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR),
-      dutyLabel: partner ? (iAmOnDuty ? t('You · on duty') : t('{name} · on duty', { name: dutyName })) : t('Just you so far'),
-      // the header's shift button. It names the action it opens on (same label
-      // as the footer shortcut) and only shouts — accent fill plus a pulsing
-      // dot — when someone is waiting on an answer from you
+      // the header's shift button. Icon-only, so its accessible name IS the
+      // state — which is also where "who has the baby" lives now that the duty
+      // avatar is gone. It only shouts — accent fill plus a pulsing dot — when
+      // someone is waiting on an answer from you.
       shiftBtnLabel: incomingReq ? t('{name} is handing off', { name: requesterName })
         : activeMine ? t('Your shift') : activeTheirs ? t('{name}’s shift', { name: shiftOwnerName })
           : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
@@ -2726,7 +2726,7 @@ export default class App extends React.Component {
             <div style={S('position:absolute;top:-8%;right:-16%;width:66%;aspect-ratio:1;border-radius:999px;background:radial-gradient(circle, rgba(var(--accent-rgb),0.16), rgba(var(--accent-rgb),0) 70%)')} />
             <div style={S('position:absolute;bottom:14%;left:-18%;width:58%;aspect-ratio:1;border-radius:999px;background:radial-gradient(circle, rgba(var(--accent-rgb),0.12), rgba(var(--accent-rgb),0) 70%)')} />
           </div>
-          <div style={S('position:absolute;inset:0;background:linear-gradient(to bottom, rgba(250,246,239,0.25), rgba(250,246,239,0.6) 45%, rgba(250,246,239,0.85))')} />
+          <div className="bg-wash" style={S('position:absolute;inset:0;background:linear-gradient(to bottom, rgba(250,246,239,0.25), rgba(250,246,239,0.6) 45%, rgba(250,246,239,0.85))')} />
           <div className="fx-layer fx-near" style={S('position:absolute;inset:-36px')}>
             <div style={S('position:absolute;top:22%;left:-12%;width:40%;aspect-ratio:1;border-radius:999px;background:radial-gradient(circle, rgba(var(--accent-rgb),0.10), rgba(var(--accent-rgb),0) 70%)')} />
           </div>
@@ -2899,13 +2899,14 @@ export default class App extends React.Component {
                     have nobody to hand off to, so they get no button at all. */}
                 {v.hasPartner && (
                   <button type="button" onClick={v.openShift} aria-label={v.shiftBtnLabel} title={v.shiftBtnLabel} className="hov-bd" style={S(`position:relative;width:38px;height:38px;padding:0;background:${v.shiftBtnBg};border:1px solid ${v.shiftBtnBorder};border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;flex-shrink:0`)}>
-                    <Sym style={{ fontSize: 20, color: v.shiftBtnFg }}>swap_horiz</Sym>
+                    <Sym style={{ fontSize: 20, color: v.shiftBtnFg }}>pending_actions</Sym>
                     {v.shiftBtnDot && <div className="live-dot" style={S('position:absolute;top:2px;right:2px;width:9px;height:9px;border-radius:999px;background:var(--accent-deep);border:2px solid var(--surface)')} />}
                   </button>
                 )}
-                {/* who has the baby (colour + initial), and a tap into your profile */}
-                <button type="button" onClick={v.goSettings} aria-label={t('Settings')} title={v.dutyLabel} className="hov-bd" style={S('width:38px;height:38px;padding:0;background:#FFFDF8;border:1px solid rgba(38,35,29,0.08);border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;flex-shrink:0')}>
-                  <div style={S(`width:28px;height:28px;border-radius:999px;background:${v.dutyColor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#FCFBF6`)}>{v.dutyInitial}</div>
+                {/* Settings lives here now, not on History — an avatar that
+                    opened Settings read as a profile switcher */}
+                <button type="button" onClick={v.goSettings} aria-label={t('Settings')} className="hov-cream" style={S('width:38px;height:38px;padding:0;background:#FFFDF8;border:1px solid rgba(38,35,29,0.10);border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;flex-shrink:0')}>
+                  <Sym style={{ fontSize: 20, color: 'var(--muted)' }}>settings</Sym>
                 </button>
               </div>
             </div>
@@ -2975,7 +2976,7 @@ export default class App extends React.Component {
               )}
 
               {/* your shift, their shift, and on-duty-not-started all live in
-                  the shift sheet now (header swap_horiz) — Now keeps only the
+                  the shift sheet now (the header's pending_actions) — Now keeps only the
                   incoming ask above, because that one needs answering */}
               <div style={S('display:grid;grid-template-columns:1fr 1fr;gap:10px')}>
                 {v.sinceCards.map((c, i) => (
@@ -3082,10 +3083,8 @@ export default class App extends React.Component {
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{t('Last 7 days')}</div>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;letter-spacing:0.06em")}>{v.historySubtitle}</div>
                   </div>
-                  <div style={S('flex:1')} />
-                  <button type="button" onClick={v.goSettings} className="hov-cream" style={S('width:38px;height:38px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.10);border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0')}>
-                    <Sym style={{ fontSize: 20, color: 'var(--muted)' }}>settings</Sym>
-                  </button>
+                  {/* no Settings cog here — Now owns that door, so Settings
+                      has one way in and one way back */}
                 </>
               )}
             </div>
@@ -3841,7 +3840,7 @@ export default class App extends React.Component {
             {v.hasPartner && (
               <div style={S('display:flex;justify-content:center;padding-top:6px;position:relative;z-index:1')}>
                 <button type="button" onClick={v.openShift} className="hov-dim" style={S('background:none;border:none;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;padding:4px 10px')}>
-                  <Sym style={{ fontSize: 16, color: 'var(--soft)' }}>swap_horiz</Sym>
+                  <Sym style={{ fontSize: 16, color: 'var(--soft)' }}>pending_actions</Sym>
                   <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.footerShiftLabel}</div>
                 </button>
               </div>
@@ -3871,7 +3870,7 @@ export default class App extends React.Component {
             }}>
               <div style={S('position:absolute;inset:0;z-index:0')}>
                 <img className="bg-art" src="/art/sheet-bg.png" alt="" style={S('width:100%;height:100%;object-fit:cover;display:block')} />
-                <div style={S('position:absolute;inset:0;background:rgba(250,246,239,0.7);pointer-events:none')} />
+                <div className="bg-wash" style={S('position:absolute;inset:0;background:rgba(250,246,239,0.7);pointer-events:none')} />
               </div>
               <div onPointerDown={v.sheetDragStart} onPointerMove={v.sheetDragMove} onPointerUp={v.sheetDragEnd} onPointerCancel={v.sheetDragEnd}
                 style={S('position:relative;z-index:1;flex-shrink:0;padding:13px 0 13px;margin:-10px -16px 0;cursor:grab;touch-action:none')}>
