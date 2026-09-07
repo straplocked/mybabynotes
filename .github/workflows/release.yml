@@ -165,8 +165,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check for addons-repo token
         id: token
+        # via env, not inline interpolation: the secret never lands in the
+        # command line, and a token carrying a shell metacharacter can't
+        # break the test
+        env:
+          ADDONS_REPO_TOKEN: ${{ secrets.ADDONS_REPO_TOKEN }}
         run: |
-          if [ -n "${{ secrets.ADDONS_REPO_TOKEN }}" ]; then
+          if [ -n "$ADDONS_REPO_TOKEN" ]; then
             echo "have=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::ADDONS_REPO_TOKEN not set — skipping addons-repo publish"
