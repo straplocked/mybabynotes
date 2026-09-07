@@ -134,11 +134,19 @@ Home Assistant renamed this section: it's **Settings → Apps** on 2026.6 and ne
    https://github.com/straplocked/mybabynotes-hassio-addons
    ```
 
+   ![The Repositories list in Home Assistant with the MyBabyNotes add-ons repository added](media/ha-repositories.png)
+
 2. Back in the store, open **MyBabyNotes** and click **Install**. It pulls a prebuilt image — nothing is built on your box. `amd64` and `aarch64` are published.
 3. Click **Start**. First boot runs the database migrations, so give it a few seconds.
 4. Turn on **Show in sidebar**.
 
+![The add-on's Info page: Running, the Ingress badge, Open Web UI, and the Show in sidebar toggle switched on](media/ha-addon.png)
+
 Step 4 is not optional and not automatic: Home Assistant defaults every newly installed ingress add-on to *not* showing a sidebar panel, and it's a per-user toggle rather than something the add-on's manifest can set. Until you flip it, the only way in is **Open Web UI** on the add-on's page. Opening the ingress URL directly in a browser tab returns `401: Unauthorized` — that's expected, because HA mints a short-lived ingress session when *it* opens the panel; there is nothing wrong with your install.
+
+With the toggle on, MyBabyNotes sits in the sidebar for everyone in the household. A fresh local-mode install opens on the sign-up screen — the first account claims the instance and becomes a parent:
+
+![MyBabyNotes running in the Home Assistant sidebar via ingress, showing its sign-up screen](media/ha-sidebar.png)
 
 Then set the one option that matters: `mode`.
 
