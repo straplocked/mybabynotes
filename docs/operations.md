@@ -37,6 +37,40 @@ The entire state is one file: `/mnt/user/appdata/baby-log/data/database.sqlite` 
 
 On a generic Docker Compose install (the repo-root compose file), the database lives in the **named volume** `babylog-db`, not a host path — back it up with e.g. `docker run --rm -v babylog-db:/data -v "$PWD:/backup" alpine cp /data/database.sqlite /backup/`, plus your `.env`.
 
+## Moving a compose install to the Unraid app
+
+The Community Apps container is the all-in-one image, and it expects **one flat folder**: `/data/database.sqlite` beside `/data/.env`. The compose install nests them differently:
+
+```
+/mnt/user/appdata/baby-log/     <- compose install
+  .env                          #   secrets
+  data/database.sqlite          #   THE data, one level down
+  src/
+```
+
+**Do not point the app's Data path at that folder.** The container would find `.env` (so it would keep your keys) but *not* the database — it creates an empty one at `/data/database.sqlite` and starts as a blank instance, with the real log still sitting in `data/`. Nothing is deleted, but a blank instance is claimable by the next sign-up, so treat it as dangerous rather than merely untidy.
+
+Migrate into a **new folder** instead, which also leaves the old one intact as an instant rollback:
+
+1. Note your row counts first, so you can prove the move worked:
+   ```
+   docker exec baby-log-api php -r '$d=new PDO("sqlite:/data/database.sqlite"); foreach(["users","babies","entries"] as $t) echo $t,": ",$d->query("select count(*) from $t")->fetchColumn(),"\n";'
+   ```
+2. Stop the old containers so nothing is mid-write: `docker stop baby-log-app baby-log-api baby-log-reverb`
+3. Back up, then build the new folder — carrying **`APP_KEY` forward is required**, since it decrypts the stored MQTT broker password, and carrying `REVERB_APP_KEY` forward keeps already-installed phones on websockets instead of falling back to polling:
+   ```
+   cp -a /mnt/user/appdata/baby-log /mnt/user/appdata/baby-log.bak-$(date +%F)
+   mkdir -p /mnt/user/appdata/mybabynotes
+   cp -a /mnt/user/appdata/baby-log/data/database.sqlite /mnt/user/appdata/mybabynotes/database.sqlite
+   grep -E '^(APP_KEY|REVERB_APP_ID|REVERB_APP_KEY|REVERB_APP_SECRET|VAPID_SUBJECT)=' \
+     /mnt/user/appdata/baby-log/.env > /mnt/user/appdata/mybabynotes/.env
+   chown -R 82:82 /mnt/user/appdata/mybabynotes
+   ```
+4. Install the app from Community Apps with **Data** = `/mnt/user/appdata/mybabynotes` and the same host port you were using (default 3500), so your reverse proxy needs no change.
+5. Start it and check the counts match. The old folder and stopped containers are your rollback until you're satisfied; delete them once you are.
+
+Keep `.env` in your backups either way — losing `APP_KEY` strands anything encrypted with it.
+
 ## Using Postgres instead of SQLite
 
 SQLite is the default and needs no configuration — it's what the appliance ships and what these backup instructions assume. If you already run a Postgres and would rather keep this database there too, the image carries `pdo_pgsql`; set on the `api` (and `reverb`) container:
