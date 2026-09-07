@@ -88,7 +88,16 @@ HTTPS origin the app already needs.
 
 ## Backend (`api/`)
 
-Laravel 13, SQLite, Sanctum bearer tokens.
+Laravel 13, SQLite (Postgres optional), Sanctum bearer tokens.
+
+- **Database driver**: SQLite is the default and what the appliance ships — one
+  file under `/data`, zero ops. The image also carries `pdo_pgsql`, so
+  `DB_CONNECTION=pgsql` plus the usual `DB_HOST`/`DB_PORT`/`DB_DATABASE`/
+  `DB_USERNAME`/`DB_PASSWORD` points the same build at a Postgres you already
+  run. The entrypoint is driver-aware: the `/data` file prep only happens under
+  SQLite, and a non-SQLite boot retries the migration briefly so a cold
+  `docker compose up` waits for its database rather than crash-looping. CI runs
+  the whole feature suite on **both** drivers so they can't quietly diverge.
 
 - **Household model**: `households` owns everything; a user belongs to exactly one household; max 6 users (`babylog.max_household_users`, `BABYLOG_MAX_USERS`) and 10 children (`babylog.max_children`, `BABYLOG_MAX_CHILDREN`). Every user has a role: **parent** (full control) or **caregiver** (may log entries, run timers, and take/hand back shifts; the household-shaping endpoints — `/baby`, `/children`, `/settings`, `/invite`, `/invite/revoke`, `/household/remove-member` — return 403). The first account on an instance is a parent. The legacy "partner" is now just the first other member (`Household::partnerOf`), kept for old clients and used only as a fallback.
 - **Children**: `babies` rows per household, id-ordered; the oldest is the *primary* child (what old clients call "the baby", and where entries without a `baby_id` land). Children are archived, never deleted — a child's log is history worth keeping.
@@ -132,5 +141,5 @@ Three surfaces — REST ([integrations.md](integrations.md)), Home Assistant ([h
 | Client-generated entry ids | Offline writes merge without coordination; edits/deletes address the same id |
 | Tombstone deletes | Deletes must sync across devices like any write |
 | Reports computed from entries | No snapshot to drift out of sync; the log is the single source of truth |
-| SQLite | A handful of users per instance; zero ops; the whole DB is one backup-able file |
+| SQLite by default, Postgres supported | A handful of users per instance needs no more than a file, and zero ops is the appliance's whole promise; `pdo_pgsql` ships in the image so anyone already running Postgres can point at it, and CI proves both drivers on one codebase |
 | php-fpm (8 static workers) behind a loopback nginx in prod | Plenty for a ≤6-user appliance; revisit pool sizing if this ever becomes multi-tenant |

@@ -15,23 +15,50 @@ permissions:
   packages: write
 
 jobs:
+  # Both drivers, same as build-images.yml — a tag can be cut from any commit,
+  # so this gate can't assume the main-branch run already covered Postgres.
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, pgsql]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: babylog
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: babylog_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
+          extensions: pdo_pgsql
       - name: Install API dependencies
         working-directory: api
         run: composer install --no-interaction --prefer-dist
       - name: Prepare test env
         working-directory: api
         run: cp .env.example .env && php artisan key:generate
-      - name: Run API tests
+      - name: Run API tests (${{ matrix.db }})
         working-directory: api
         env:
           BROADCAST_CONNECTION: log
+          DB_CONNECTION: ${{ matrix.db }}
+          DB_DATABASE: ${{ matrix.db == 'pgsql' && 'babylog_test' || ':memory:' }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USERNAME: babylog
+          DB_PASSWORD: secret
         run: php artisan test --compact
 
   test-app:

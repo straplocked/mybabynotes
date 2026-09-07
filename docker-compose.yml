@@ -6,8 +6,16 @@ x-laravel-env: &laravel-env
   APP_KEY: ${APP_KEY:?set APP_KEY in .env}
   APP_URL: "http://localhost:3500"
   LOG_CHANNEL: stderr
-  DB_CONNECTION: sqlite
-  DB_DATABASE: /data/database.sqlite
+  # SQLite by default — one file in the babylog-db volume, no other service to
+  # run. To use a Postgres you already have, set DB_CONNECTION=pgsql plus
+  # DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD (the image ships
+  # pdo_pgsql); see docs/operations.md "Using Postgres instead of SQLite".
+  DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+  DB_DATABASE: ${DB_DATABASE:-/data/database.sqlite}
+  DB_HOST: ${DB_HOST:-}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_USERNAME: ${DB_USERNAME:-}
+  DB_PASSWORD: ${DB_PASSWORD:-}
   SESSION_DRIVER: cookie
   CACHE_STORE: file
   QUEUE_CONNECTION: sync

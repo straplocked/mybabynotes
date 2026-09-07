@@ -37,6 +37,23 @@ The entire state is one file: `/mnt/user/appdata/baby-log/data/database.sqlite` 
 
 On a generic Docker Compose install (the repo-root compose file), the database lives in the **named volume** `babylog-db`, not a host path — back it up with e.g. `docker run --rm -v babylog-db:/data -v "$PWD:/backup" alpine cp /data/database.sqlite /backup/`, plus your `.env`.
 
+## Using Postgres instead of SQLite
+
+SQLite is the default and needs no configuration — it's what the appliance ships and what these backup instructions assume. If you already run a Postgres and would rather keep this database there too, the image carries `pdo_pgsql`; set on the `api` (and `reverb`) container:
+
+```
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_PORT=5432
+DB_DATABASE=babylog
+DB_USERNAME=babylog
+DB_PASSWORD=...
+```
+
+Migrations run on boot exactly as they do under SQLite, and the entrypoint retries for ~30s first so a database that starts alongside the app isn't a crash loop. Nothing else changes: the `/data` volume is then only holding `.env` (the all-in-one image still generates its secrets there), so **back up your Postgres *and* `.env`** — `APP_KEY` decrypts the stored MQTT broker password. There is no migration path between drivers: switching moves you to an empty database, so export your log first (Settings → "Share with your pediatrician") if you're changing an instance that already has data.
+
+The feature suite runs against both drivers in CI, so a Postgres instance is a supported configuration rather than a best-effort one — but SQLite is the better-trodden path, and unless you have a reason to want Postgres, the default is the one to pick.
+
 ## Remote access (reverse proxy)
 
 Point your reverse proxy (e.g. Nginx Proxy Manager) at the app container: `your-domain → http://<nas-ip>:3500` with **websocket support enabled** (required for Reverb), plus the usual Force SSL / HTTP/2 / Let's Encrypt cert.

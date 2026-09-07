@@ -19,27 +19,63 @@ permissions:
   packages: write
 
 jobs:
+  # The suite runs on both supported drivers. SQLite is what the appliance
+  # ships; Postgres is what a self-hoster (or the hosted tier) can point
+  # DB_CONNECTION at. Running both on one codebase is the mechanism that
+  # catches SQLite's loose typing, JSON column handling and boolean-cast
+  # leniency before someone else's Postgres does.
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, pgsql]
+    # started for both legs (a service can't be conditional); the sqlite leg
+    # simply never connects to it
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: babylog
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: babylog_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
+          extensions: pdo_pgsql
       - name: Install API dependencies
         working-directory: api
         run: composer install --no-interaction --prefer-dist
       - name: Prepare test env
         working-directory: api
         run: cp .env.example .env && php artisan key:generate
-      - name: Run API tests
+      # phpunit.xml pins sqlite/:memory:, but its <env> entries yield to a real
+      # environment variable — so these select the driver without editing it
+      - name: Run API tests (${{ matrix.db }})
         working-directory: api
         env:
           BROADCAST_CONNECTION: log
+          DB_CONNECTION: ${{ matrix.db }}
+          DB_DATABASE: ${{ matrix.db == 'pgsql' && 'babylog_test' || ':memory:' }}
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USERNAME: babylog
+          DB_PASSWORD: secret
         run: php artisan test --compact
       # the committed spec must match the code — regenerate locally with the
-      # container command in CLAUDE.md if this fails
+      # container command in CLAUDE.md if this fails. Driver-independent, so
+      # it only needs one leg.
       - name: OpenAPI spec is committed and current
+        if: matrix.db == 'sqlite'
         working-directory: api
         env:
           DB_DATABASE: /tmp/scramble.sqlite

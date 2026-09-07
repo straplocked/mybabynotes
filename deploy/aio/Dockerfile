@@ -39,10 +39,14 @@ RUN composer dump-autoload --optimize --no-dev
 
 # ---- Runtime ----
 FROM php:8.4-fpm-alpine
-# gmp speeds up the Web Push EC crypto (pure-PHP fallback works but is slow)
-RUN apk add --no-cache gmp gmp-dev nginx supervisor openssl \
-    && docker-php-ext-install pcntl gmp bcmath \
-    && apk del gmp-dev
+# gmp speeds up the Web Push EC crypto (pure-PHP fallback works but is slow).
+# libpq is the pdo_pgsql runtime and is named explicitly so the `apk del` of
+# the -dev packages can't take it with it as an orphan. The appliance stays
+# SQLite-on-/data by default; pdo_pgsql only matters if someone overrides
+# DB_CONNECTION to point at a Postgres of their own.
+RUN apk add --no-cache gmp gmp-dev libpq postgresql-dev nginx supervisor openssl \
+    && docker-php-ext-install pcntl gmp bcmath pdo_pgsql \
+    && apk del gmp-dev postgresql-dev
 WORKDIR /var/www/html
 COPY --from=deps /app /var/www/html
 COPY --from=webbuild /app/dist /usr/share/nginx/html

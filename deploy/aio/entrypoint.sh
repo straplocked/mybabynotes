@@ -39,8 +39,19 @@ REVERB_KEY=$(sed -n 's/^REVERB_APP_KEY=//p' /data/.env | tail -1)
 # Laravel reads .env from the app root; point it at the persisted one
 ln -sf /data/.env /var/www/html/.env
 
-: "${DB_DATABASE:=/data/database.sqlite}"
-[ -f "$DB_DATABASE" ] || touch "$DB_DATABASE"
+: "${DB_CONNECTION:=sqlite}"
+
+# The appliance default is a SQLite file this container owns. Pointing
+# DB_CONNECTION at a Postgres of your own is supported (the image carries
+# pdo_pgsql), and then none of the file prep applies — but /data still holds
+# the generated .env, so it stays ours either way.
+if [ "$DB_CONNECTION" = "sqlite" ]; then
+  # export, not a bare shell default: php inherits the environment, so an
+  # unexported assignment would leave Laravel on its own database_path()
+  # fallback while we touched a file it never opens
+  export DB_DATABASE="${DB_DATABASE:-/data/database.sqlite}"
+  [ -f "$DB_DATABASE" ] || touch "$DB_DATABASE"
+fi
 
 # fpm workers run as www-data (artisan serve ran as root): the SQLite file +
 # its transient journal (dir write!), the generated .env, and storage/ for
@@ -60,7 +71,19 @@ elif ! grep -rq "$REVERB_KEY" /usr/share/nginx/html/assets 2>/dev/null; then
   echo "WARNING: the served bundle carries a different REVERB_APP_KEY (was /data/.env edited after boot?) — realtime will fall back to polling until the container is recreated" >&2
 fi
 
-php artisan migrate --force
+if [ "$DB_CONNECTION" = "sqlite" ]; then
+  php artisan migrate --force
+else
+  # An external Postgres may not be accepting connections yet on a cold boot:
+  # retry briefly so the log says so instead of the container crash-looping.
+  n=0
+  until php artisan migrate --force; do
+    n=$((n + 1))
+    [ "$n" -ge 10 ] && { echo "ERROR: database unreachable after 10 attempts" >&2; exit 1; }
+    echo "==> database not ready, retrying in 3s ($n/10)" >&2
+    sleep 3
+  done
+fi
 
 # opt-in realip for the rate-limit zones (TRUSTED_PROXIES env)
 /usr/local/bin/real-ip.sh
