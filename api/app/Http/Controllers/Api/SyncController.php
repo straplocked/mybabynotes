@@ -371,6 +371,9 @@ class SyncController extends Controller
             'entries.*.detail' => ['nullable', 'string', 'max:100'],
             'entries.*.deleted' => ['nullable', 'boolean'],
             'entries.*.baby_id' => ['nullable', 'integer'],
+            // whose activity this was — only honored for members of the
+            // caller's household, and only on create (see EntryWriter)
+            'entries.*.user_id' => ['nullable', 'integer'],
         ]);
 
         $writer->upsert($request->user(), $data['entries']);

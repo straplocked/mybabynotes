@@ -70,16 +70,37 @@ const twoTimers = () => [
 ]
 
 describe('multi-timer rows', () => {
-  it('renders a top card per running timer, with one-tap Stop only on mine', async () => {
+  it('renders a top card per running timer, every one stoppable from here', async () => {
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({ timers: twoTimers() }))
     renderApp()
 
     expect(await screen.findByText('Nursing · You')).toBeInTheDocument()
     expect(screen.getByText('Sleep · Kat')).toBeInTheDocument()
-    // my timer stops in one tap on BOTH surfaces (top card + Today row);
-    // Kat's never has a Stop anywhere
-    expect(screen.getAllByText('Stop')).toHaveLength(2)
+    // both timers stop in one tap on BOTH surfaces (top card + Today row) —
+    // whoever came on duty can end a session they didn't start
+    expect(screen.getAllByText('Stop')).toHaveLength(4)
+  })
+
+  it("stopping Kat's timer still credits the sleep to Kat, not to me", async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let stopBody, pushed
+    routes['GET /state'] = () => okJson(stateFixture({ timers: twoTimers() }))
+    routes['POST /timer/stop'] = opts => { stopBody = JSON.parse(opts.body); return okJson({ ok: true, stopped: null }) }
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await screen.findByText('Sleep · Kat')
+    // DOM order of the top cards follows activeTimers: nurse (mine), then Kat's sleep
+    await user.click(screen.getAllByText('Stop')[1])
+
+    expect(stopBody).toEqual({ id: 't-sleep' })
+    expect(screen.queryByText('Sleep · Kat')).not.toBeInTheDocument()
+    // the entry names the person who ran the session, not the one who pressed Stop
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].type).toBe('sleep')
+    expect(pushed.entries[0].user_id).toBe(2)
   })
 
   it('one tap on my top card stops that timer by id and logs the entry', async () => {
@@ -141,15 +162,16 @@ describe('multi-timer rows', () => {
     expect(pushed.entries[0].detail).toBe('12') // minutes, sleep-style, stringified for the wire
   })
 
-  it('a timer someone else started never offers Stop', async () => {
+  it('a timer someone else started offers Stop just like your own', async () => {
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({ timers: [twoTimers()[1]] }))
     renderApp()
 
-    // neither Kat's top card nor her Today row has a Stop
+    // both Kat's top card and her Today row carry a Stop — the person coming
+    // on duty ends the nap without waking the one who started it
     await screen.findByText('Sleep · Kat')
     expect(screen.getByText('Sleep')).toBeInTheDocument()
-    expect(screen.queryByText('Stop')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Stop')).toHaveLength(2)
   })
 
   it("timerSpot 'top' keeps the cards and hides the Today rows", async () => {

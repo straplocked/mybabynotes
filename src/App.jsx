@@ -413,8 +413,11 @@ export default class App extends React.Component {
         const pushed = new Map(this.state.entries.filter(e => ids.has(e.id)).map(e => [e.id, e]))
         const payload = [...pushed.values()]
           // baby_id rides along only when known — absent means "primary child"
-          // on create and "keep what you have" on update, server-side
-          .map(e => ({ id: e.id, type: e.type, t: e.t, detail: e.detail == null ? null : String(e.detail), deleted: !!e.deleted, ...(e.babyId != null ? { baby_id: e.babyId } : {}) }))
+          // on create and "keep what you have" on update, server-side. user_id
+          // is the same shape: it names whose activity this was (a timer someone
+          // else stopped stays credited to whoever ran it), and the server
+          // honors it only for members of our household, only on create.
+          .map(e => ({ id: e.id, type: e.type, t: e.t, detail: e.detail == null ? null : String(e.detail), deleted: !!e.deleted, ...(e.babyId != null ? { baby_id: e.babyId } : {}), ...(e.by != null ? { user_id: e.by } : {}) }))
         // the server caps 500 entries per batch — a Baby Buddy import (or any
         // bulk enqueue) flushes in slices; a failed slice throws, leaves the
         // outbox intact, and the idempotent upsert re-pushes it next sync
@@ -1234,8 +1237,15 @@ export default class App extends React.Component {
   }
   stopTimer = id => {
     const tm = this.state.activeTimers.find(x => x.id === id)
-    if (!tm || tm.user_id !== this.state.me?.id) return // only the parent who started can stop + log
+    if (!tm) return
+    // Anyone in the household can stop any timer: a nap outlives the handoff
+    // that happens mid-nap, and "only the starter can stop" stranded whoever
+    // came on duty. The session still belongs to the person who ran it, so the
+    // logged entry names them, not whoever was free to press Stop.
+    const by = tm.user_id ?? this.state.me?.id
     const mins = Math.max(1, Math.round((Date.now() - tm.started_at) / 60000))
+    // the nurse side is remembered per-device against the timer id, so stopping
+    // someone else's session falls back to the default rather than their pick
     const side = this.state.timerSides[id]
     this._timerBusy++
     this.setState(s => {
@@ -1250,7 +1260,7 @@ export default class App extends React.Component {
     if (tm.type === 'nurse') {
       // nursing: measured side + duration log straight away, undo available
       const detail = [side || this.defaultDetail('nurse'), mins + 'm'].filter(Boolean).join(' · ')
-      const entry = { id: uuid(), type: 'nurse', t: tm.started_at, detail, by: this.state.me?.id, babyId: timerBabyId }
+      const entry = { id: uuid(), type: 'nurse', t: tm.started_at, detail, by, babyId: timerBabyId }
       this.setState(s => ({
         entries: [entry, ...s.entries], outbox: [...s.outbox, entry.id],
         toast: t('Nursing logged · {dur}', { dur: this.dur(mins) }), undoAction: { kind: 'add', id: entry.id },
@@ -1261,7 +1271,7 @@ export default class App extends React.Component {
       // the duration leads the detail as bare minutes (the sleep format — the
       // wake-window insight subtracts it from t to find when the nap started).
       // A nap/night tag is an edit-time refinement, so the timer stays untagged.
-      const entry = { id: uuid(), type: tm.type, t: Date.now(), detail: mins, by: this.state.me?.id, babyId: timerBabyId }
+      const entry = { id: uuid(), type: tm.type, t: Date.now(), detail: mins, by, babyId: timerBabyId }
       this.setState(s => ({
         entries: [entry, ...s.entries], outbox: [...s.outbox, entry.id],
         toast: t(tm.type === 'sleep' ? 'Sleep logged · {dur}' : 'Tummy time logged · {dur}', { dur: this.dur(mins) }),
@@ -1275,6 +1285,8 @@ export default class App extends React.Component {
       this.mountSheet({
         editId: null, sel: 'pump', offset: 0, pickedT: null, manualDur: true, sheetChildId: timerBabyId,
         detail: this.amt(last ? (dSplit(last.detail).n ?? 4) : 4), detail2: mins,
+        // the pump was theirs even if you're the one entering the amount
+        sheetAuthorId: by,
       })
     }
   }
@@ -1636,7 +1648,9 @@ export default class App extends React.Component {
     if (!this.state.sheet && !window.history.state?.blSheet) {
       try { window.history.pushState({ blSheet: true }, '') } catch { /* history blocked — back just exits */ }
     }
-    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: !!this.state.advancedDefault, ...fields })
+    // sheetAuthorId defaults to null on every open — only a timer stop passes
+    // one, and a stale value must never re-credit the next thing logged here
+    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: !!this.state.advancedDefault, sheetAuthorId: null, ...fields })
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.state.sheet) this.setState({ sheetIn: true })
     }))
@@ -1810,7 +1824,9 @@ export default class App extends React.Component {
         }
       }, () => this.flushSoon())
     } else {
-      const entry = { id: uuid(), type: key, t: at, detail, by: this.state.me?.id, babyId }
+      // sheetAuthorId is set only when a timer stop routed us here (pumping
+      // needs the amount before it can be logged) — that session's owner keeps it
+      const entry = { id: uuid(), type: key, t: at, detail, by: this.state.sheetAuthorId ?? this.state.me?.id, babyId }
       this.setState(s => ({
         screen: 'home',
         entries: [entry, ...s.entries],
@@ -2005,7 +2021,7 @@ export default class App extends React.Component {
       pending: pendingIds.has(e.id), byChip: byChipFor(e),
     }))
     // running timers woven into the Today list at their start time (timerSpot
-    // 'today' or 'both') — a live elapsed sub, and your own row carries its
+    // 'today' or 'both') — a live elapsed sub, and every row carries its
     // one-tap Stop, same rule as the top cards
     const feedTimerRows = (s.timerSpot || 'both') !== 'top' ? s.activeTimers.map(tm => {
       const tt = T(tm.type)
@@ -2014,7 +2030,7 @@ export default class App extends React.Component {
         ? ((s.children || []).find(c => c.id === (tm.baby_id ?? this.primaryChildId()))?.name || '')
         : ''
       return {
-        timer: true, id: tm.id, mine,
+        timer: true, id: tm.id,
         t: tm.started_at, time: this.clock(tm.started_at), label: t(tt.label),
         sub: this.stopwatch(Date.now() - tm.started_at)
           + (child ? ' · ' + child : '')
@@ -2399,8 +2415,8 @@ export default class App extends React.Component {
       // running-timer cards at the top of Now (timerSpot 'top' or 'both') —
       // one per concurrent timer, in start order so cards stay put as new ones
       // append. With 2+ unarchived children each names its child (null baby_id
-      // = primary, same rule as entries). Your own card stops in one tap —
-      // same as your rows in the Today list.
+      // = primary, same rule as entries). Any card stops in one tap, whoever
+      // started it — same as the rows in the Today list.
       timers: ((s.timerSpot || 'both') === 'today' ? [] : s.activeTimers).map(tm => {
         const tt = T(tm.type)
         return {
@@ -2411,7 +2427,6 @@ export default class App extends React.Component {
             : '',
           icon: tt.icon, color: tt.color,
           elapsed: this.stopwatch(Date.now() - tm.started_at),
-          mine: !!(me && tm.user_id === me.id),
           who: tm.user_id === me?.id ? t('You') : this.memberName(tm.user_id, partnerName),
           stop: () => this.stopTimer(tm.id),
         }
@@ -3038,14 +3053,12 @@ export default class App extends React.Component {
                     <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{tm.label}{tm.child ? ' · ' + tm.child : ''} · {tm.who}</div>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.03em;color:#3D392F;font-variant-numeric:tabular-nums")}>{tm.elapsed}</div>
                   </div>
-                  {tm.mine ? (
-                    <button type="button" onClick={tm.stop} className="hov-dark" style={S('position:relative;height:44px;padding:0 20px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:7px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
-                      <Sym style={{ fontSize: 18, color: 'var(--bg)' }}>stop</Sym>
-                      <div style={S('font-size:14px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
-                    </button>
-                  ) : (
-                    <Sym style={{ position: 'relative', fontSize: 22, color: tm.color, flexShrink: 0 }}>timer</Sym>
-                  )}
+                  {/* every timer stops from any phone — whoever came on duty
+                      shouldn't have to wake the person who started it */}
+                  <button type="button" onClick={tm.stop} className="hov-dark" style={S('position:relative;height:44px;padding:0 20px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:7px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
+                    <Sym style={{ fontSize: 18, color: 'var(--bg)' }}>stop</Sym>
+                    <div style={S('font-size:14px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
+                  </button>
                 </div>
               ))}
 
@@ -3130,14 +3143,10 @@ export default class App extends React.Component {
                       <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{e.label}</div>
                       <div style={S('font-size:11.5px;color:#8C8474;font-variant-numeric:tabular-nums')}>{e.sub}</div>
                     </div>
-                    {e.mine ? (
-                      <button type="button" onClick={e.onStop} className="hov-dark" style={S('height:34px;padding:0 14px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
-                        <Sym style={{ fontSize: 15, color: 'var(--bg)' }}>stop</Sym>
-                        <div style={S('font-size:12.5px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
-                      </button>
-                    ) : (
-                      <Sym style={{ fontSize: 18, color: e.color, flexShrink: 0 }}>timer</Sym>
-                    )}
+                    <button type="button" onClick={e.onStop} className="hov-dark" style={S('height:34px;padding:0 14px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
+                      <Sym style={{ fontSize: 15, color: 'var(--bg)' }}>stop</Sym>
+                      <div style={S('font-size:12.5px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
+                    </button>
                   </div>
                 ) : (
                   <button key={i} type="button" onClick={e.onEdit} className="hov-row" style={S('width:100%;background:none;border:none;border-top:1px solid rgba(38,35,29,0.06);padding:13px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit')}>

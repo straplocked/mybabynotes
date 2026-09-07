@@ -113,12 +113,13 @@ The single polling/converge endpoint.
 ### `POST /entries`
 Batch upsert from the client outbox (≤ 500 per call).
 ```json
-{ "entries": [ { "id": "uuid", "type": "bottle", "t": 1750000000000, "detail": "4", "deleted": false, "baby_id": 10 } ] }
+{ "entries": [ { "id": "uuid", "type": "bottle", "t": 1750000000000, "detail": "4", "deleted": false, "baby_id": 10, "user_id": 3 } ] }
 ```
 - `type` ≤ 20 chars — one of `bottle nurse pump wet dirty both sleep tummy bath meds` (client-defined; server stores any short string).
 - `detail` nullable string ≤ 100 (amount for bottle/pump, side for nurse, minutes for sleep/tummy — sleep may carry a nap/night tag, e.g. `Nap · 45m`).
 - `t` ms epoch — when the session **started**, except `sleep`/`tummy`, which stamp when it **ended** (`t` − duration = the start the app shows and sorts by).
 - `baby_id` optional — must be one of the household's children; a foreign id is **dropped, never stored**. Absent (old single-child clients): a **create** lands on the primary (oldest) child, an **update** keeps the entry's stored `baby_id` — an old client editing an amount can't re-home the entry.
+- `user_id` optional — whose activity this was. Must be a member of the caller's household; a foreign id is **dropped, never stored**, and the entry falls back to the caller. Honored on **create** only: an update never re-homes an existing entry's author, so editing someone else's entry leaves their name on it. This is what lets any member stop a timer someone else started (see [Timers](#timers--all-auth--throttle-120min)) without re-crediting the session to whoever pressed Stop.
 - Ids colliding with **another household's** entry are silently skipped; within the household, last write wins and the original author's `user_id` is preserved.
 - Returns `{ ok, serverTime }`, broadcasts a poke.
 
@@ -168,6 +169,8 @@ The live nursing/pump/sleep/tummy-time timers. **Timers stack** — a nursing ti
 
 ### `POST /timer/stop`
 `{ id? }` — removes that timer from `active_timers`, broadcasts a poke. Without `id` (pre-multi-timer clients) it stops the caller's newest timer, else the household's newest. Returns `{ ok, stopped }` (`stopped` null if nothing matched). The client logs the nurse/pump entry (with the measured duration) separately.
+
+**Any member may stop any timer**, not just the one who started it — a nap outlives the handoff that happens mid-nap, and requiring the starter stranded whoever came on duty. The session still belongs to the person who ran it: the stopping client passes the timer's `user_id` as the logged entry's author (see [`POST /entries`](#post-entries)), so a feed stays credited to whoever did it. The nurse *side* is remembered per-device against the timer id, so stopping someone else's nursing timer falls back to the default side rather than their pick.
 
 ## Shifts — all auth + throttle 120/min
 

@@ -363,8 +363,11 @@ describe('outbox sync', () => {
 
     await waitFor(() => expect(pushed).toBeTruthy())
     // detail goes over the wire as a string; babyId null stays absent so an
-    // old-client-shaped write still means "primary child" server-side
-    expect(pushed).toEqual({ entries: [{ id: 'e-queued', type: 'bottle', t, detail: '4', deleted: false }] })
+    // old-client-shaped write still means "primary child" server-side; user_id
+    // names the author (the server honors it only for our own household, and
+    // only on create — it's what keeps a timer someone else stopped credited
+    // to whoever ran it)
+    expect(pushed).toEqual({ entries: [{ id: 'e-queued', type: 'bottle', t, detail: '4', deleted: false, user_id: 1 }] })
     await waitFor(() => {
       expect(JSON.parse(localStorage.getItem(STORE_KEY)).outbox).toEqual([])
     })

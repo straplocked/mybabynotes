@@ -16,8 +16,10 @@ use Illuminate\Support\Str;
  * public /api/v1 endpoints, MCP tools, the MQTT command handler — goes through
  * here so the sync invariants live in exactly one place: client ids win,
  * latest write wins, deletes are tombstones, a foreign baby_id is dropped
- * (default to the primary child on create, preserve on update), and every
- * batch fires one HouseholdTouched poke plus the partner activity ping.
+ * (default to the primary child on create, preserve on update), an author
+ * outside the household is dropped the same way (default to the caller on
+ * create, preserve on update), and every batch fires one HouseholdTouched
+ * poke plus the partner activity ping.
  */
 class EntryWriter
 {
@@ -29,7 +31,7 @@ class EntryWriter
 
     /**
      * Batch upsert acting as $user. Rows are validated shapes:
-     * {id, type, t, detail?, deleted?, baby_id?}.
+     * {id, type, t, detail?, deleted?, baby_id?, user_id?}.
      *
      * @param  array<int, array<string, mixed>>  $entries
      * @return string[] ids actually written (cross-household collisions skipped)
@@ -43,6 +45,14 @@ class EntryWriter
         $childIds = $user->household->children()->pluck('id')->all();
         $primaryChildId = $childIds[0] ?? null;
 
+        // Who a row may name as its author. A timer runs under whoever started
+        // it but can be stopped by whoever is free — a nap outlives the handoff
+        // that happens mid-nap — so the stopping client names the session's
+        // owner rather than itself, and the nursing stays credited to the
+        // person who did it. Constrained to this household: a foreign id is
+        // dropped exactly like a foreign baby_id, never stored.
+        $memberIds = $user->household->users()->pluck('id')->all();
+
         $written = [];
         foreach ($entries as $e) {
             $existing = Entry::where('id', $e['id'])->first();
@@ -55,11 +65,17 @@ class EntryWriter
             $babyId = isset($e['baby_id']) && in_array((int) $e['baby_id'], $childIds, true)
                 ? (int) $e['baby_id']
                 : ($existing->baby_id ?? $primaryChildId);
+            // create-only, same rule as baby_id: an edit never re-homes an
+            // existing row's author, so editing someone else's entry leaves
+            // their name on it
+            $authorId = isset($e['user_id']) && in_array((int) $e['user_id'], $memberIds, true)
+                ? (int) $e['user_id']
+                : $user->id;
             Entry::updateOrCreate(
                 ['id' => $e['id']],
                 [
                     'household_id' => $user->household_id,
-                    'user_id' => $existing->user_id ?? $user->id,
+                    'user_id' => $existing->user_id ?? $authorId,
                     'baby_id' => $babyId,
                     'type' => $e['type'],
                     't' => $e['t'],

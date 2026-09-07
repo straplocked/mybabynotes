@@ -23,7 +23,7 @@ Honest list of what's missing, stubbed, or deliberately deferred — the startin
 - **The daily meds nudge is household-level** — one dose tracked, not per child. (Feed reminders *do* have per-child intervals.)
 - **Shifts are household-level** ("who has the kids"), not per child. The shift sheet's drafted plan and "Right now" rows read the currently selected child's rhythm; there's no explicit per-child or all-children framing in the sheet.
 - **Members removed before 2026-09-04** have no name snapshot in `households.former_members`, so their old entries render without an attribution chip. Not recoverable.
-- **Timer stop has no ownership check at the API layer** — the client only offers Stop on your own timers (on the Now cards and the Today rows alike), but the endpoint itself would accept anyone's stop (of any timer, by id). Not reachable from the UI; noted in case it wants tightening server-side. (`/shifts/plan` is fine — it only ever touches the caller's own active shift.)
+- **Stopping someone else's nursing timer loses the side.** Any member can now stop any timer, and the logged entry stays credited to whoever ran the session — but the Left/Right pick is remembered *per device*, against the timer id, so a phone that didn't start the session doesn't have it and the entry falls back to the default side. Fixable by moving the side onto the server timer; it wasn't worth widening the timer wire for. (`/shifts/plan` needs no ownership check either — it only ever touches the caller's own active shift.)
 
 ## Shift-system edges
 

@@ -1109,6 +1109,60 @@ class BabylogApiTest extends TestCase
         $this->assertSame($benBabyId, $entry['baby_id']);
     }
 
+    public function test_an_entry_can_name_another_member_as_its_author(): void
+    {
+        [$ben, $kat] = $this->threeMemberHousehold();
+        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
+
+        // Katrina stops a nursing session Ben started and logs it as his: any
+        // member can stop any timer, but the feed stays credited to whoever
+        // actually did it, not to whoever was free to press Stop
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'e1', 'type' => 'nurse', 't' => 1000, 'detail' => 'Left · 30m', 'user_id' => $benId],
+        ]], $this->authed($kat))->assertOk();
+
+        $this->assertSame($benId, $this->getJson('/api/state?since=0', $this->authed($kat))->json('entries.0.user_id'));
+    }
+
+    public function test_an_author_from_another_household_is_never_stored(): void
+    {
+        config(['babylog.open_registration' => true]);
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $eve = $this->register('Eve', 'eve@example.com')->json('token');
+        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
+        $eveId = $this->getJson('/api/state', $this->authed($eve))->json('user.id');
+        $this->assertNotSame($benId, $eveId);
+
+        // Ben names Eve as the author — the foreign id is dropped and the write
+        // behaves as if no user_id was sent, exactly like a foreign baby_id
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'e1', 'type' => 'bottle', 't' => 1000, 'user_id' => $eveId],
+        ]], $this->authed($ben))->assertOk();
+
+        $this->assertSame($benId, $this->getJson('/api/state?since=0', $this->authed($ben))->json('entries.0.user_id'));
+    }
+
+    public function test_editing_an_entry_never_re_homes_its_author(): void
+    {
+        [$ben, $kat] = $this->threeMemberHousehold();
+        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
+        $katId = $this->getJson('/api/state', $this->authed($kat))->json('user.id');
+
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'e1', 'type' => 'bottle', 't' => 1000, 'detail' => '4'],
+        ]], $this->authed($ben))->assertOk();
+
+        // Katrina fixes the amount and names herself — author is create-only,
+        // so Ben keeps the entry (same rule baby_id already follows)
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'e1', 'type' => 'bottle', 't' => 1000, 'detail' => '5', 'user_id' => $katId],
+        ]], $this->authed($kat))->assertOk();
+
+        $entry = $this->getJson('/api/state?since=0', $this->authed($kat))->json('entries.0');
+        $this->assertSame('5', $entry['detail']);
+        $this->assertSame($benId, $entry['user_id']);
+    }
+
     public function test_timer_carries_a_validated_baby_id(): void
     {
         config(['babylog.open_registration' => true]);
