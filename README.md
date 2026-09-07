@@ -91,13 +91,13 @@ docker compose up -d --build    # http://localhost:3500
 
 ### 4. Home Assistant add-on
 
-Runs MyBabyNotes on a Home Assistant OS box, in the HA sidebar via ingress, with its data riding HA's own backups — or, in remote mode, embeds an instance you already run elsewhere. Add the repository under Settings → Add-ons → Add-on Store → Repositories:
+Runs MyBabyNotes on a Home Assistant OS box, in the HA sidebar via ingress, with its data riding HA's own backups — or, in remote mode, embeds an instance you already run elsewhere. Add the repository under **Settings → Apps → App store → ⋮ → Repositories** (it's **Settings → Add-ons** on HA older than 2026.6):
 
 ```
 https://github.com/straplocked/mybabynotes-hassio-addons
 ```
 
-then install **MyBabyNotes** from the store. Details (modes, MQTT sensors, phones/PWA): [docs/home-assistant.md](docs/home-assistant.md).
+then install **MyBabyNotes** from the store, **Start** it, and turn on **Show in sidebar** — Home Assistant hides the panel for every newly installed ingress add-on until you do. Details (modes, MQTT sensors, phones/PWA): [docs/home-assistant.md](docs/home-assistant.md).
 
 ### 5. Local development
 

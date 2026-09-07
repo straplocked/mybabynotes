@@ -2,8 +2,24 @@
 
 MyBabyNotes is a two-parent baby tracker: feeds, diapers, sleep, meds, shift
 handoffs, and live sync between phones. This add-on puts it in your Home
-Assistant sidebar via ingress — everyone in the household sees the panel, and
-HA's own login protects it at the door.
+Assistant sidebar via ingress — once the panel is on, everyone in the
+household sees it, and HA's own login protects it at the door.
+
+## After installing
+
+1. **Start** the add-on. First boot runs the database migrations, so give it a
+   few seconds before opening it.
+2. Turn on **Show in sidebar**.
+
+Step 2 is a deliberate step, not something this add-on can do for you: Home
+Assistant defaults every newly installed ingress add-on to *no* sidebar panel,
+and it's a per-user toggle. Until you flip it, **Open Web UI** on this page is
+the way in.
+
+Opening the ingress URL directly in a browser tab returns `401: Unauthorized`.
+That is expected — Home Assistant mints a short-lived ingress session when it
+opens the panel itself, so the panel (or Open Web UI) is the supported entry
+point, not a copied URL.
 
 ## Modes
 
@@ -29,9 +45,9 @@ instance's address, like `http://192.168.1.10:3500`.
 - You'll log into MyBabyNotes once inside the panel — ingress authenticates
   your Home Assistant user at the perimeter, and MyBabyNotes still runs its
   own accounts behind it.
-- The remote instance must run MyBabyNotes v1.1 or newer (the release that
-  made the web app path-prefix safe). Older builds will render a blank page
-  under ingress.
+- The remote instance must run MyBabyNotes **v1.0.0 or newer** — the first
+  public release, and the one that made the web app path-prefix safe. Anything
+  older predates public releases and will render a blank page under ingress.
 
 ## The direct port
 

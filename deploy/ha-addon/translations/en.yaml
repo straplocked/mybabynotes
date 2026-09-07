@@ -9,6 +9,6 @@ configuration:
     name: Remote instance URL
     description: >-
       Remote mode only — the base URL of your existing instance, e.g.
-      http://192.168.1.10:3500 (must run MyBabyNotes v1.1+).
+      http://192.168.1.10:3500 (must run MyBabyNotes v1.0.0+).
 network:
   80/tcp: Direct LAN port (optional) — enables the installable phone app + push

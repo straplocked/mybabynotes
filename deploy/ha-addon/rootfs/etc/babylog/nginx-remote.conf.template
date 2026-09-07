@@ -1,8 +1,8 @@
 # Remote mode: the add-on is nothing but this proxy. HA's ingress hits us on
 # :80 with the /api/hassio_ingress/<token> prefix already stripped; we relay
 # to the household's real MyBabyNotes instance. The instance must run a
-# release with the base-path-relative frontend build (v1.1+) or its absolute
-# asset URLs will escape the ingress prefix.
+# release with the base-path-relative frontend build (v1.0.0+, i.e. any public
+# release) or its absolute asset URLs will escape the ingress prefix.
 server {
     listen 80;
     server_name _;

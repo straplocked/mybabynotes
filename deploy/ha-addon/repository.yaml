@@ -1,6 +1,7 @@
 # Root manifest for the straplocked/mybabynotes-hassio-addons repository
-# (users add that repo URL under Settings → Add-ons → Add-on Store →
-# Repositories). CI copies this file to the repo root on publish.
+# (users add that repo URL under Settings → Apps → App store → ⋮ →
+# Repositories; "Add-ons" on HA older than 2026.6). CI copies this file to the
+# repo root on publish.
 name: MyBabyNotes add-ons
 url: https://github.com/straplocked/mybabynotes
 maintainer: straplocked

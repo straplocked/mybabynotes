@@ -122,17 +122,25 @@ action:
 
 ## The add-on
 
-The add-on puts MyBabyNotes in the HA sidebar (ingress), visible to **every** HA user, not just admins (`panel_admin: false` — the whole household can use it).
+The add-on puts MyBabyNotes in the HA sidebar (ingress). Once the panel is showing it is visible to **every** HA user, not just admins (`panel_admin: false` — the whole household can use it).
 
 ### Installing
 
-Settings → Add-ons → Add-on Store → ⋮ → **Repositories** → add:
+Home Assistant renamed this section: it's **Settings → Apps** on 2026.6 and newer, **Settings → Add-ons** on older releases. (On new versions the old `/hassio` URLs 404 — use the Settings menu rather than a bookmark.)
 
-```
-https://github.com/straplocked/mybabynotes-hassio-addons
-```
+1. Settings → **Apps** → **App store** (the "Install app" button) → ⋮ → **Repositories** → add:
 
-Then install **MyBabyNotes** from the store. One option matters: `mode`.
+   ```
+   https://github.com/straplocked/mybabynotes-hassio-addons
+   ```
+
+2. Back in the store, open **MyBabyNotes** and click **Install**. It pulls a prebuilt image — nothing is built on your box. `amd64` and `aarch64` are published.
+3. Click **Start**. First boot runs the database migrations, so give it a few seconds.
+4. Turn on **Show in sidebar**.
+
+Step 4 is not optional and not automatic: Home Assistant defaults every newly installed ingress add-on to *not* showing a sidebar panel, and it's a per-user toggle rather than something the add-on's manifest can set. Until you flip it, the only way in is **Open Web UI** on the add-on's page. Opening the ingress URL directly in a browser tab returns `401: Unauthorized` — that's expected, because HA mints a short-lived ingress session when *it* opens the panel; there is nothing wrong with your install.
+
+Then set the one option that matters: `mode`.
 
 ### Local mode
 
@@ -148,7 +156,7 @@ A thin ingress proxy to a MyBabyNotes instance you already run elsewhere (Unraid
 
 - No data lives on the HA box; the add-on just embeds the remote UI, websockets included.
 - **You still log into MyBabyNotes once inside the panel.** Ingress authenticates the *HA* user at the perimeter only — it does not log you into MyBabyNotes. The login persists per-browser after that. This is standard for proxy add-ons.
-- The remote instance must run a MyBabyNotes version at or above the release that ships the base-path-relative UI build (documented in the add-on's DOCS.md) — older builds break under the ingress URL prefix.
+- The remote instance must run **v1.0.0 or newer** — the first public release, and the one that ships the base-path-relative UI build. Anything older than that predates public releases entirely and will render a blank page under the ingress URL prefix.
 
 ### Phones and the installable PWA
 
