@@ -284,8 +284,13 @@ describe('sleep tags and tummy time', () => {
     await user.click(screen.getByText('Sleep'))
     await user.click(screen.getByText('Log a past sleep'))
 
-    // a 45m nap ending now started 45m ago, and that's what the stamp says
-    expect(screen.getByText('45m earlier')).toBeInTheDocument()
+    // a 45m nap ending now started 45m ago, and that's what the stamp says.
+    // The kicker is relative *within* a day and switches to the day name once
+    // the start crosses midnight (App.jsx: `dayBack ||` wins deliberately — a
+    // bare "45m earlier" beside a time that looks like today's is the thing
+    // that misleads). Both readings are correct; which one you get depends on
+    // the wall clock, so accept either and let the time itself carry the test.
+    expect(screen.getByText(/^(45m earlier|Yesterday)$/)).toBeInTheDocument()
     expect(screen.getByText(clock(t0 - 45 * 60_000))).toBeInTheDocument()
 
     await user.click(screen.getByText(/Save sleep/))

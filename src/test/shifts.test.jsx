@@ -339,8 +339,13 @@ describe('the plan is editable, not take-it-or-leave-it', () => {
     await user.click(screen.getByText('Send to Sam'))
 
     await waitFor(() => expect(body).toBeTruthy())
-    const at = new Date(body.plan[0].at)
-    expect([at.getHours(), at.getMinutes()]).toEqual([2, 15])
+    // the picked time is what rides the wire — but NOT necessarily as plan[0]:
+    // a plan is forward-looking, so a wall-clock time resolves to its nearest
+    // occurrence and 02:15 means tomorrow morning once it's past midday. Then
+    // it sorts after the drafted rows. Asserting on index 0 made this test pass
+    // or fail depending on the hour it ran (green at 12:47 UTC, red at 15:38).
+    const times = body.plan.map(p => { const d = new Date(p.at); return [d.getHours(), d.getMinutes()] })
+    expect(times).toContainEqual([2, 15])
   })
 
   it('adding to the plan lets you choose what, not just another feed', async () => {
