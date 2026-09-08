@@ -10,8 +10,8 @@ Two-parent baby-tracking PWA (React) + Laravel API + Reverb websockets, deployed
   `docker run --rm -v "$PWD/api:/app" -w /app -e BROADCAST_CONNECTION=log composer:2 php artisan test --compact`
   `npm test` (frontend: Vitest + Testing Library in `src/test/`)
 - **Docs ship with the change, not after it.** Before committing anything user-visible or structural, update what it invalidated — README feature bullets and the `<!-- screenshots -->` block, [docs/architecture.md](docs/architecture.md), [docs/known-limitations.md](docs/known-limitations.md) (add new gaps *and* prune fixed ones), [TESTING.md](TESTING.md) (log the feedback that drove it), and the surface docs (`api.md`, `openapi.v1.json`, `operations.md`, `integrations.md`, `home-assistant.md`, `mcp.md`) when they moved. Retake screenshots when the UI moved. A push to `main` publishes images — there's no quiet window to fix docs afterwards.
-- **Never commit secrets.** Dev secrets live in git-ignored `.env` (see `.env.example`); production generates its own on the NAS. A leaked key here already cost us a history rewrite.
-- **Ports 3500–3502 belong to this project** on the dev machine; everything else in 3xxx is taken by other projects.
+- **Never commit secrets.** Dev secrets live in git-ignored `.env` (see `.env.example`); production generates its own on first boot. A leaked key here already cost us a history rewrite.
+- **Ports 3500–3502 belong to this project** (app / api / reverb). Don't reach for another 3xxx port — pick one well outside the range if you need a scratch service.
 - **Keep the AGPL source offer.** The repo is AGPL-3.0 and the app is served over a network, so Settings ends with a "Source code" link (`SOURCE_URL` in [src/App.jsx](src/App.jsx), overridable at build time via `VITE_SOURCE_URL` so modified builds can point at their own source). Don't delete it while tidying; `src/test/app.test.jsx` pins it. New first-party source files open with `SPDX-License-Identifier: AGPL-3.0-only` + a copyright line (Laravel's untouched skeleton files deliberately don't).
 
 ## Design system
@@ -41,11 +41,11 @@ Two-parent baby-tracking PWA (React) + Laravel API + Reverb websockets, deployed
 
 ## Deploy
 
-- Production = an Unraid box (no SSH — drive the webGui via the user's Chrome; User Scripts plugin runs commands). `babylog-update` pulls `main` and rebuilds; `babylog-reset-data` wipes the DB.
+- Production = an Unraid box (no SSH — drive the webGui via the user's Chrome; User Scripts plugin runs commands). The updater is a `curl | sh` of `deploy/unraid/babylog.sh`, which resolves and checksum-verifies the latest release; wiping the DB is a file delete (see the runbook).
 - Public URL, LAN addresses, and reverse-proxy details are deliberately NOT in this repo (it's going public) — they live in Claude's private memory. Never write them into tracked files.
 - Registration is invite-only — never register test accounts against production; the first account claims a fresh instance.
 - Full runbook: [docs/operations.md](docs/operations.md).
 
 ## Current phase
 
-Living with the app to collect feedback in [TESTING.md](TESTING.md), then iterating. Backlog seeds: [docs/known-limitations.md](docs/known-limitations.md). Marketplace release (CA template, tagged versions, pinned installer) comes after.
+Living with the app to collect feedback in [TESTING.md](TESTING.md), then iterating. Backlog seeds: [docs/known-limitations.md](docs/known-limitations.md). Tagged releases, the pinned installer, and the Home Assistant add-on have shipped; the Unraid Community Apps listing is the one marketplace step still outstanding ([docs/ca-submission.md](docs/ca-submission.md)).

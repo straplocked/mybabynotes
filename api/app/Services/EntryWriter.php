@@ -132,7 +132,7 @@ class EntryWriter
     }
 
     /**
-     * "Katrina logged a bottle" — opt-in activity push to every other member,
+     * "Sam logged a bottle" — opt-in activity push to every other member,
      * throttled per recipient to one ping per 10 minutes so a backfill burst
      * doesn't rattle anyone's phone.
      */

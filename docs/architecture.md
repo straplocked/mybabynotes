@@ -64,7 +64,7 @@ HTTPS origin the app already needs.
   member: shift request / accept / handback (on by default — someone asking you
   to take over should reach a sleeping phone, so these ignore quiet hours), a
   nursing/pump/sleep/tummy-time timer starting (on by default but informational,
-  so it honors quiet hours), and opt-in member activity ("Katrina logged a bottle",
+  so it honors quiet hours), and opt-in member activity ("Sam logged a bottle",
   throttled to one per 10 min per recipient so backfill bursts don't rattle
   anyone).
 - **Reminder pushes** come from `babylog:reminders`, run every minute by a
