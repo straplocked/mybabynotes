@@ -9,11 +9,12 @@
 **Website: [mybabynotes.app](https://mybabynotes.app)**
 
 <!-- screenshots:start -->
+<!-- each shot follows your GitHub theme; keep the -dark.png beside every light one -->
 <p align="center">
-  <img src="docs/media/now.png" alt="Now screen — a running nursing timer, since-cards (the Fed card flipped to “Feeding now”), today's timeline, and the header's shift and settings buttons" width="23%">
-  <img src="docs/media/log.png" alt="The log sheet — every entry type one tap away, with the timer framing and a “Log a past feed” escape hatch" width="23%">
-  <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="23%">
-  <img src="docs/media/settings.png" alt="Settings screen — baby profile, household members and roles, appearance" width="23%">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/now-dark.png"><img src="docs/media/now.png" alt="Now screen — a running nursing timer, since-cards (the Fed card flipped to “Feeding now”), today's timeline, and the header's shift and settings buttons" width="23%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/log-dark.png"><img src="docs/media/log.png" alt="The log sheet — every entry type one tap away, with the timer framing and a “Log a past feed” escape hatch" width="23%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/history-dark.png"><img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="23%"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/media/settings-dark.png"><img src="docs/media/settings.png" alt="Settings screen — baby profile, household members and roles, appearance" width="23%"></picture>
 </p>
 <!-- screenshots:end -->
 
