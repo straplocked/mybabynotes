@@ -9,14 +9,18 @@
 -->
 <CommunityApplications>
 
+  <!--
+    Rendered as PLAIN TEXT in the Community Apps catalog — markdown is not
+    parsed, so asterisks would show up literally. Keep this prose.
+  -->
   <Profile>
-    Home of **mybabynotes** — a self-hosted baby tracker for one household sharing its babies' log: up to six adults (parent and caregiver roles) and up to ten children, with the data in one SQLite file on your own server. No cloud account, no telemetry, no subscription.
+    Home of mybabynotes — a self-hosted baby tracker for one household sharing its babies' log: up to six adults (parent and caregiver roles) and up to ten children, with the data in one SQLite file on your own server. No cloud account, no telemetry, no subscription.
 
     It logs in three taps, works offline at 3am and syncs when there's signal, keeps every phone in the household live over websockets, and treats the shift handoff — "I need to sleep, take him" — as a first-class flow rather than a text message. Everything exports to CSV whenever you want it.
 
     This repository ships one Community Apps entry, the all-in-one container (app, API and websockets in a single image, all state in one /data folder). The same project also publishes a Home Assistant add-on and a documented REST API.
 
-    Licensed AGPL-3.0 — the source is in this repository. Bugs and questions are best raised as GitHub issues; the Unraid support thread linked on this profile works too.
+    Licensed AGPL-3.0 — the source is in this repository. Bugs and questions are best raised as GitHub issues.
   </Profile>
 
   <Icon>https://raw.githubusercontent.com/straplocked/mybabynotes/main/public/icons/icon-512.png</Icon>
