@@ -3,16 +3,20 @@
 The template is [deploy/unraid/ca-template.xml](../deploy/unraid/ca-template.xml). It consumes the
 all-in-one image `ghcr.io/straplocked/mybabynotes-aio:latest` (built by
 [.github/workflows/release.yml](../.github/workflows/release.yml) on `v*` tag pushes — a `main` push
-does **not** build the AIO image, so a tagged release must exist before the template is useful).
+does **not** build the AIO image, so `:latest` only ever moves on a tagged release).
+
+**Status: not submitted.** Steps 1, 2 and 4 below are done — releases are tagged and every GHCR
+package is public and anonymously pullable. What remains is the manual part: the support thread and
+the submission itself.
 
 ## Pre-submission checklist
 
-1. **Publish the image.** Push the `v1.0.0` tag; `release.yml` runs the suite, then pushes
-   `mybabynotes-aio:v1.0.0` and `:latest` to GHCR.
-2. **Make the GHCR package public.** GitHub → your profile → Packages → `mybabynotes-aio` →
-   Package settings → Danger Zone → Change visibility → Public. CA users' servers pull
-   anonymously; a private package fails with a misleading "manifest not found". Do the same for
-   `mybabynotes-app` / `mybabynotes-api` if they aren't already public.
+1. ~~**Publish the image.**~~ Done — `release.yml` pushes `mybabynotes-aio:vX.Y.Z` and `:latest` to
+   GHCR on every `v*` tag.
+2. ~~**Make the GHCR package public.**~~ Done — `mybabynotes-aio`, `-app`, `-api` and the two
+   `-ha-addon-*` packages all pull anonymously. (If a *new* package name ever appears it starts
+   private: GitHub → your profile → Packages → the package → Package settings → Danger Zone →
+   Change visibility → Public. A private package fails with a misleading "manifest not found".)
 3. **Test the template on a real Unraid box.** Copy `ca-template.xml` to
    `/boot/config/plugins/dockerMan/templates-user/` on the flash share (any filename ending
    `.xml`), then Docker tab → **Add Container** → pick it from the Template dropdown. Verify:
@@ -21,7 +25,7 @@ does **not** build the AIO image, so a tagged release must exist before the temp
    - registering the first account claims the instance;
    - `/mnt/user/appdata/baby-log` contains `database.sqlite` + `.env` afterwards;
    - stop/start survives (secrets reused, no re-generation).
-4. **Confirm the raw URLs resolve** (they 404 until this branch is on `main`):
+4. ~~**Confirm the raw URLs resolve.**~~ Both are live on `main`; re-check only if either file moves:
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/ca-template.xml`
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/public/icons/icon-512.png`
 5. **Create the support thread** on the Unraid forums (draft below) so the listing has a

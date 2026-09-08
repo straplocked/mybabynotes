@@ -2,6 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![build](https://github.com/straplocked/mybabynotes/actions/workflows/build-images.yml/badge.svg)](https://github.com/straplocked/mybabynotes/actions/workflows/build-images.yml)
+[![release](https://img.shields.io/github/v/release/straplocked/mybabynotes)](https://github.com/straplocked/mybabynotes/releases/latest)
 
 **Your baby's data on your own server.** mybabynotes is a self-hosted baby tracker built for one household sharing its babies' log — two parents, or parents plus the caregivers they trust — with true realtime sync between every phone, offline logging that works at 3am with no signal, shift handoffs as a first-class flow, and CSV export of everything. One container, one SQLite file, no cloud account, no telemetry, no subscription rug-pulls.
 
@@ -61,24 +62,32 @@ Three surfaces, all writing through the same server-side path as the app — an 
 
 ## Install
 
-### 1. Unraid (Community Apps)
+### 1. Unraid (all-in-one container) — recommended
 
-mybabynotes ships an all-in-one image (`ghcr.io/straplocked/mybabynotes-aio`) — one container serving the app, API, and websockets on a single port, with all state (SQLite + self-generated secrets) in one `/data` share. The CA template is [deploy/unraid/ca-template.xml](deploy/unraid/ca-template.xml); the **CA listing is pending submission**, and the AIO image publishes with the first tagged release — until both exist, use option 3 to build from source. Once the image is up you can install the template manually: copy the template to `/boot/config/plugins/dockerMan/templates-user/` on your flash share, then Docker tab → Add Container → pick it from the Template dropdown.
+mybabynotes ships an all-in-one image (`ghcr.io/straplocked/mybabynotes-aio`) — one container serving the app, API, and websockets on a single port, with all state (SQLite + self-generated secrets) in one `/data` share. It's published on GHCR, pullable anonymously, and it's the path to pick unless you have a reason not to.
 
-First boot generates every secret into `/data/.env` — nothing to configure on the LAN. Back up the one appdata folder and you've backed up the app. Pin a version by changing the repository tag from `:latest` to `:v1.0.0`.
+The Unraid template is [deploy/unraid/ca-template.xml](deploy/unraid/ca-template.xml). The **Community Apps listing hasn't been submitted yet**, so add the template by hand for now: copy it to `/boot/config/plugins/dockerMan/templates-user/` on your flash share, then Docker tab → **Add Container** → pick it from the Template dropdown.
 
-### 2. Unraid (script install)
+First boot generates every secret into `/data/.env` — nothing to configure on the LAN. Back up the one appdata folder and you've backed up the app. The template tracks `:latest`, which only ever points at a tagged release; pin a specific one by changing the repository tag to e.g. `:v1.0.2`.
 
-For a compose-based install (separate app/api/reverb containers), one command installs *and* updates — requires the *Docker Compose Manager* plugin:
+Not on Unraid? The same image runs anywhere:
+
+```bash
+docker run -d -p 3500:80 -v /path/to/data:/data ghcr.io/straplocked/mybabynotes-aio:latest
+```
+
+### 2. Unraid (compose install script) — legacy
+
+The older compose-based layout (separate app/api/reverb containers, built from source on the box). Still supported and still updated by one command — requires the *Docker Compose Manager* plugin — but option 1 is the better install today, and [docs/operations.md](docs/operations.md) has a migration path if you're already on this one:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/babylog.sh | sh
 ```
 
-The script resolves the latest tagged release and verifies its tarball against the published `checksums.txt` (until the first release exists it falls back to an **unverified** `main` tarball), then rebuilds; data survives in `appdata/baby-log/data`. Pin or roll back with `BABYLOG_REF`:
+The script resolves the latest tagged release and verifies its tarball against the published `checksums.txt`, then rebuilds; data survives in `appdata/baby-log/data`. (Only if the GitHub API is unreachable does it fall back to an **unverified** `main` tarball, so an update never dead-ends.) Pin or roll back with `BABYLOG_REF`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/babylog.sh | BABYLOG_REF=v1.0.0 sh
+curl -fsSL https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/babylog.sh | BABYLOG_REF=v1.0.2 sh
 ```
 
 ### 3. Docker Compose (any server)
@@ -111,9 +120,9 @@ docker run --rm -v "$PWD/api:/app" -w /app -e BROADCAST_CONNECTION=log composer:
 
 ## Stack
 
-React 18 + Vite PWA · Laravel 13 API (SQLite, Sanctum) · Laravel Reverb websockets · nginx · Docker. Invite-only registration, throttled auth, client-generated entry ids with tombstone-synced deletes, poke-to-pull realtime (the server broadcasts "something changed", never data), computed shift reports, expiring tokens. Details: [docs/architecture.md](docs/architecture.md).
+React 18 + Vite PWA · Laravel 13 API (SQLite by default, Postgres supported; Sanctum) · Laravel Reverb websockets · nginx · Docker. Invite-only registration, throttled auth, client-generated entry ids with tombstone-synced deletes, poke-to-pull realtime (the server broadcasts "something changed", never data), computed shift reports, expiring tokens. Details: [docs/architecture.md](docs/architecture.md).
 
-Releases are tagged: a `v*` tag runs the test suite, publishes `ghcr.io/straplocked/mybabynotes-app`, `mybabynotes-api`, and `mybabynotes-aio` images (`:vX.Y.Z` + `:latest`), and attaches a checksummed source tarball to the GitHub Release.
+Releases are tagged: a `v*` tag runs both test suites (the API suite against SQLite **and** Postgres), publishes `ghcr.io/straplocked/mybabynotes-app`, `mybabynotes-api`, and `mybabynotes-aio` (`:vX.Y.Z` + `:latest`) plus the per-arch Home Assistant add-on images, and attaches a checksummed source tarball to the GitHub Release. Every package is public — pulls need no GHCR login.
 
 ## Documentation
 
@@ -125,7 +134,7 @@ Releases are tagged: a `v*` tag runs the test suite, publishes `ghcr.io/straploc
 | [docs/home-assistant.md](docs/home-assistant.md) | MQTT entities + automations, and the ingress add-on (local/remote modes) |
 | [docs/mcp.md](docs/mcp.md) | The built-in MCP server: auth, client setup, tool reference |
 | [docs/api.md](docs/api.md) | The internal PWA/sync API — every endpoint with payloads, rules, and error behavior |
-| [docs/operations.md](docs/operations.md) | Unraid runbook: update, reset, backups, reverse proxy, local dev, troubleshooting |
+| [docs/operations.md](docs/operations.md) | Runbook for both deployment shapes: install, update, backups, reverse proxy, local dev, troubleshooting |
 | [docs/ca-submission.md](docs/ca-submission.md) | Community Apps submission checklist + support-thread draft |
 | [docs/known-limitations.md](docs/known-limitations.md) | Honest gaps + candidate roadmap |
 | [docs/feeding-patterns.md](docs/feeding-patterns.md) | Sourced age-typical feeding/sleep norms behind the app's insights (not medical advice) |

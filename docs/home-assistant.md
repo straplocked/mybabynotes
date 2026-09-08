@@ -124,6 +124,8 @@ action:
 
 The add-on puts MyBabyNotes in the HA sidebar (ingress). Once the panel is showing it is visible to **every** HA user, not just admins (`panel_admin: false` — the whole household can use it).
 
+It's a third-party add-on, which is the normal way anything outside HA's own set is distributed: Home Assistant's built-in store carries official add-ons only, so you add the repository below and the add-on appears in your store alongside the rest. The steps have been run end to end on HA OS 18.2 / Core 2026.6.4.
+
 ### Installing
 
 Home Assistant renamed this section: it's **Settings → Apps** on 2026.6 and newer, **Settings → Add-ons** on older releases. (On new versions the old `/hassio` URLs 404 — use the Settings menu rather than a bookmark.)
@@ -136,7 +138,7 @@ Home Assistant renamed this section: it's **Settings → Apps** on 2026.6 and ne
 
    ![The Repositories list in Home Assistant with the MyBabyNotes add-ons repository added](media/ha-repositories.png)
 
-2. Back in the store, open **MyBabyNotes** and click **Install**. It pulls a prebuilt image — nothing is built on your box. `amd64` and `aarch64` are published.
+2. Back in the store, open **MyBabyNotes** and click **Install**. It pulls a prebuilt image — nothing is built on your box. `amd64` and `aarch64` are published, and the images are public, so there's no registry login to arrange.
 3. Click **Start**. First boot runs the database migrations, so give it a few seconds.
 4. Turn on **Show in sidebar**.
 
