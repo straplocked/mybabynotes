@@ -5,9 +5,10 @@ all-in-one image `ghcr.io/straplocked/mybabynotes-aio:latest` (built by
 [.github/workflows/release.yml](../.github/workflows/release.yml) on `v*` tag pushes — a `main` push
 does **not** build the AIO image, so `:latest` only ever moves on a tagged release).
 
-**Status: not submitted.** Steps 1–4 below are done — releases are tagged, every GHCR package is
-public and anonymously pullable, and the template has been installed and run on real Unraid
-hardware. What remains is the manual part: the support thread and the submission itself.
+**Status: submitted and auto-approved, 2026-09-07.** The listing appears once the next Community
+Applications build publishes. All the pre-submission gates below are done. What remains is the
+support thread, which the Docker Containers subforum won't let a non-Community-Developer post
+directly — see "The support thread" below for the route around that.
 
 ## Pre-submission checklist
 
@@ -36,8 +37,16 @@ hardware. What remains is the manual part: the support thread and the submission
 4. ~~**Confirm the raw URLs resolve.**~~ Both are live on `main`; re-check only if either file moves:
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/ca-template.xml`
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/public/icons/icon-512.png`
-5. **Create the support thread** on the Unraid forums (draft below) so the listing has a
-   human-facing support venue alongside the GitHub issues link in `<Support>`.
+5. ~~**`ca_profile.xml` in the repository root.**~~ Done — CA's scan requires it and **blocks
+   submission without it**, which this runbook originally didn't mention because the requirement
+   is newer than the doc. It needs a non-empty `<Profile>`; `<Icon>` and `<WebPage>` are the
+   recommended extras, `<Forum>` optional. Note the split: `<Profile>` is the *repository* blurb
+   (short — what's here, where support is), while `<Overview>` in the app template is the *app
+   listing* copy (long). CA renders `<Profile>` as **plain text**, so markdown ships as literal
+   asterisks.
+6. **Create the support thread** — see "The support thread" below. It is *not* a prerequisite:
+   nothing in the submission wizard asks for a forum URL, and `<Support>` in the template already
+   points at GitHub issues.
 
 ## Where the template lives
 
@@ -56,21 +65,53 @@ Start with the in-repo path; switch only if review feedback asks for it.
 
 ## Submission flow
 
-1. Sign in at **https://ca.unraid.net** with your Unraid forum account and register as an
-   application author.
-2. Add the template repository URL (whichever option above you chose) and fill in the profile
-   fields (support thread URL, donate link if any).
-3. Wait for moderation. Moderators check that the image is public, the template parses, the icon
-   loads, and the Overview isn't spam. Respond to feedback in the submission thread.
-4. After approval the appfeed picks the template up on its next scan (a couple of hours). Search
-   "mybabynotes" in CA on a test server to confirm.
-5. **Ongoing:** template fixes are just pushes to `main` (the feed re-scans). App updates ship by
+**Submitted 2026-09-07 and auto-approved** (`https://ca.unraid.net` → My submissions). The portal
+is a five-step wizard — Before You Begin → Sign In → Add Repository → Review → Submit — not the
+"register as an application author" flow this runbook used to describe.
+
+1. Sign in at **https://ca.unraid.net** with your Unraid forum account, then **Submit**.
+2. Paste the repository URL. **Validate** runs cheap checks (public, active, license detected).
+3. **Scan Repository** runs the real one, the same pipeline CA builds with. What it reports:
+   - *Valid apps found* — `deploy/unraid/ca-template.xml` parses as one Docker app;
+   - *Repository overview* — `ca_profile.xml` found and `<Profile>` extracted;
+   - *Docker images pullable* — this **times out at 10s on a cold pull** and reports "couldn't
+     verify"; it is not a failure, and a second scan cleared it;
+   - *Template warnings: `not_unraid_application: 1`* — this is **`api/phpunit.xml`**, Laravel's
+     test config, which CA's scanner picks up simply because it is XML. It is **non-blocking**
+     and there is nothing to fix; the only clean escape is the dedicated-template-repo option
+     above, which is not worth it for a cosmetic warning.
+   - The scan reads the repo through a cache that lags roughly a revision behind. After pushing a
+     `ca_profile.xml` change, expect the preview to show the *previous* text for a few minutes.
+     The catalog ingests the repo at build time, so what publishes is the current file.
+4. **Continue to Submit** → confirm. A Docker-only submission with no duplicate app names is
+   **auto-approved on the spot** — there is no moderator wait. Plugin and Compose submissions
+   still get manual review.
+5. Apps appear after the next Community Applications build publishes.
+6. **Ongoing:** template fixes are just pushes to `main` (the feed re-scans). App updates ship by
    tagging releases — `release.yml` owns `:latest`, so CA's "update available" tracking works
    without touching the template.
 
-If any of the portal details have drifted (the CA account flow has moved before), the canonical
-instructions are pinned in the Community Applications section of the Unraid forums — follow those
-over this doc and update this doc after.
+The repository's display name in CA defaults to `<your-username>'s Repository` and is set in the
+confirm step — worth choosing deliberately, since changing it afterwards isn't offered on the
+submissions screen.
+
+If the portal drifts again, the canonical instructions are pinned in the Community Applications
+section of the Unraid forums — follow those over this doc, and update this doc after.
+
+## The support thread
+
+**You probably cannot post it directly.** The Docker Containers subforum only lets *Community
+Developers* create topics — there is no "Start New Topic" button otherwise. Per the pinned
+["Why Can't I Post New Topics In Here?"](https://forums.unraid.net/topic/40696-why-cant-i-post-new-topics-in-here/):
+
+- you earn Community Developer status partly **by** having containers integrated with CA, which is
+  why the submission sensibly comes first;
+- meanwhile, **post the thread in a subforum you can post in and PM a moderator to move it**;
+- or request the status from support once there's a track record of answering questions.
+
+Once the thread exists, uncomment `<Forum>` in `ca_profile.xml` with its URL. Until then the
+profile deliberately says support is via GitHub issues rather than pointing at a thread that
+doesn't exist.
 
 ## Remote access requirement (say it everywhere)
 

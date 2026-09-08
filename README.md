@@ -66,7 +66,7 @@ Three surfaces, all writing through the same server-side path as the app — an 
 
 mybabynotes ships an all-in-one image (`ghcr.io/straplocked/mybabynotes-aio`) — one container serving the app, API, and websockets on a single port, with all state (SQLite + self-generated secrets) in one `/data` share. It's published on GHCR, pullable anonymously, and it's the path to pick unless you have a reason not to.
 
-The Unraid template is [deploy/unraid/ca-template.xml](deploy/unraid/ca-template.xml). The **Community Apps listing hasn't been submitted yet**, so add the template by hand for now: copy it to `/boot/config/plugins/dockerMan/templates-user/` on your flash share, then Docker tab → **Add Container** → pick it from the Template dropdown.
+The Unraid template is [deploy/unraid/ca-template.xml](deploy/unraid/ca-template.xml). It's **submitted to Community Apps and approved, and appears once the next CA build publishes** — until it shows up in a CA search, add the template by hand: copy it to `/boot/config/plugins/dockerMan/templates-user/` on your flash share, then Docker tab → **Add Container** → pick it from the Template dropdown.
 
 First boot generates every secret into `/data/.env` — nothing to configure on the LAN. Back up the one appdata folder and you've backed up the app. The template tracks `:latest`, which only ever points at a tagged release; pin a specific one by changing the repository tag to e.g. `:v1.0.2`.
 

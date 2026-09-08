@@ -23,7 +23,7 @@ docker run -d -p 3500:80 -v /path/to/data:/data ghcr.io/straplocked/mybabynotes-
 
 ### On Unraid
 
-The template is [deploy/unraid/ca-template.xml](../deploy/unraid/ca-template.xml). The Community Apps listing hasn't been submitted yet, so add it by hand: copy the XML to `/boot/config/plugins/dockerMan/templates-user/` on the flash share (any filename ending `.xml`), then Docker tab → **Add Container** → pick it from the Template dropdown. Set **Data** to an appdata folder of its own (e.g. `/mnt/user/appdata/mybabynotes`) and **WebUI port** to the host port you want (default 3500).
+The template is [deploy/unraid/ca-template.xml](../deploy/unraid/ca-template.xml). It's submitted to Community Apps and approved; it appears in CA once the next build publishes. Until then, add it by hand: copy the XML to `/boot/config/plugins/dockerMan/templates-user/` on the flash share (any filename ending `.xml`), then Docker tab → **Add Container** → pick it from the Template dropdown. Set **Data** to an appdata folder of its own (e.g. `/mnt/user/appdata/mybabynotes`) and **WebUI port** to the host port you want (default 3500).
 
 The template pre-declares `APP_URL` and `REVERB_ALLOWED_ORIGINS`; anything else goes in as an extra variable in the container editor.
 
