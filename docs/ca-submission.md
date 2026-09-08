@@ -5,10 +5,11 @@ all-in-one image `ghcr.io/straplocked/mybabynotes-aio:latest` (built by
 [.github/workflows/release.yml](../.github/workflows/release.yml) on `v*` tag pushes — a `main` push
 does **not** build the AIO image, so `:latest` only ever moves on a tagged release).
 
-**Status: submitted and auto-approved, 2026-09-07.** The listing appears once the next Community
-Applications build publishes. All the pre-submission gates below are done. What remains is the
-support thread, which the Docker Containers subforum won't let a non-Community-Developer post
-directly — see "The support thread" below for the route around that.
+**Status: submitted and auto-approved 2026-09-07; support thread live in Docker Containers
+2026-09-08.** Everything on this side is finished — all the pre-submission gates below are done,
+the thread is up and linked from `ca_profile.xml`. The only thing left is Community Apps
+publishing its next build, which is not ours to hurry; see "How long until it actually appears in
+CA" for how to tell when it lands.
 
 ## Pre-submission checklist
 
@@ -112,14 +113,16 @@ Developers* create topics — there is no "Start New Topic" button otherwise. Pe
 Posted 2026-09-07 in **Docker Engine** with a mod note asking for the move:
 `https://forums.unraid.net/topic/200520-support-mybabynotes-self-hosted-baby-tracker-for-your-household-offline-pwa-realtime-sync-shift-handoffs/`
 
-**It is held for moderator approval** — new topics there are, and the URL 404s for logged-out
-visitors until it clears. So `<Forum>` in `ca_profile.xml` stays commented out until the thread is
-publicly reachable; check with a signed-out fetch (`curl -o /dev/null -w '%{http_code}' <url>`)
-rather than by loading it in a signed-in browser, which will show it either way. Note the URL may
-change if a moderator moves it — re-check before wiring it in.
+**A moderator approved it and moved it to Docker Containers on 2026-09-08** — the route in the
+pinned post works, and the URL survived the move. `<Forum>` in `ca_profile.xml` now points at it
+(`813b95d`).
 
-Until then the profile deliberately says support is via GitHub issues rather than pointing at a
-thread nobody else can open.
+It sat in the moderation queue first, and while it did the URL returned **404 to anyone not signed
+in**, so the link was deliberately left commented out until it cleared. If you ever do this again:
+check with a **signed-out** fetch (`curl -o /dev/null -w '%{http_code}' <url>`), because a
+signed-in browser renders pending topics normally and tells you nothing. Re-check the URL after a
+move rather than assuming it survived — this one did, but that isn't guaranteed if the title
+changes too.
 
 ## How long until it actually appears in CA
 
