@@ -143,6 +143,9 @@ Releases are tagged: a `v*` tag runs both test suites (the API suite against SQL
 | [TESTING.md](TESTING.md) | Trial-period journal — the feedback that drives iteration |
 | [CLAUDE.md](CLAUDE.md) | Conventions for AI-assisted development sessions |
 
+Browsing the folder itself? [docs/](docs/) groups the same set by task — running an instance,
+building against one, working on the code.
+
 ## Contributing
 
 Bug reports, docs fixes, and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, project invariants, and the test commands. Contributions require a one-time [CLA signature](CLA.md) (a bot handles it on your first PR); the why is explained openly in the contributing guide. Security issues go through [private reporting](SECURITY.md), never public issues, and the community follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
