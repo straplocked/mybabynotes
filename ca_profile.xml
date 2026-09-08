@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+  Community Apps repository profile. CA's submission scan requires this file at
+  the repository ROOT, named exactly ca_profile.xml, with a non-empty <Profile>
+  — a missing or empty one blocks submission. The app template itself lives at
+  deploy/unraid/ca-template.xml; this file describes the repository behind it.
+
+  Submission runbook: docs/ca-submission.md
+-->
+<CommunityApplications>
+
+  <Profile>
+    Home of **mybabynotes** — a self-hosted baby tracker for one household sharing its babies' log: up to six adults (parent and caregiver roles) and up to ten children, with the data in one SQLite file on your own server. No cloud account, no telemetry, no subscription.
+
+    It logs in three taps, works offline at 3am and syncs when there's signal, keeps every phone in the household live over websockets, and treats the shift handoff — "I need to sleep, take him" — as a first-class flow rather than a text message. Everything exports to CSV whenever you want it.
+
+    This repository ships one Community Apps entry, the all-in-one container (app, API and websockets in a single image, all state in one /data folder). The same project also publishes a Home Assistant add-on and a documented REST API.
+
+    Licensed AGPL-3.0 — the source is in this repository. Bugs and questions are best raised as GitHub issues; the Unraid support thread linked on this profile works too.
+  </Profile>
+
+  <Icon>https://raw.githubusercontent.com/straplocked/mybabynotes/main/public/icons/icon-512.png</Icon>
+
+  <WebPage>https://github.com/straplocked/mybabynotes</WebPage>
+
+  <!-- Added once the Unraid support thread exists — see docs/ca-submission.md -->
+  <!-- <Forum>https://forums.unraid.net/topic/YOUR_SUPPORT_TOPIC</Forum> -->
+
+</CommunityApplications>
