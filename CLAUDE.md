@@ -48,4 +48,4 @@ Two-parent baby-tracking PWA (React) + Laravel API + Reverb websockets, deployed
 
 ## Current phase
 
-Living with the app to collect feedback in [TESTING.md](TESTING.md), then iterating. Backlog seeds: [docs/known-limitations.md](docs/known-limitations.md). Tagged releases, the pinned installer, and the Home Assistant add-on have shipped; the Unraid Community Apps listing is the one marketplace step still outstanding ([docs/ca-submission.md](docs/ca-submission.md)).
+Living with the app to collect feedback in [TESTING.md](TESTING.md), then iterating. Backlog seeds: [docs/known-limitations.md](docs/known-limitations.md). Tagged releases, the pinned installer, the Home Assistant add-on, and the Unraid Community Apps listing have all shipped — [docs/ca-submission.md](docs/ca-submission.md) now covers keeping that listing current rather than getting it accepted.

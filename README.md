@@ -10,9 +10,10 @@
 
 <!-- screenshots:start -->
 <p align="center">
-  <img src="docs/media/now.png" alt="Now screen — since-cards, today's timeline, and the header's shift and settings buttons" width="30%">
-  <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="30%">
-  <img src="docs/media/settings.png" alt="Settings screen — baby profile, appearance, and household options" width="30%">
+  <img src="docs/media/now.png" alt="Now screen — a running nursing timer, since-cards (the Fed card flipped to “Feeding now”), today's timeline, and the header's shift and settings buttons" width="23%">
+  <img src="docs/media/log.png" alt="The log sheet — every entry type one tap away, with the timer framing and a “Log a past feed” escape hatch" width="23%">
+  <img src="docs/media/history.png" alt="History screen — 7-day stats tiles and per-day charts" width="23%">
+  <img src="docs/media/settings.png" alt="Settings screen — baby profile, household members and roles, appearance" width="23%">
 </p>
 <!-- screenshots:end -->
 
@@ -23,7 +24,7 @@
 - **Shifts, not just a log.** "I need to sleep, take him" is a first-class flow. The person handing off *authors* the handoff — a plan drafted from the baby's rhythm whose items you can retime, drop, or add to (feed, nursing, pump, sleep, tummy time, bath, meds), an "until" time, a note, and (with three or more adults) a specific person to ask. It lands on the other phone as an actual plan rather than a sentence; they adjust it if they need to, accept, and duty moves. Logged feeds tick the plan off live, the off-duty parent watches progress read-only without asking, a push pings both of you when the "until" passes, and handing back generates a shift summary instead of a "when did you…" conversation. Handing back and asking stay distinct on purpose: handing back returns the cover to whoever asked for it and moves duty on the spot, while asking waits for a yes — so a shift you started yourself can only be *asked* away, never quietly dropped on someone. Unfinished items — a dose that never happened — carry into the next shift's plan rather than evaporating with the handoff. Whoever already has the baby can also just start a shift, no ask required. The whole shift surface — your live checklist, their progress, or a start button when duty is yours and nothing is open — sits one tap behind a header button, so Now stays a log; only an incoming ask interrupts it, because that one needs answering.
 
 <p align="center">
-  <img src="docs/media/duty.png" alt="The shift sheet while on duty with nothing started — the drafted plan and a Start my shift button" width="30%">
+  <img src="docs/media/duty.png" alt="The shift sheet while on duty with nothing started — where things stand right now, the drafted plan, an until time, and a Start my shift button" width="30%">
   <img src="docs/media/handoff.png" alt="Composing a handoff — the plan you're proposing, each item retimeable, plus an until time and a note for your partner" width="30%">
   <img src="docs/media/incoming.png" alt="The same handoff on the other phone — your note, the plan you wrote, and one tap to take over" width="30%">
 </p>
@@ -135,7 +136,7 @@ Releases are tagged: a `v*` tag runs both test suites (the API suite against SQL
 | [docs/mcp.md](docs/mcp.md) | The built-in MCP server: auth, client setup, tool reference |
 | [docs/api.md](docs/api.md) | The internal PWA/sync API — every endpoint with payloads, rules, and error behavior |
 | [docs/operations.md](docs/operations.md) | Runbook for both deployment shapes: install, update, backups, reverse proxy, local dev, troubleshooting |
-| [docs/ca-submission.md](docs/ca-submission.md) | Community Apps submission checklist + support-thread draft |
+| [docs/ca-submission.md](docs/ca-submission.md) | How the Community Apps listing got made, and how template and app updates reach it |
 | [docs/known-limitations.md](docs/known-limitations.md) | Honest gaps + candidate roadmap |
 | [docs/feeding-patterns.md](docs/feeding-patterns.md) | Sourced age-typical feeding/sleep norms behind the app's insights (not medical advice) |
 | [TESTING.md](TESTING.md) | Trial-period journal — the feedback that drives iteration |
