@@ -5,11 +5,14 @@ all-in-one image `ghcr.io/straplocked/mybabynotes-aio:latest` (built by
 [.github/workflows/release.yml](../.github/workflows/release.yml) on `v*` tag pushes — a `main` push
 does **not** build the AIO image, so `:latest` only ever moves on a tagged release).
 
-**Status: submitted and auto-approved 2026-09-07; support thread live in Docker Containers
-2026-09-08.** Everything on this side is finished — all the pre-submission gates below are done,
-the thread is up and linked from `ca_profile.xml`. The only thing left is Community Apps
-publishing its next build, which is not ours to hurry; see "How long until it actually appears in
-CA" for how to tell when it lands.
+**Status: LISTED.** Submitted and auto-approved 2026-09-07, support thread live in Docker
+Containers 2026-09-08, and the listing went out with the appfeed build at **04:15 GMT on
+2026-09-08** — verified by finding the entry in the feed every Unraid server consumes. Searching
+"mybabynotes" in Community Apps installs it.
+
+Keep this document for the *next* submission, and because two of its notes still apply: template
+fixes ship by pushing to `main` (CA re-reads `TemplateURL` from there), and app updates ship by
+tagging releases, since `release.yml` owns `:latest`.
 
 ## Pre-submission checklist
 
@@ -138,9 +141,10 @@ That JSON is the feed every Unraid server's CA plugin consumes (~24 MB, ~4,300 a
 there — not the submission page — is the real "we are live" signal. `last-modified` tells you when
 the feed was last rebuilt without downloading it.
 
-Observed on submission day: submitted 01:08 GMT, and the feed's last build was **00:11 GMT** — i.e.
-just before. It had still not rebuilt at 02:16 GMT, so **the cadence is slower than hourly**; plan
-on hours, not minutes, and don't read the delay as a problem.
+Measured end to end on submission day: submitted 01:08 GMT against a feed last built at 00:11 GMT,
+and the next build landed at **04:15 GMT** with the listing in it. So **the cadence is roughly four
+hours**, and a submission that just missed a build waits most of one. Plan on hours, not minutes,
+and don't read the delay as a problem — nothing is stuck and there is nothing to retry.
 
 ## Remote access requirement (say it everywhere)
 
