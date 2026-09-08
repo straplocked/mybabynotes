@@ -25,7 +25,6 @@
 
   <WebPage>https://github.com/straplocked/mybabynotes</WebPage>
 
-  <!-- Added once the Unraid support thread exists — see docs/ca-submission.md -->
-  <!-- <Forum>https://forums.unraid.net/topic/YOUR_SUPPORT_TOPIC</Forum> -->
+  <Forum>https://forums.unraid.net/topic/200520-support-mybabynotes-self-hosted-baby-tracker-for-your-household-offline-pwa-realtime-sync-shift-handoffs/</Forum>
 
 </CommunityApplications>
