@@ -109,9 +109,35 @@ Developers* create topics — there is no "Start New Topic" button otherwise. Pe
 - meanwhile, **post the thread in a subforum you can post in and PM a moderator to move it**;
 - or request the status from support once there's a track record of answering questions.
 
-Once the thread exists, uncomment `<Forum>` in `ca_profile.xml` with its URL. Until then the
-profile deliberately says support is via GitHub issues rather than pointing at a thread that
-doesn't exist.
+Posted 2026-09-07 in **Docker Engine** with a mod note asking for the move:
+`https://forums.unraid.net/topic/200520-support-mybabynotes-self-hosted-baby-tracker-for-your-household-offline-pwa-realtime-sync-shift-handoffs/`
+
+**It is held for moderator approval** — new topics there are, and the URL 404s for logged-out
+visitors until it clears. So `<Forum>` in `ca_profile.xml` stays commented out until the thread is
+publicly reachable; check with a signed-out fetch (`curl -o /dev/null -w '%{http_code}' <url>`)
+rather than by loading it in a signed-in browser, which will show it either way. Note the URL may
+change if a moderator moves it — re-check before wiring it in.
+
+Until then the profile deliberately says support is via GitHub issues rather than pointing at a
+thread nobody else can open.
+
+## How long until it actually appears in CA
+
+Nothing documents this — the submission screen only says "after the next Community Applications
+build publishes", and the Submission Help pages give no cadence. Measure it instead of guessing:
+
+```
+curl -sI https://assets.ca.unraid.net/feed/applicationFeed.json | grep -i last-modified
+curl -s  https://assets.ca.unraid.net/feed/applicationFeed.json | grep -c mybabynotes
+```
+
+That JSON is the feed every Unraid server's CA plugin consumes (~24 MB, ~4,300 apps), so presence
+there — not the submission page — is the real "we are live" signal. `last-modified` tells you when
+the feed was last rebuilt without downloading it.
+
+Observed on submission day: submitted 01:08 GMT, and the feed's last build was **00:11 GMT** — i.e.
+just before. It had still not rebuilt at 02:16 GMT, so **the cadence is slower than hourly**; plan
+on hours, not minutes, and don't read the delay as a problem.
 
 ## Remote access requirement (say it everywhere)
 
