@@ -5,9 +5,9 @@ all-in-one image `ghcr.io/straplocked/mybabynotes-aio:latest` (built by
 [.github/workflows/release.yml](../.github/workflows/release.yml) on `v*` tag pushes — a `main` push
 does **not** build the AIO image, so `:latest` only ever moves on a tagged release).
 
-**Status: not submitted.** Steps 1, 2 and 4 below are done — releases are tagged and every GHCR
-package is public and anonymously pullable. What remains is the manual part: the support thread and
-the submission itself.
+**Status: not submitted.** Steps 1–4 below are done — releases are tagged, every GHCR package is
+public and anonymously pullable, and the template has been installed and run on real Unraid
+hardware. What remains is the manual part: the support thread and the submission itself.
 
 ## Pre-submission checklist
 
@@ -17,14 +17,22 @@ the submission itself.
    `-ha-addon-*` packages all pull anonymously. (If a *new* package name ever appears it starts
    private: GitHub → your profile → Packages → the package → Package settings → Danger Zone →
    Change visibility → Public. A private package fails with a misleading "manifest not found".)
-3. **Test the template on a real Unraid box.** Copy `ca-template.xml` to
+3. ~~**Test the template on a real Unraid box.**~~ Done — installed from this template on Unraid
+   7.2.4 and run against an empty data folder, which is the path a Community Apps user actually
+   takes. Re-run this if the image or entrypoint changes. Copy `ca-template.xml` to
    `/boot/config/plugins/dockerMan/templates-user/` on the flash share (any filename ending
-   `.xml`), then Docker tab → **Add Container** → pick it from the Template dropdown. Verify:
-   - the container starts and first boot logs `first boot: generating secrets into /data/.env`;
-   - the **WebUI** button opens `http://<server-ip>:3500` and the app loads;
-   - registering the first account claims the instance;
-   - `/mnt/user/appdata/baby-log` contains `database.sqlite` + `.env` afterwards;
-   - stop/start survives (secrets reused, no re-generation).
+   `.xml`), then Docker tab → **Add Container** → pick it from the Template dropdown. What was
+   verified, and what to verify again:
+   - first boot logs `==> first boot: generating secrets into /data/.env`, then runs migrations;
+   - the data folder then holds `database.sqlite` and a `0600` `.env` carrying `APP_KEY` and the
+     three `REVERB_*` secrets, owned by uid 82;
+   - the **WebUI** button opens the mapped port and the app loads (`/` → 200, `/api/state` → 401
+     with an `Accept: application/json` header — **without** that header it 500s, which is
+     long-standing behaviour and not a failed install);
+   - the landing screen offers "Create an account" — on an unclaimed instance the first
+     registration claims it;
+   - restart reuses the secrets: `.env` is byte-identical afterwards and `first boot:` appears
+     exactly once in the log, never twice.
 4. ~~**Confirm the raw URLs resolve.**~~ Both are live on `main`; re-check only if either file moves:
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/deploy/unraid/ca-template.xml`
    - `https://raw.githubusercontent.com/straplocked/mybabynotes/main/public/icons/icon-512.png`
