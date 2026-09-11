@@ -160,6 +160,12 @@ If realtime breaks remotely but works on LAN, check the websocket toggle on the 
 
 Independently of that setting, nginx is the only writer of `X-Forwarded-For` on the way into PHP: the compose front's `/api` proxy and the AIO's `/api` + `/mcp` fastcgi locations both replace whatever the client sent with the address nginx resolved (the direct peer, or the real client once `TRUSTED_PROXIES` is set). Laravel trusts the leftmost forwarded address unconditionally, and its login/register throttles key on it — so without that rewrite a client could forge a fresh header per request and dodge the 10/min caps. The same rule applies to the Laravel throttles as to nginx's: unnamed proxies mean instance-wide buckets, forged headers never mean private ones.
 
+## Content-Security-Policy
+
+nginx (both the compose front's `nginx.conf` and the all-in-one's `deploy/aio/nginx.conf`) sends an enforced `Content-Security-Policy` on every response — `default-src 'self'`, with the one inline `<script>` in `index.html` (the pre-paint dark check) allowed by its sha256 and `style-src 'unsafe-inline'` because the app sets inline `style` attributes everywhere. The only third-party origins the policy allows are the two Google Fonts hosts: `https://fonts.googleapis.com` (stylesheets) and `https://fonts.gstatic.com` (font files). Everything else — API, websocket, service worker, manifest, images — must come from the app's own origin, and the app may only be framed by its own origin (`frame-ancestors 'self'`, which is what lets Home Assistant ingress embed it).
+
+A fork that vendors the fonts into the image can drop those two hosts from `style-src` / `font-src`; a fork that changes the inline script has to update the hash. `src/test/csp.test.js` recomputes the hash from `index.html` and fails until both nginx files carry it and still agree with each other. If your reverse proxy adds its own `Content-Security-Policy`, browsers enforce *both* — make the proxy's a superset of this one, or leave the header to the app.
+
 ## Registration policy
 
 Invite-only by default: the first sign-up claims a fresh instance; after that only invited emails with their single-use code can register. To open it up (not recommended on a publicly reachable instance): set `BABYLOG_OPEN_REGISTRATION=true`.
