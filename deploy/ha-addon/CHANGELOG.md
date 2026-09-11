@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- **Resume a sleep.** A baby who stirs for a few minutes and settles again used to cost two rows —
+  stop the timer, start another — for what was one nap. The newest sleep entry now carries a
+  **Resume** button: the timer picks back up from where that nap began, and stopping it rewrites
+  that same entry with the whole span instead of stacking a second one. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#120--2026-09-11).
+- Nothing to configure, and nothing changes about the add-on's own container.
+
 ## 1.1.0
 
 - Security release — the add-on runs the same all-in-one image as every other install, so it

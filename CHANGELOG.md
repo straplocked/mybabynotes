@@ -4,7 +4,7 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
-## Unreleased
+## 1.2.0 — 2026-09-11
 
 ### Added
 
