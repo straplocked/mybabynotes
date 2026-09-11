@@ -231,6 +231,8 @@ jobs:
             /^## / { on = ($2 == v) ; if (on) next }
             on { print }
           ' CHANGELOG.md > notes.md || : > notes.md
+          # repo-relative links in the changelog 404 from the release page
+          sed -i -E "s#\]\(([A-Za-z0-9_./-]+\.md)(\#[^)]*)?\)#](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/\1\2)#g" notes.md
           echo "--- notes for ${GITHUB_REF_NAME}:"; cat notes.md
       - name: Create GitHub Release
         env:
