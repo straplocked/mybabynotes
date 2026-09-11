@@ -241,7 +241,16 @@ const SPANS = ['sleep', 'tummy']
 const startOf = e => SPANS.includes(e.type) ? e.t - (sleepMins(e.detail) || 0) * 60000 : e.t
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'e' + Date.now() + Math.random().toString(36).slice(2, 9))
 const dayKey = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
-const csvEsc = v => { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }
+// CSV cell escaping, plus the OWASP "CSV injection" (formula injection) guard:
+// a cell opening with = + - @ tab or CR is read as a formula by Excel/Sheets/
+// LibreOffice, so free text (member names, notes) gets a leading apostrophe —
+// spreadsheets render it as text and drop the quote. Numeric columns don't
+// come through here on purpose; a negative amount must stay a number.
+export const csvEsc = v => {
+  v = v == null ? '' : String(v)
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v
+}
 
 const Sym = ({ style, children }) => (
   <span style={{ fontFamily: "'Material Symbols Rounded'", lineHeight: 1, ...style }}>{children}</span>
