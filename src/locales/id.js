@@ -309,6 +309,7 @@ export default {
   'Resend': 'Kirim ulang',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'Tautan reset cuma berlaku sekali dan kedaluwarsa sekitar sejam — minta yang baru lewat “Lupa kata sandi?” kalau yang ini sudah basi.',
   'Reset your password': 'Reset kata sandimu',
+  'Resume': 'Lanjutkan',
   'Revoke': 'Cabut',
   'Rhythm': 'Ritme',
   'Right': 'Kanan',

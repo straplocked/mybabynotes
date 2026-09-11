@@ -4,6 +4,12 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## Unreleased
+
+### Added
+
+- **Resume a sleep.** A baby who stirs for a few minutes and settles again used to cost two rows — stop the timer, start another — for what was one nap. The newest sleep entry now carries a **Resume** button: the timer picks back up from where that nap began, and stopping it rewrites that same entry with the whole span (Nap/Night tag and author kept) instead of stacking a second one. The link lives on the server (`POST /api/timer/resume`, `resumes` on the running timer), so either phone can end the session correctly. Offered only while that sleep is still the newest thing logged for the child on screen, and never beside a sleep timer that's already running.
+
 ## 1.1.0 — 2026-09-11
 
 ### Security

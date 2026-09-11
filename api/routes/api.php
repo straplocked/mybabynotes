@@ -51,6 +51,7 @@ Route::middleware(['auth:sanctum', 'abilities:*', 'throttle:120,1'])->group(func
     Route::post('/notify-prefs', [PushController::class, 'prefs']);
 
     Route::post('/timer/start', [TimerController::class, 'start']);
+    Route::post('/timer/resume', [TimerController::class, 'resume']);
     Route::post('/timer/stop', [TimerController::class, 'stop']);
 
     Route::get('/integrations/mqtt', [MqttController::class, 'show']);

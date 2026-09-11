@@ -309,6 +309,7 @@ export default {
   'Resend': 'Reenviar',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'Links de redefinição funcionam uma vez e expiram em cerca de uma hora — peça outro em «Esqueceu a senha?» se este já venceu.',
   'Reset your password': 'Redefina sua senha',
+  'Resume': 'Retomar',
   'Revoke': 'Revogar',
   'Rhythm': 'Ritmo',
   'Right': 'Direito',

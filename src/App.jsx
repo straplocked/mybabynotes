@@ -1250,6 +1250,42 @@ export default class App extends React.Component {
       .catch(() => this.setState({ offline: true }))
       .finally(() => { this._timerBusy-- })
   }
+  // A baby who stirs for five minutes had ONE nap with a gap in it, not two.
+  // Stopping and starting again stacked two rows for a single session; Resume
+  // re-opens the sleep instead — the timer comes back from where that entry
+  // began and carries `resumes`, so whoever stops it (either phone, the server
+  // owns the link) rewrites that same entry. The stir counts as part of the
+  // sleep, which is how the night reads anyway: "down at 7, up at 11".
+  resumeSleep = id => {
+    const e = this.state.entries.find(x => x.id === id)
+    if (!e) return
+    const timerId = uuid()
+    this._timerBusy++
+    this.setState(s => ({
+      activeTimers: [...s.activeTimers, {
+        id: timerId, type: e.type, started_at: startOf(e),
+        user_id: s.me?.id, baby_id: e.babyId ?? this.primaryChildId(), resumes: e.id,
+      }].sort((a, b) => (a.started_at || 0) - (b.started_at || 0)),
+    }))
+    api.timerResume(e.id, timerId)
+      .then(r => this.setState(s => ({
+        activeTimers: [...s.activeTimers.filter(x => x.id !== timerId && x.id !== r.timer.id), r.timer]
+          .sort((a, b) => (a.started_at || 0) - (b.started_at || 0)),
+      })))
+      .catch(err => {
+        // the entry is gone server-side (the other phone deleted it): drop the
+        // optimistic timer rather than leave a session pointing at nothing.
+        // A plain network failure is the usual offline banner.
+        this.setState(s => ({
+          activeTimers: s.activeTimers.filter(x => x.id !== timerId),
+          ...(err && err.status
+            ? { toast: err.message || t('That didn’t go through — try again'), undoAction: null }
+            : { offline: true }),
+        }))
+        if (err && err.status) this.bumpToast()
+      })
+      .finally(() => { this._timerBusy-- })
+  }
   stopTimer = id => {
     const tm = this.state.activeTimers.find(x => x.id === id)
     if (!tm) return
@@ -1272,7 +1308,22 @@ export default class App extends React.Component {
     // the entry belongs to the child the timer was started for — pill switches
     // mid-session must not redirect the log (null-era timers → primary child)
     const timerBabyId = tm.baby_id ?? this.primaryChildId()
-    if (tm.type === 'nurse') {
+    // a re-opened sleep rewrites the entry it came from: one session, now
+    // longer, with the stir folded in. Its tag ("Nap"/"Night"), author and
+    // child survive, and Undo puts the pre-resume values back. If the row
+    // isn't here (a device that never saw it), fall through and log normally.
+    const resumed = tm.resumes ? this.state.entries.find(x => x.id === tm.resumes && !x.deleted) : null
+    if (resumed) {
+      const when = dSplit(resumed.detail).when
+      const detail = when ? when + ' · ' + mins + 'm' : mins
+      this.setState(s => ({
+        entries: s.entries.map(x => x.id === resumed.id ? { ...x, t: Date.now(), detail } : x),
+        outbox: [...new Set([...s.outbox, resumed.id])],
+        toast: t('Sleep logged · {dur}', { dur: this.dur(mins) }),
+        undoAction: { kind: 'edit', id: resumed.id, prev: { type: resumed.type, t: resumed.t, detail: resumed.detail, babyId: resumed.babyId } },
+      }), () => this.flushSoon())
+      this.bumpToast()
+    } else if (tm.type === 'nurse') {
       // nursing: measured side + duration log straight away, undo available
       const detail = [side || this.defaultDetail('nurse'), mins + 'm'].filter(Boolean).join(' · ')
       const entry = { id: uuid(), type: 'nurse', t: tm.started_at, detail, by, babyId: timerBabyId }
@@ -2046,10 +2097,23 @@ export default class App extends React.Component {
       const m = showBy ? this.memberById(e.by) : null
       return m ? { initial: initial(m.name), name: m.name, color: this.memberColor(m.id) } : null
     }
-    const entryRows = [...live].sort((a, b) => startOf(b) - startOf(a)).slice(0, 12).map(e => ({
+    // a sleep being re-opened right now is represented by its running timer
+    // row, not twice — the entry comes back when the timer stops
+    const resumingIds = new Set(s.activeTimers.map(tm => tm.resumes).filter(Boolean))
+    const feedEntries = [...live].filter(e => !resumingIds.has(e.id)).sort((a, b) => startOf(b) - startOf(a))
+    // Resume rides the newest sleep and only while it IS the newest: once
+    // anything else is logged on top of it, that session is closed for good.
+    // Never beside a sleep timer already running for the same child (that
+    // would count the night twice), and never on a row the server hasn't
+    // seen yet — the resume is resolved server-side, by entry id.
+    const newest = feedEntries[0]
+    const canResume = !!newest && newest.type === 'sleep' && !pendingIds.has(newest.id)
+      && !s.activeTimers.some(tm => tm.type === 'sleep' && (tm.baby_id ?? primId) === (newest.babyId ?? primId))
+    const entryRows = feedEntries.slice(0, 12).map(e => ({
       t: startOf(e), time: this.clock(startOf(e)), label: t(T(e.type).label), sub: this.subFor(e),
       icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
       pending: pendingIds.has(e.id), byChip: byChipFor(e),
+      onResume: canResume && e.id === newest.id ? () => this.resumeSleep(e.id) : null,
     }))
     // running timers woven into the Today list at their start time (timerSpot
     // 'today' or 'both') — a live elapsed sub, and every row carries its
@@ -3177,6 +3241,31 @@ export default class App extends React.Component {
                     <button type="button" onClick={e.onStop} className="hov-dark" style={S('height:34px;padding:0 14px;background:#26231D;border:none;border-radius:999px;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;flex-shrink:0')}>
                       <Sym style={{ fontSize: 15, color: 'var(--bg)' }}>stop</Sym>
                       <div style={S('font-size:12.5px;font-weight:700;color:#FAF6EF')}>{t('Stop')}</div>
+                    </button>
+                  </div>
+                ) : e.onResume ? (
+                  // the newest sleep, still re-openable: a stir is the same nap
+                  // picked back up, so Resume sits beside the row rather than
+                  // inside it (a button can't nest in a button) and the rest of
+                  // the row still taps through to the edit sheet
+                  <div key={'resume-' + i} style={S('width:100%;box-sizing:border-box;border-top:1px solid rgba(38,35,29,0.06);display:flex;align-items:center;padding-right:15px')}>
+                    <button type="button" onClick={e.onEdit} className="hov-row" style={S('flex:1;min-width:0;background:none;border:none;padding:13px 8px 13px 15px;display:flex;align-items:center;gap:12px;cursor:pointer;text-align:left;font-family:inherit')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#6E6659;width:62px;flex-shrink:0;letter-spacing:-0.02em")}>{e.time}</div>
+                      <div style={S('position:relative;width:36px;height:36px;border-radius:999px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0')}>
+                        <div style={S(`position:absolute;inset:0;background:${e.color};opacity:0.16`)} />
+                        <Sym style={{ position: 'relative', fontSize: 19, color: e.color }}>{e.icon}</Sym>
+                      </div>
+                      <div style={S('flex:1;min-width:0;display:flex;flex-direction:column;gap:1px')}>
+                        <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{e.label}</div>
+                        <div style={S('font-size:11.5px;color:#8C8474')}>{e.sub}</div>
+                      </div>
+                      {e.byChip && (
+                        <div title={t('Logged by {name}', { name: e.byChip.name })} style={S(`width:20px;height:20px;border-radius:999px;background:${e.byChip.color};display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;color:#FCFBF6;flex-shrink:0`)}>{e.byChip.initial}</div>
+                      )}
+                    </button>
+                    <button type="button" onClick={e.onResume} className="hov-cream" style={S(`height:34px;padding:0 13px;background:#FFFDF8;border:1px solid ${e.color};border-radius:999px;display:flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;flex-shrink:0`)}>
+                      <Sym style={{ fontSize: 15, color: e.color }}>play_arrow</Sym>
+                      <div style={S(`font-size:12.5px;font-weight:700;color:${e.color}`)}>{t('Resume')}</div>
                     </button>
                   </div>
                 ) : (

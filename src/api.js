@@ -65,6 +65,10 @@ export const api = {
   pushEntries: entries => call('/entries', { method: 'POST', body: { entries } }),
   // baby_id absent → primary child; id is our client-generated timer id (entry-style)
   timerStart: (type, babyId, id) => call('/timer/start', { method: 'POST', body: { type, ...(babyId != null ? { baby_id: babyId } : {}), ...(id ? { id } : {}) } }),
+  // re-open a sleep that already ended (the stir-and-settle case): the timer
+  // comes back backdated to where that entry began and carries `resumes`, so
+  // stopping it rewrites that entry instead of stacking a second nap
+  timerResume: (entryId, id) => call('/timer/resume', { method: 'POST', body: { entry_id: entryId, ...(id ? { id } : {}) } }),
   timerStop: id => call('/timer/stop', { method: 'POST', ...(id ? { body: { id } } : {}) }),
   // the ask carries what the person handing off is proposing — plan, window,
   // and optionally who it's for; the accepter adjusts before committing

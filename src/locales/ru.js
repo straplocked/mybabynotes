@@ -309,6 +309,7 @@ export default {
   'Resend': 'Отправить ещё раз',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'Ссылка для сброса работает один раз и живёт около часа — если эта устарела, попроси новую через «Забыл(а) пароль?».',
   'Reset your password': 'Сброс пароля',
+  'Resume': 'Продолжить',
   'Revoke': 'Отозвать',
   'Rhythm': 'Ритм',
   'Right': 'Правая',

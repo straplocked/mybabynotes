@@ -309,6 +309,7 @@ export default {
   'Resend': 'మళ్లీ పంపండి',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'రీసెట్ లింకులు ఒక్కసారే పనిచేస్తాయి, గంటలోపే గడువు ముగుస్తుంది — ఇది పాతదైతే “పాస్‌వర్డ్ మర్చిపోయారా?” నుంచి కొత్తది అడగండి.',
   'Reset your password': 'మీ పాస్‌వర్డ్ రీసెట్ చేయండి',
+  'Resume': 'కొనసాగించు',
   'Revoke': 'రద్దు చేయండి',
   'Rhythm': 'లయ',
   'Right': 'కుడి',

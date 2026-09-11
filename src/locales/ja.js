@@ -309,6 +309,7 @@ export default {
   'Resend': '再送',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'リセット用リンクは1回きりで、約1時間で期限切れになります — 古くなっていたら「パスワードをお忘れですか？」から新しいものを取ってください。',
   'Reset your password': 'パスワードをリセット',
+  'Resume': '再開',
   'Revoke': '取り消す',
   'Rhythm': 'リズム',
   'Right': '右',

@@ -274,3 +274,104 @@ describe('multi-timer rows', () => {
     expect(await screen.findByText('Nursing · You')).toBeInTheDocument()
   })
 })
+
+// A baby who stirs for five minutes had ONE nap with a gap in it. Resume
+// re-opens the logged sleep — backdated to where it started — so stopping it
+// rewrites that same entry instead of stacking a second nap on top of it.
+describe('resuming a sleep', () => {
+  // a 45-minute nap that ended three minutes ago
+  const nap = (over = {}) => ({ id: 'nap-1', type: 'sleep', t: Date.now() - 3 * 60_000, detail: 45, by: 1, babyId: null, ...over })
+
+  it('offers Resume on the newest sleep only, and only until something lands on top of it', async () => {
+    seedSignedIn({ entries: [nap()] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    const { unmount } = renderApp()
+    expect(await screen.findByText('Resume')).toBeInTheDocument()
+    unmount()
+
+    // a feed logged after the nap closes that session for good
+    seedSignedIn({ entries: [nap(), { id: 'b1', type: 'bottle', t: Date.now() - 60_000, detail: '4', by: 1, babyId: null }] })
+    renderApp()
+    expect(await screen.findByText('Slept')).toBeInTheDocument()
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument()
+  })
+
+  it('never offers Resume on a feed, or beside a sleep timer already running', async () => {
+    seedSignedIn({ entries: [{ id: 'b1', type: 'bottle', t: Date.now() - 60_000, detail: '4', by: 1, babyId: null }] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    const { unmount } = renderApp()
+    await screen.findByText('Bottle')
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument()
+    unmount()
+
+    seedSignedIn({ entries: [nap()] })
+    routes['GET /state'] = () => okJson(stateFixture({
+      timers: [{ id: 't-sleep', type: 'sleep', started_at: Date.now() - 60_000, user_id: 2, baby_id: null }],
+    }))
+    renderApp()
+    // the baby is asleep right now — re-opening the last nap would double-count
+    expect(await screen.findByText('Sleep · Kat')).toBeInTheDocument()
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument()
+  })
+
+  it('resume posts the entry id and the row becomes the running session', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [nap()] })
+    let resumeBody
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/resume'] = opts => {
+      resumeBody = JSON.parse(opts.body)
+      return okJson({ ok: true, timer: { id: resumeBody.id, type: 'sleep', started_at: Date.now() - 48 * 60_000, user_id: 1, baby_id: null, resumes: 'nap-1' } })
+    }
+    renderApp()
+
+    await user.click(await screen.findByText('Resume'))
+
+    expect(resumeBody.entry_id).toBe('nap-1')
+    expect(resumeBody.id).toBeTruthy() // client-generated, same shape as a start
+    // the sleep is live again: one row for the session, not the old entry too
+    expect(await screen.findByText('Sleeping now')).toBeInTheDocument()
+    expect(screen.queryByText('Slept')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument()
+  })
+
+  it('stopping a resumed sleep rewrites that one entry with the whole span', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [nap({ detail: 'Nap · 45m' })] })
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture({
+      timers: [{ id: 't-resumed', type: 'sleep', started_at: Date.now() - 48 * 60_000, user_id: 1, baby_id: null, resumes: 'nap-1' }],
+    }))
+    routes['POST /timer/stop'] = () => okJson({ ok: true, stopped: null })
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    await screen.findByText('Sleep · You')
+    await user.click(screen.getAllByText('Stop')[0])
+
+    expect(await screen.findByText(/Sleep logged/)).toBeInTheDocument()
+    await waitFor(() => expect(pushed).toBeTruthy())
+    // ONE row, the original id, now covering start → this wake-up. The "Nap"
+    // tag survives; the stir in the middle is part of the sleep.
+    expect(pushed.entries).toHaveLength(1)
+    expect(pushed.entries[0].id).toBe('nap-1')
+    expect(pushed.entries[0].detail).toBe('Nap · 48m')
+    expect(pushed.entries[0].deleted).toBe(false)
+  })
+
+  it('a resume the server has lost drops the optimistic timer instead of stranding it', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [nap()] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/resume'] = () => Promise.resolve({
+      ok: false, status: 404, json: () => Promise.resolve({ message: 'That sleep is no longer there to resume.' }),
+    })
+    renderApp()
+
+    await user.click(await screen.findByText('Resume'))
+
+    expect(await screen.findByText('That sleep is no longer there to resume.')).toBeInTheDocument()
+    expect(screen.queryByText('Sleeping now')).not.toBeInTheDocument()
+    expect(await screen.findByText('Slept')).toBeInTheDocument()
+  })
+})

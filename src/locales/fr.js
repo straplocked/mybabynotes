@@ -309,6 +309,7 @@ export default {
   'Resend': 'Renvoyer',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'Les liens de réinitialisation servent une fois et expirent après environ une heure — redemandes-en un via « Mot de passe oublié ? » si celui-ci est périmé.',
   'Reset your password': 'Réinitialise ton mot de passe',
+  'Resume': 'Reprendre',
   'Revoke': 'Révoquer',
   'Rhythm': 'Rythme',
   'Right': 'Droit',

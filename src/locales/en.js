@@ -312,6 +312,7 @@ export default {
   'Resend': 'Resend',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.',
   'Reset your password': 'Reset your password',
+  'Resume': 'Resume',
   'Revoke': 'Revoke',
   'Rhythm': 'Rhythm',
   'Right': 'Right',

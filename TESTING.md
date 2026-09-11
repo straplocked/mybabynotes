@@ -58,6 +58,7 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 - Is the shift report card the right summary, or do you want different rows?
 
 ### Home & History
+- **Stirring stacked the log** (2026-09-11, from use): a baby who wakes for a few minutes and settles again meant stopping the sleep timer and starting a new one, which logged two naps for what was one. The newest sleep now carries a **Resume** pill that re-opens that entry instead — one row, the stir folded in. Open questions for the next nights: is a row-level pill discoverable at 3am, or does Resume belong on the "Slept" since-card (or both)? Is "newest entry, nothing on top" the right window, or does it need to expire — say, only within an hour of the wake-up? And when the stir runs long (40 minutes, a feed in the middle), is counting it as sleep still what you want, or do you want the two rows back?
 - A running timer now takes over its since-card ("Sleeping now · 42:10 so far"). With timers also shown as top cards and Today rows, is that a third copy too many — should the top timer card go away when the since-card already says it?
 - The since-cards are now picked per household from seven (fed, pumped, diaper, slept, tummy time, bath, meds) — which did you actually keep, and is the picker discoverable?
 - Is 12 timeline entries enough per day? Do you reach for "older days" and hit the 7-day wall?

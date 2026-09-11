@@ -38,6 +38,28 @@ class TimerController extends Controller
     }
 
     /**
+     * Re-open a sleep that already ended — the stir-and-settle case, where
+     * stopping and starting again stacked two naps for what was one. The timer
+     * comes back backdated to where that entry began and carries `resumes`, so
+     * stopping it rewrites that entry instead of logging a second one.
+     */
+    public function resume(Request $request, TimerService $timers): JsonResponse
+    {
+        $data = $request->validate([
+            'entry_id' => ['required', 'string', 'max:64'],
+            'id' => ['sometimes', 'string', 'max:64'],
+        ]);
+
+        $timer = $timers->resume($request->user(), $data['entry_id'], $data['id'] ?? null);
+        if ($timer === null) {
+            // deleted, edited into another type, or never ours to begin with
+            return response()->json(['ok' => false, 'message' => __('That sleep is no longer there to resume.')], 404);
+        }
+
+        return response()->json(['ok' => true, 'timer' => $timer]);
+    }
+
+    /**
      * Stop one timer by id. The entry itself is logged client-side. No id is
      * the pre-multi-timer form: stops the caller's newest timer.
      */

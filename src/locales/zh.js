@@ -309,6 +309,7 @@ export default {
   'Resend': '重发',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': '重置链接只能用一次，大约一小时后失效 — 过期了就再从“忘记密码？”要一个新的。',
   'Reset your password': '重置密码',
+  'Resume': '继续',
   'Revoke': '撤销',
   'Rhythm': '节奏',
   'Right': '右侧',

@@ -309,6 +309,7 @@ export default {
   'Resend': 'إعادة الإرسال',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'روابط إعادة التعيين تعمل مرة واحدة وتنتهي بعد نحو ساعة — اطلب رابطًا جديدًا من «نسيت كلمة المرور؟» إن كان هذا قديمًا.',
   'Reset your password': 'إعادة تعيين كلمة المرور',
+  'Resume': 'استئناف',
   'Revoke': 'إلغاء',
   'Rhythm': 'الإيقاع',
   'Right': 'يمين',

@@ -309,6 +309,7 @@ export default {
   'Resend': 'पुन्हा पाठवा',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'रीसेट लिंक एकदाच चालतात आणि साधारण तासाभरात मुदत संपते — ही जुनी झाली असेल तर “पासवर्ड विसरलात?” मधून नवी मागा.',
   'Reset your password': 'तुमचा पासवर्ड रीसेट करा',
+  'Resume': 'पुन्हा सुरू',
   'Revoke': 'रद्द करा',
   'Rhythm': 'ताल',
   'Right': 'उजवी',

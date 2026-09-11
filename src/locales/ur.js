@@ -309,6 +309,7 @@ export default {
   'Resend': 'دوبارہ بھیجیں',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'ری سیٹ لنک ایک بار چلتے ہیں اور تقریباً ایک گھنٹے میں ختم ہو جاتے ہیں — اگر یہ پرانا ہو تو «پاس ورڈ بھول گئے؟» سے نیا منگوا لیں۔',
   'Reset your password': 'اپنا پاس ورڈ ری سیٹ کریں',
+  'Resume': 'دوبارہ شروع',
   'Revoke': 'منسوخ کریں',
   'Rhythm': 'ردھم',
   'Right': 'دائیں',

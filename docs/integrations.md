@@ -111,6 +111,8 @@ Partial update — send only the fields you're changing (`type`, `t`, `detail`, 
 
 The household's running timers. `timers` lists every one — `{id, type, started_at, user_id, baby_id}` in start order; timers stack, so a nursing timer for one twin can run beside a sleep timer for the other. `timer` is the legacy singular slot (your newest, or null), kept for pre-multi-timer clients.
 
+A timer the app **resumed** (a sleep picked back up after a stir) carries an extra `resumes` key naming the entry it re-opened, and its `started_at` is backdated to where that nap began. Stopping it from here behaves like any other stop — the running state clears and no entry is written — so the resumed entry keeps whatever it last said; only the app's own stop rewrites it with the full span. Resuming isn't exposed on `/v1` or MQTT today.
+
 ### `PUT /v1/timer` — `timer:write`
 
 ```json

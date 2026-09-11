@@ -101,7 +101,8 @@ The single polling/converge endpoint.
   "timer":   { "id": "uuid", "type": "nurse", "started_at": 0, "user_id": 1,
                "baby_id": 10 },                      // LEGACY singular: the caller's newest running timer (else the household's), or null
   "timers":  [ { "id": "uuid", "type": "nurse", "started_at": 0, "user_id": 1,
-                 "baby_id": 10 } ],                  // every running timer, in start order; baby_id null ⇒ primary child
+                 "baby_id": 10, "resumes": null } ], // every running timer, in start order; baby_id null ⇒ primary child.
+                                                     // `resumes` (entry id) is present only on a re-opened sleep — see POST /timer/resume
   "entries": [ { "id": "uuid", "user_id": 1, "baby_id": 10, "type": "bottle", "t": 1750000000000,
                  "detail": "4", "deleted": false, "rev": 1750000000123 } ],
   "serverTime": 1750000000456,
@@ -162,10 +163,15 @@ Any subset of the `notifyPrefs` keys shown in `/state`; provided keys merge over
 
 ## Timers — all auth + throttle 120/min
 
-The live nursing/pump/sleep/tummy-time timers. **Timers stack** — a nursing timer for one twin can run beside a sleep timer for the other — synced via `/state` (`timers`: a list of `{id, type, started_at, user_id, baby_id}` in start order; the legacy singular `timer` key carries the caller's newest for pre-multi-timer clients). Only the running state lives server-side; the resulting entry is written client-side through `/entries` on stop.
+The live nursing/pump/sleep/tummy-time timers. **Timers stack** — a nursing timer for one twin can run beside a sleep timer for the other — synced via `/state` (`timers`: a list of `{id, type, started_at, user_id, baby_id}` in start order, plus `resumes` on a re-opened sleep; the legacy singular `timer` key carries the caller's newest for pre-multi-timer clients). Only the running state lives server-side; the resulting entry is written client-side through `/entries` on stop.
 
 ### `POST /timer/start`
 `{ type: nurse|pump|sleep|tummy, baby_id?, id? }` → appends to the household's `active_timers`, broadcasts a poke, and pushes every other member whose `timer` pref is on (honoring quiet hours) "{name} started nursing/pumping". Starting an identical session you already have running (same type, child, and starter — a double tap) returns the existing timer instead of stacking a duplicate. `baby_id` must be one of the household's children — a foreign id is dropped (stored as null, which clients read as the primary child). `id` is an optional client-generated timer id (entry-style), so the app's optimistic row and the server copy are the same timer. Returns `{ ok, timer }`.
+
+### `POST /timer/resume`
+`{ entry_id, id? }` — re-opens a sleep that already ended, for the stir-and-settle case where stopping and starting again stacked two naps for one session. The entry must be a live (non-tombstoned) `sleep` in the caller's household; anything else — a feed, a tombstone, an id from another household — is a **404** (`That sleep is no longer there to resume.`), never a silently started fresh timer. The returned timer is backdated to where that nap began (`t` − the duration in its `detail`, reading either the bare minutes the timer writes or a `45m` token from a tagged nap; a future-stamped entry clamps to now) and carries `resumes: <entry id>` so **whoever stops it — either phone — rewrites that same entry** instead of logging a second one. It keeps the entry's own `baby_id`, pokes, and pushes "{name} resumed a sleep timer" on the same `timer` pref as a start. Resuming a nap that already has a session running returns that session (both phones tapping Resume is still one sleep). `id` is the client-generated timer id, same as `/timer/start`. Returns `{ ok, timer }`.
+
+The server does **not** write the merged entry — same rule as every other stop: the client logs it through [`POST /entries`](#post-entries), reusing the resumed entry's id, with `t` = now and the whole span (stir included) as the duration.
 
 ### `POST /timer/stop`
 `{ id? }` — removes that timer from `active_timers`, broadcasts a poke. Without `id` (pre-multi-timer clients) it stops the caller's newest timer, else the household's newest. Returns `{ ok, stopped }` (`stopped` null if nothing matched). The client logs the nurse/pump entry (with the measured duration) separately.

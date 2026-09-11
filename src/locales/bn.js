@@ -309,6 +309,7 @@ export default {
   'Resend': 'আবার পাঠান',
   'Reset links work once and expire after about an hour — ask for a fresh one from “Forgot password?” if this one is stale.': 'রিসেট লিংক একবারই কাজ করে আর ঘণ্টাখানেক পরে মেয়াদ শেষ হয় — এটা পুরোনো হয়ে গেলে «পাসওয়ার্ড ভুলে গেছেন?» থেকে নতুন একটা চেয়ে নিন।',
   'Reset your password': 'পাসওয়ার্ড রিসেট করুন',
+  'Resume': 'আবার চালু',
   'Revoke': 'বাতিল করুন',
   'Rhythm': 'ছন্দ',
   'Right': 'ডান',

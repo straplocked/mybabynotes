@@ -589,6 +589,114 @@ class BabylogApiTest extends TestCase
         $this->assertSame([], $this->getJson('/api/state', $this->authed($ben))->json('timers'));
     }
 
+    // ── resuming a sleep ──────────────────────────────────────────────────────
+    // A baby who stirs for five minutes had ONE nap with a gap in it. Resume
+    // re-opens the logged sleep instead of stacking a second one: the timer
+    // comes back backdated to where that entry began and points at it, so
+    // whoever stops it rewrites that row.
+
+    public function test_resume_reopens_a_sleep_backdated_to_where_it_started(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        // a 45-minute nap that ended two minutes ago
+        $ended = now()->getTimestampMs() - 2 * 60000;
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'nap-1', 'type' => 'sleep', 't' => $ended, 'detail' => '45'],
+        ]], $this->authed($ben))->assertOk();
+
+        $timer = $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($ben))
+            ->assertOk()->json('timer');
+
+        $this->assertSame('sleep', $timer['type']);
+        $this->assertSame('nap-1', $timer['resumes']);
+        $this->assertSame($ended - 45 * 60000, $timer['started_at']);
+
+        // the partner's pull sees the same re-opened session
+        $synced = $this->getJson('/api/state', $this->authed($ben))->json('timers');
+        $this->assertCount(1, $synced);
+        $this->assertSame('nap-1', $synced[0]['resumes']);
+    }
+
+    public function test_resume_reads_the_length_out_of_a_tagged_sleep(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $ended = now()->getTimestampMs();
+        // tagged naps spell the duration as a "90m" token, untagged as bare minutes
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'nap-1', 'type' => 'sleep', 't' => $ended, 'detail' => 'Night · 90m'],
+        ]], $this->authed($ben))->assertOk();
+
+        $timer = $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($ben))
+            ->assertOk()->json('timer');
+        $this->assertSame($ended - 90 * 60000, $timer['started_at']);
+    }
+
+    public function test_resuming_the_same_sleep_twice_returns_the_one_session(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code])->json('token');
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'nap-1', 'type' => 'sleep', 't' => now()->getTimestampMs(), 'detail' => '30'],
+        ]], $this->authed($ben))->assertOk();
+
+        $first = $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($ben))->json('timer');
+        // both phones tapping Resume on the same nap is still one session
+        $second = $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($kat))->json('timer');
+
+        $this->assertSame($first['id'], $second['id']);
+        $this->assertCount(1, $this->getJson('/api/state', $this->authed($kat))->json('timers'));
+    }
+
+    public function test_resume_refuses_anything_that_isnt_a_live_sleep_of_ours(): void
+    {
+        config(['babylog.open_registration' => true]); // a second household to reach across
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'bottle-1', 'type' => 'bottle', 't' => 1000, 'detail' => '4'],
+            ['id' => 'nap-gone', 'type' => 'sleep', 't' => 2000, 'detail' => '20', 'deleted' => true],
+        ]], $this->authed($ben))->assertOk();
+
+        // a feed has no start to pick up from; a tombstoned nap is gone; and a
+        // stranger's id must never reach across households
+        $this->postJson('/api/timer/resume', ['entry_id' => 'bottle-1'], $this->authed($ben))->assertStatus(404);
+        $this->postJson('/api/timer/resume', ['entry_id' => 'nap-gone'], $this->authed($ben))->assertStatus(404);
+        $this->postJson('/api/timer/resume', ['entry_id' => 'never-existed'], $this->authed($ben))->assertStatus(404);
+        $this->postJson('/api/timer/resume', [], $this->authed($ben))->assertStatus(422);
+
+        $eve = $this->register('Eve', 'eve@example.com')->json('token');
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'eve-nap', 'type' => 'sleep', 't' => 3000, 'detail' => '15'],
+        ]], $this->authed($eve))->assertOk();
+        $this->postJson('/api/timer/resume', ['entry_id' => 'eve-nap'], $this->authed($ben))->assertStatus(404);
+
+        $this->assertSame([], $this->getJson('/api/state', $this->authed($ben))->json('timers'));
+    }
+
+    public function test_resume_keeps_the_sleeps_own_child(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->postJson('/api/children', ['name' => 'Wren'], $this->authed($ben))->assertOk();
+        $twin = $this->postJson('/api/children', ['name' => 'Sage'], $this->authed($ben))->assertOk()->json('child.id');
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'nap-1', 'type' => 'sleep', 't' => now()->getTimestampMs(), 'detail' => '40', 'baby_id' => $twin],
+        ]], $this->authed($ben))->assertOk();
+
+        $timer = $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($ben))->json('timer');
+        $this->assertSame($twin, $timer['baby_id']);
+    }
+
+    public function test_a_caregiver_may_resume_a_sleep(): void
+    {
+        [$ben, , $doula] = $this->threeMemberHousehold();
+        $this->postJson('/api/entries', ['entries' => [
+            ['id' => 'nap-1', 'type' => 'sleep', 't' => now()->getTimestampMs(), 'detail' => '25'],
+        ]], $this->authed($ben))->assertOk();
+
+        // running timers is the caregiver's actual job — so is picking one back up
+        $this->postJson('/api/timer/resume', ['entry_id' => 'nap-1'], $this->authed($doula))->assertOk();
+    }
+
     // ── shift edge cases ─────────────────────────────────────────────────────
 
     public function test_accept_tolerates_fractional_plan_timestamps(): void
