@@ -10,7 +10,7 @@ RUN composer dump-autoload --optimize --no-dev
 # FPM serves the API (php-fpm workers behind a loopback nginx on :8000, so the
 # container's interface stays plain HTTP for the app proxy and the vite dev
 # proxy); the same image also runs Reverb and artisan via the bundled CLI.
-FROM php:8.4-fpm-alpine
+FROM php:8.5-fpm-alpine
 # gmp speeds up the Web Push EC crypto (pure-PHP fallback works but is slow).
 # libpq is the pdo_pgsql runtime and is named explicitly so the `apk del` of
 # the -dev packages can't take it with it as an orphan; SQLite stays the
