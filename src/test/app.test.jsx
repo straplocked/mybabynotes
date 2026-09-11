@@ -636,3 +636,65 @@ describe('the log sheet’s day control', () => {
     expect(screen.getByText('Editing entry · 2 days ago')).toBeInTheDocument()
   })
 })
+
+describe('arriving from a password-reset email', () => {
+  // The mail's link is APP_URL/#reset=<token>&email=<addr>: the fragment never
+  // reaches the server, so the token stays out of access logs. Older mails
+  // used ?reset= and must keep working. Either way the token lives only in
+  // memory and the address is scrubbed as soon as the app has it.
+  const resetRoute = () => {
+    const calls = []
+    routes['POST /reset-password'] = opts => { calls.push(JSON.parse(opts.body)); return okJson({ ok: true }) }
+    return calls
+  }
+  const storageDump = () => {
+    const out = []
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); out.push(k + '=' + localStorage.getItem(k)) }
+    return out.join('\n')
+  }
+  afterEach(() => { window.history.replaceState(null, '', '/') })
+
+  const expectResetFlow = async (calls) => {
+    expect(screen.getByText('Save new password')).toBeInTheDocument()
+    expect(screen.getByText(/For a@b\.c — pick something/)).toBeInTheDocument()
+    // scrubbed before anything could copy or bookmark it
+    expect(window.location.hash).toBe('')
+    expect(window.location.search).toBe('')
+    expect(window.location.pathname).toBe('/')
+    // never persisted — not on boot, not after the next state change
+    expect(storageDump()).not.toContain('tok123')
+    await userEvent.type(screen.getByPlaceholderText('New password'), 'newpassword9')
+    expect(storageDump()).not.toContain('tok123')
+    // what the app held is exactly what the server gets
+    fireEvent.click(screen.getByText('Save new password'))
+    await waitFor(() => expect(calls).toHaveLength(1))
+    expect(calls[0]).toEqual({ token: 'tok123', email: 'a@b.c', password: 'newpassword9' })
+  }
+
+  it('reads the token from the URL fragment, shows the reset screen, and scrubs the address', async () => {
+    window.history.replaceState(null, '', '/#reset=tok123&email=a%40b.c')
+    const calls = resetRoute()
+    renderApp()
+    await expectResetFlow(calls)
+  })
+
+  it('still honours the legacy ?reset= query form from older mails', async () => {
+    window.history.replaceState(null, '', '/?reset=tok123&email=a%40b.c')
+    const calls = resetRoute()
+    renderApp()
+    await expectResetFlow(calls)
+  })
+
+  it('prefers the fragment when both forms are present', async () => {
+    window.history.replaceState(null, '', '/?reset=stale&email=old%40b.c#reset=tok123&email=a%40b.c')
+    const calls = resetRoute()
+    renderApp()
+    await expectResetFlow(calls)
+  })
+
+  it('does not stick on the reset screen after a reload without a token', () => {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ screen: 'reset', entries: [], outbox: [], settings: { tracking: {}, dismissed: [] } }))
+    renderApp()
+    expect(screen.getByText('Create an account')).toBeInTheDocument()
+  })
+})

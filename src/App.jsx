@@ -261,7 +261,7 @@ export default class App extends React.Component {
       authName: '', authEmail: '', authPassword: '', authInvite: '', authError: null, authBusy: false,
       inviteCode: null, inviteMailed: false,
       forgotOpen: false, forgotEmail: '', forgotBusy: false, forgotResult: null, // null | 'sent' | 'unconfigured' | 'error'
-      resetToken: null, resetEmail: '', resetPw: '', resetBusy: false, resetError: null, // ?reset=<token>&email= flow
+      resetToken: null, resetEmail: '', resetPw: '', resetBusy: false, resetError: null, // #reset=<token>&email= flow (never persisted)
       entries: [], // includes tombstones ({deleted:true}); views filter them
       sheet: false, sel: null, offset: 0, pickedT: null, dayPicked: false, detail: null, detail2: null, editId: null, historyDay: null, scrubDrag: null,
       // the sheet's "Advanced" drawer (the day control): `advanced` is per
@@ -323,10 +323,14 @@ export default class App extends React.Component {
     this.shiftDrag = this.sheetGestures({ y: 'shiftDragY', dragging: 'shiftDragging', tall: null, close: () => this.closeShift() })
     // no token → cached signed-in screens are stale
     if (!getToken() && !['splash', 'auth'].includes(this.state.screen)) this.state.screen = 'splash'
-    // arriving from a password-reset email: ?reset=<token>&email=<addr> — the
-    // token lives only in memory; a reload after replaceState falls through
+    // arriving from a password-reset email: #reset=<token>&email=<addr>. The
+    // token rides the fragment so it never reaches the server or its access
+    // logs; mails sent before that change used ?reset=, still honoured
+    // (fragment wins). The token lives only in memory (not in PERSIST); a
+    // reload after the replaceState scrub falls through to splash.
     try {
-      const q = new URLSearchParams(window.location.search)
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const q = hash.get('reset') && hash.get('email') ? hash : new URLSearchParams(window.location.search)
       if (q.get('reset') && q.get('email')) {
         this.state.resetToken = q.get('reset')
         this.state.resetEmail = q.get('email')
@@ -366,7 +370,9 @@ export default class App extends React.Component {
       try { window.history.replaceState(null, '') } catch { /* fine */ }
     }
     // the reset token was captured into state — scrub it out of the URL/history
-    if (window.location.search) {
+    // (the fragment too: it never hit the server, but it's still in the tab,
+    // the history, and anything that copies the address)
+    if (window.location.search || window.location.hash) {
       try { window.history.replaceState(null, '', window.location.pathname) } catch { /* fine */ }
     }
   }

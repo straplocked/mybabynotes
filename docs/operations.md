@@ -197,7 +197,7 @@ MAIL_FROM_ADDRESS=you@example.com
 
 Then make the containers pick it up: restart the AIO container, or on a compose install re-run the install script once. That step is required, not optional — compose only injects `.env` values into containers when it (re)creates them, and `docker compose up -d` recreates api+reverb because their environment changed. Nothing beyond that: no config cache to clear (the containers don't run `config:cache`).
 
-With mail on: invites also email the code to the partner (the on-screen code still works and stays the source of truth), and "Forgot password?" emails a reset link pointing at `APP_URL/?reset=…` — so `APP_URL` in that same `.env` must be the real public origin (e.g. `https://notes.example.com`) or the links will point somewhere useless. A failed SMTP send never blocks an invite; it falls back to code-only (`mailed: false`).
+With mail on: invites also email the code to the partner (the on-screen code still works and stays the source of truth), and "Forgot password?" emails a reset link pointing at `APP_URL/#reset=<token>&email=…` — the token rides the URL *fragment*, which browsers never send, so it stays out of nginx/proxy access logs (the app still accepts the older `?reset=` form for links already in inboxes) — so `APP_URL` in that same `.env` must be the real public origin (e.g. `https://notes.example.com`) or the links will point somewhere useless. A failed SMTP send never blocks an invite; it falls back to code-only (`mailed: false`).
 
 ## Local development
 

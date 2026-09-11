@@ -12,7 +12,15 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-/** Password reset link pointing at the SPA: <app-url>/?reset=<token>&email=<email>. */
+/**
+ * Password reset link pointing at the SPA: <app-url>/#reset=<token>&email=<email>.
+ *
+ * The token rides the URL *fragment*, not the query string: browsers never send
+ * the fragment over the wire, so it stays out of nginx access logs, proxy logs,
+ * and Referer headers. The SPA reads it on boot (App.jsx also still accepts the
+ * legacy ?reset= form for links already sitting in inboxes) and scrubs it from
+ * history straight away.
+ */
 class PasswordResetLink extends Mailable
 {
     use Queueable, SerializesModels;
@@ -24,7 +32,7 @@ class PasswordResetLink extends Mailable
         public string $email,
         public string $token,
     ) {
-        $this->url = rtrim((string) config('app.url'), '/').'/?reset='.$token.'&email='.urlencode($email);
+        $this->url = rtrim((string) config('app.url'), '/').'/#reset='.$token.'&email='.urlencode($email);
     }
 
     public function envelope(): Envelope

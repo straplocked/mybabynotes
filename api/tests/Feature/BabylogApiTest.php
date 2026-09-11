@@ -832,8 +832,8 @@ class BabylogApiTest extends TestCase
         Mail::assertSent(PasswordResetLink::class, function (PasswordResetLink $mail) use (&$token) {
             $token = $mail->token;
 
-            // the link lands on the SPA, which reads ?reset & email on boot
-            return str_contains($mail->url, '/?reset='.$mail->token)
+            // the link lands on the SPA, which reads #reset & email on boot
+            return str_contains($mail->url, '/#reset='.$mail->token)
                 && str_contains($mail->url, 'email=ben%40example.com');
         });
         $this->assertNotNull($token);
@@ -846,6 +846,25 @@ class BabylogApiTest extends TestCase
 
         $this->postJson('/api/login', ['email' => 'ben@example.com', 'password' => 'password123'])->assertStatus(422);
         $this->postJson('/api/login', ['email' => 'ben@example.com', 'password' => 'newpassword9'])->assertOk();
+    }
+
+    public function test_the_reset_link_carries_its_token_in_the_fragment_not_the_query(): void
+    {
+        // The fragment never leaves the browser, so the token stays out of
+        // nginx/proxy access logs and Referer headers. A query string would be
+        // logged before any JS could scrub it.
+        config(['app.url' => 'https://notes.example.com/']);
+
+        $mail = new PasswordResetLink('Ben', 'ben+kid@example.com', 'tok123');
+
+        $this->assertSame('https://notes.example.com/#reset=tok123&email=ben%2Bkid%40example.com', $mail->url);
+        $this->assertStringNotContainsString('?reset=', $mail->url);
+        $this->assertStringNotContainsString('?', $mail->url);
+
+        // and the body the user actually receives carries that same link
+        $body = $mail->render();
+        $this->assertStringContainsString('/#reset=tok123&email=ben%2Bkid%40example.com', $body);
+        $this->assertStringNotContainsString('?reset=', $body);
     }
 
     // ── multi-member households (roles, members, invites) ─────────────────────
