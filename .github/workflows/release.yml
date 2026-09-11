@@ -220,10 +220,23 @@ jobs:
             -o "mybabynotes-${GITHUB_REF_NAME}.tar.gz" "${GITHUB_REF_NAME}"
           sha256sum "mybabynotes-${GITHUB_REF_NAME}.tar.gz" > checksums.txt
           cat checksums.txt
+      # Release notes = this version's CHANGELOG.md section (the "## X.Y.Z"
+      # block, matched without the tag's leading v) with GitHub's generated
+      # commit list appended. A tag with no changelog section still releases:
+      # the notes file is then empty and only the generated list appears.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '
+            /^## / { on = ($2 == v) ; if (on) next }
+            on { print }
+          ' CHANGELOG.md > notes.md || : > notes.md
+          echo "--- notes for ${GITHUB_REF_NAME}:"; cat notes.md
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
+            --notes-file notes.md \
             --generate-notes \
             "mybabynotes-${GITHUB_REF_NAME}.tar.gz" checksums.txt
