@@ -4,7 +4,7 @@
 // offline signal, and the outbox flush — the client half of the sync rules.
 // The server is a route-table fetch mock speaking /state's real shape;
 // realtime is stubbed out (tests poke sync() the way Echo would: not at all).
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -337,6 +337,101 @@ describe('sleep tags and tummy time', () => {
 
     await waitFor(() => expect(pushed).toBeTruthy())
     expect(pushed.entries[0].detail).toBe('45') // detail is stringified for the wire
+  })
+})
+
+// ── a past sleep, entered in the small hours ────────────────────────────────
+// Sleep is the one type whose sheet shows a time (the start) that isn't the
+// wire stamp (the end), and the gap between the two is where "logged at 1am,
+// never showed up" came from. The clock is pinned so the assertions don't
+// depend on when the suite runs.
+describe('logging a past sleep across midnight', () => {
+  const at = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
+  const hm = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+  const timeInput = () => document.querySelector('input[type="time"]')
+  const tapChip = label => { const c = screen.getByText(label); fireEvent.pointerDown(c, { clientY: 300, pointerId: 1 }); fireEvent.pointerUp(c, { clientY: 300, pointerId: 1 }) }
+  afterEach(() => vi.useRealTimers())
+
+  const openPastSleep = async (clock, seed = {}) => {
+    vi.useFakeTimers({ toFake: ['Date'] }) // only the clock — timers/rAF stay real for user-event
+    vi.setSystemTime(clock)
+    const user = userEvent.setup()
+    seedSignedIn(seed)
+    const box = {}
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { box.pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    await user.click(screen.getByText('Log a past sleep'))
+    return { user, box }
+  }
+
+  it('at 12:20am, a start of 12:05 AM means twenty minutes ago — not a day ago', async () => {
+    const { user, box } = await openPastSleep(at(0, 20))
+    // the default 45m reaches back across midnight, so the sheet opens on yesterday…
+    expect(timeInput().value).toBe('23:35')
+    expect(screen.getByText('Yesterday')).toBeInTheDocument()
+    // …which used to be the day the picker resolved 12:05 AM against
+    fireEvent.change(timeInput(), { target: { value: '00:05' } })
+    expect(screen.queryByText('Yesterday')).not.toBeInTheDocument()
+    tapChip('30m')
+    await user.click(screen.getByText(/Save sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t - 30 * 60_000).toBe(at(0, 5)) // today
+  })
+
+  it('a time later than now still means last night', async () => {
+    const { user, box } = await openPastSleep(at(0, 20))
+    fireEvent.change(timeInput(), { target: { value: '23:50' } })
+    expect(screen.getByText('Yesterday')).toBeInTheDocument()
+    await user.click(screen.getByText(/Save sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t - 45 * 60_000).toBe(at(23, 50) - 86400000)
+  })
+
+  it('a picked start stays put when the duration changes — the wake-up moves instead', async () => {
+    const { user, box } = await openPastSleep(at(3, 0))
+    fireEvent.change(timeInput(), { target: { value: '21:00' } })
+    tapChip('1h 30m') // used to drag the start back to 8:15 PM, end pinned at 9:45
+    expect(timeInput().value).toBe('21:00')
+    await user.click(screen.getByText('Advanced')) // its readout spells out both ends
+    expect(screen.getByText(/9:00 PM → 10:30 PM/)).toBeInTheDocument()
+    await user.click(screen.getByText(/Save sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(hm(box.pushed.entries[0].t - 90 * 60_000)).toBe('21:00')
+    expect(box.pushed.entries[0].detail).toBe('90')
+  })
+
+  it('a fresh sheet still anchors on now: a longer nap reaches further back', async () => {
+    const { user, box } = await openPastSleep(at(15, 0))
+    tapChip('1h 30m')
+    expect(timeInput().value).toBe('13:30')
+    await user.click(screen.getByText(/Save sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(15, 0)) // ended now
+  })
+
+  it('editing a nap keeps the start the row showed while its duration changes', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(at(15, 0))
+    const user = userEvent.setup()
+    const woke = at(13, 0) // a 60m nap: 12:00 → 1:00 PM
+    seedSignedIn({ entries: [{ id: 'e-nap', type: 'sleep', t: woke, detail: 'Nap · 60m', deleted: false, by: 1, babyId: null }] })
+    let pushed
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+    await user.click(screen.getByText('Sleep'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    expect(timeInput().value).toBe('12:00')
+    tapChip('1h 30m')
+    expect(timeInput().value).toBe('12:00')
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].t).toBe(at(13, 30)) // 12:00 + 1h30
+    expect(pushed.entries[0].detail).toBe('Nap · 90m')
   })
 })
 

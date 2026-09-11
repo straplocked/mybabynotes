@@ -263,7 +263,7 @@ export default class App extends React.Component {
       forgotOpen: false, forgotEmail: '', forgotBusy: false, forgotResult: null, // null | 'sent' | 'unconfigured' | 'error'
       resetToken: null, resetEmail: '', resetPw: '', resetBusy: false, resetError: null, // ?reset=<token>&email= flow
       entries: [], // includes tombstones ({deleted:true}); views filter them
-      sheet: false, sel: null, offset: 0, pickedT: null, detail: null, detail2: null, editId: null, historyDay: null, scrubDrag: null,
+      sheet: false, sel: null, offset: 0, pickedT: null, dayPicked: false, detail: null, detail2: null, editId: null, historyDay: null, scrubDrag: null,
       // the sheet's "Advanced" drawer (the day control): `advanced` is per
       // opening and never persisted; `advancedDefault` is the DEVICE-LOCAL pref
       // for how each opening starts — off, because the common log is "now"
@@ -1283,7 +1283,7 @@ export default class App extends React.Component {
       this._base = tm.started_at
       const last = this.lastOf(['pump'])
       this.mountSheet({
-        editId: null, sel: 'pump', offset: 0, pickedT: null, manualDur: true, sheetChildId: timerBabyId,
+        editId: null, sel: 'pump', offset: 0, pickedT: null, dayPicked: false, manualDur: true, sheetChildId: timerBabyId,
         detail: this.amt(last ? (dSplit(last.detail).n ?? 4) : 4), detail2: mins,
         // the pump was theirs even if you're the one entering the amount
         sheetAuthorId: by,
@@ -1485,22 +1485,37 @@ export default class App extends React.Component {
     if (fMin / 165 >= dMin / 150) return feed && feed.type === 'nurse' ? 'nurse' : 'bottle'
     return 'wet'
   }
-  stamp() { return this.state.pickedT ?? this._base + this.state.offset * 60000 }
-  // the sheet anchors on the wire stamp — which for sleep/tummy is the END of
-  // the session — but shows and picks its START, like every other type. This is
-  // the gap between the two: 0 for everything except a sleep/tummy sheet, where
-  // it's the duration currently on the scrub. The end stays anchored, so a
-  // longer duration reaches further back rather than into the future.
+  // the sheet shows and picks a session's START, like every other type, while
+  // the wire stamps a sleep/tummy session's END. Which of the two the sheet
+  // holds still while the duration changes depends on how it was opened:
+  //  - a fresh sheet anchors on now as the END ("baby just woke up, slept
+  //    45m") — a longer duration reaches further back rather than into the
+  //    future, and a nudge is "ended 15m ago"
+  //  - a picked time, or an edit, anchors on the START the sheet shows — the
+  //    parent typed 9:00 PM, so a longer duration moves the wake-up, never the
+  //    time they just typed
+  anchorsStart() { return this.state.pickedT != null || !!this.state.editId }
+  stamp() {
+    const a = this.state.pickedT ?? this._base + this.state.offset * 60000
+    return this.anchorsStart() ? a + this.stampShift() : a
+  }
+  shownStamp() { return this.stamp() - this.stampShift() }
+  // the gap between the wire stamp and the shown start: 0 for everything except
+  // a sleep/tummy sheet, where it's the duration currently on the scrub
   stampShift(k) {
     k = k || this.state.sel
     return SPANS.includes(k) ? (sleepMins(this.composeDetail(k)) || 0) * 60000 : 0
   }
+  // whether the day on the sheet is one the parent chose (Advanced → Day, or
+  // an edit, where the entry's own day is the point) rather than one the
+  // sheet derived from now
+  dayPicked() { return !!this.state.editId || !!this.state.dayPicked }
 
   openSheet = () => {
     this._base = Date.now()
     const k = this.predict()
     // the sheet's child chip row starts on whoever the pills are showing
-    this.mountSheet({ editId: null, sel: k, offset: 0, pickedT: null, detail: k ? this.defaultDetail(k) : null, detail2: k ? this.defaultDetail2(k) : null, manualDur: false, sheetChildId: this.selChildId() })
+    this.mountSheet({ editId: null, sel: k, offset: 0, pickedT: null, dayPicked: false, detail: k ? this.defaultDetail(k) : null, detail2: k ? this.defaultDetail2(k) : null, manualDur: false, sheetChildId: this.selChildId() })
   }
   defaultDetail(k) {
     const d = T(k).detail
@@ -1766,17 +1781,20 @@ export default class App extends React.Component {
     else if (d.field === 'detail2') this.setState(s => ({ detail2: s.detail2 === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
     else this.setState({ detail: d.base, scrubDrag: null })
   }
-  nudge = n => () => this.setState({ offset: n, pickedT: null })
+  nudge = n => () => this.setState({ offset: n, pickedT: null, dayPicked: false })
   pickTime = e => {
     const [h, m] = e.target.value.split(':').map(Number)
     if (Number.isNaN(h) || Number.isNaN(m)) return
-    // the picker speaks start-time; convert back to the wire stamp on the way in
-    const shift = this.stampShift()
-    const d = new Date(this.stamp() - shift); d.setHours(h, m, 0, 0)
+    // the picker speaks start-time. Which day that time falls on: a day the
+    // parent chose keeps it; otherwise it's today, and a time that hasn't come
+    // round yet means last night (11:50 PM picked shortly after midnight).
+    // Reading the day off what the sheet SHOWS was a trap: a 45m nap opened at
+    // 12:20am shows 11:35 PM yesterday, so 12:05 AM landed on yesterday
+    // 12:05 AM — a full day early, and nowhere near the top of the log
+    const d = new Date(this.dayPicked() ? this.shownStamp() : Date.now()); d.setHours(h, m, 0, 0)
     let t = d.getTime()
-    // picking 11:50 PM shortly after midnight means last night, not later today
     if (t > Date.now() + 60000) t -= DAY
-    this.setState({ pickedT: t + shift, offset: 0 })
+    this.setState({ pickedT: t, offset: 0 })
   }
   // ── the day, one tap deeper ────────────────────────────────────────────────
   // Backfilling used to stop at the day boundary: the nudges reach an hour back
@@ -1786,14 +1804,12 @@ export default class App extends React.Component {
   // is its own control, behind Advanced because the common path has nothing to
   // say about it.
   setDay = d => {
-    // the day carries the time-of-day already on the sheet; the wire stamp
-    // keeps its span offset, so a nap still ends a duration after it starts
-    const shift = this.stampShift()
-    const at = new Date(this.stamp() - shift)
+    // the day carries the time-of-day already on the sheet
+    const at = new Date(this.shownStamp())
     at.setFullYear(d.getFullYear(), d.getMonth(), d.getDate())
     // today + a time that hasn't come round yet would log the future; the
-    // moment itself is the closest honest answer
-    this.setState({ pickedT: Math.min(at.getTime(), Date.now()) + shift, offset: 0 })
+    // latest honest answer is now — for a span, a session that ends now
+    this.setState({ pickedT: Math.min(at.getTime(), Date.now() - this.stampShift()), offset: 0, dayPicked: true })
   }
   pickDayBack = n => () => { const d = new Date(); d.setDate(d.getDate() - n); this.setDay(d) }
   pickDate = e => {
@@ -1873,7 +1889,7 @@ export default class App extends React.Component {
   }
   edit = id => () => {
     const e = this.state.entries.find(x => x.id === id)
-    this._base = e.t
+    this._base = startOf(e) // an edit anchors on the start the row showed (see stamp)
     // seed the chip row from the entry so an untouched edit never re-homes it.
     // An entry from another day opens with the day control already out — on
     // that entry it's the field you came for, not an advanced one
@@ -1931,10 +1947,10 @@ export default class App extends React.Component {
     const st = T(s.sel || 'bottle')
     const step = Number(this.props.timeStep ?? 5) || 5
     const stampT = s.sheet ? this.stamp() : Date.now()
-    // what the sheet PRINTS: a sleep/tummy sheet anchors on the session's end
-    // (the wire stamp) but reads out its start, so "45m earlier" describes when
-    // the nap began — the same top-down reading as the rows it will join
-    const shownT = s.sheet ? stampT - this.stampShift(st.key) : stampT
+    // what the sheet PRINTS: a sleep/tummy sheet reads out the session's start,
+    // not the wire stamp (its end), so "45m earlier" describes when the nap
+    // began — the same top-down reading as the rows it will join
+    const shownT = s.sheet ? this.shownStamp() : stampT
     const backMin = s.sheet ? Math.max(0, Math.round((this._base - shownT) / 60000)) : 0
     const dayBack = s.sheet ? this.dayOf(shownT) : '' // '' on today, else 'Yesterday' / '{n} days ago'
 
