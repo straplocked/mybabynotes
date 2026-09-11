@@ -9,7 +9,7 @@ Throughout, `<host-ip>` stands in for your server's LAN address and `https://not
 
 ## The all-in-one container
 
-[deploy/aio/Dockerfile](../deploy/aio/Dockerfile) builds the whole stack into **one** container, because that's what a one-click install expects. Inside: supervisord keeps nginx (PWA + `/api` fastcgi + `/app` ws proxy on port 80), php-fpm, Reverb, `schedule:work`, and `mqtt:listen` running; everything else matches the three-container compose stack.
+[deploy/aio/Dockerfile](../deploy/aio/Dockerfile) builds the whole stack into **one** container, because that's what a one-click install expects. Inside: supervisord keeps nginx (PWA + `/api` fastcgi + `/app` ws proxy on port 80), php-fpm, Reverb, `schedule:work`, and `mqtt:listen` running; everything else matches the three-container compose stack. Only nginx (and supervisord itself) runs as root inside the container — php-fpm's workers and the three artisan processes all run as `www-data`, which is why the entrypoint hands `/data`, `storage/` and `bootstrap/cache` to that user on every boot (a `/data` folder you pre-populated as root is fine; it gets chowned).
 
 ```bash
 docker run -d -p 3500:80 -v /path/to/data:/data ghcr.io/straplocked/mybabynotes-aio:latest

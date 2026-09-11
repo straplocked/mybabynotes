@@ -53,11 +53,6 @@ if [ "$DB_CONNECTION" = "sqlite" ]; then
   [ -f "$DB_DATABASE" ] || touch "$DB_DATABASE"
 fi
 
-# fpm workers run as www-data (artisan serve ran as root): the SQLite file +
-# its transient journal (dir write!), the generated .env, and storage/ for
-# compiled mail views and the file cache must be readable/writable by them
-chown -R www-data:www-data /data /var/www/html/storage /var/www/html/bootstrap/cache
-
 # The PWA bundle bakes a placeholder Reverb key at image build time; stamp
 # this instance's real key (public by protocol design, but per-instance) over
 # it. On a plain restart the stamp is already there — that's fine.
@@ -84,6 +79,15 @@ else
     sleep 3
   done
 fi
+
+# Everything PHP runs as www-data from here on — fpm workers via the pool
+# config, Reverb / schedule:work / mqtt:listen via supervisord's `user=`
+# (only supervisord and nginx, on port 80, stay root). The SQLite file + its
+# transient journal (dir write!), the generated .env, and storage/ for the
+# file cache, compiled mail views and the scheduler's lock files must be
+# theirs. This runs AFTER migrate so anything the root-side boot created is
+# handed over too instead of blocking the unprivileged processes later.
+chown -R www-data:www-data /data /var/www/html/storage /var/www/html/bootstrap/cache
 
 # opt-in realip for the rate-limit zones (TRUSTED_PROXIES env)
 /usr/local/bin/real-ip.sh

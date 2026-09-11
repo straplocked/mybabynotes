@@ -1,6 +1,6 @@
 # Architecture
 
-mybabynotes is three containers behind one nginx, built for one household sharing its babies' log — up to six grown-ups (parents and caregivers) and up to ten children. (The Unraid/CA build collapses the same stack into a single all-in-one container — nginx, php-fpm, Reverb, the scheduler, and the MQTT listener as five supervised processes, secrets self-generated into `/data/.env` on first boot; see [deploy/aio/](../deploy/aio/) and [docs/operations.md](operations.md).)
+mybabynotes is three containers behind one nginx, built for one household sharing its babies' log — up to six grown-ups (parents and caregivers) and up to ten children. (The Unraid/CA build collapses the same stack into a single all-in-one container — nginx, php-fpm, Reverb, the scheduler, and the MQTT listener as five supervised processes, everything but nginx running as `www-data`, secrets self-generated into `/data/.env` on first boot; see [deploy/aio/](../deploy/aio/) and [docs/operations.md](operations.md).)
 
 ```
                     ┌─────────────────────────────────────────────┐
