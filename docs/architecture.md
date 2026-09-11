@@ -128,10 +128,10 @@ Three surfaces — REST ([integrations.md](integrations.md)), Home Assistant ([h
 ## Security posture
 
 - Invite-only registration (first account, or invited email + code); `BABYLOG_OPEN_REGISTRATION=true` opts out. The policy itself is a swappable extension point: an `AccountProvisioner` contract, bound via `babylog.account_provisioner` (default `InstanceClaimProvisioner`) — the seam a hosted multi-tenant deployment would replace.
-- Throttles: 10/min on register/login/forgot-password/reset-password, 120/min on authed routes; nginx `limit_req` on `/api` and `limit_conn` on `/app`; Reverb rate limiting + connection cap in production.
+- Throttles: 10/min on register/login/forgot-password/reset-password, 120/min on authed routes; nginx `limit_req` on `/api` and `limit_conn` on `/app`; Reverb rate limiting + connection cap in production. The Laravel throttles key on `ip()`, which comes from `X-Forwarded-For` — so every nginx in front of php-fpm (root `nginx.conf`, `deploy/aio/nginx.conf`) overwrites that header with the peer it resolved, and `tests/Feature/ThrottleKeyTest.php` pins the trust model the rewrite exists for.
 - Passwords ≥ 8, hashed (Laravel default); tokens are Sanctum (hashed at rest, no cookies → no CSRF surface).
 - Secrets are never in the repo: dev reads a git-ignored `.env`; the Unraid installer generates fresh values on first run.
-- TLS terminates at the reverse proxy; Laravel trusts proxies for scheme detection.
+- TLS terminates at the reverse proxy; Laravel trusts its peer for the forwarded headers (`trustProxies('*')`) — safe only because nginx is the sole author of `X-Forwarded-For` on every path into PHP, and the compose stack depends on it (the api container's peer is always the app container). Absolute URLs come from `APP_URL`, never from the forwarded scheme.
 
 ## Key decisions (and why)
 

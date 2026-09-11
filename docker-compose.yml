@@ -57,7 +57,9 @@ services:
     environment:
       <<: *laravel-env
     ports:
-      - "3501:8000"
+      # loopback only: the vite dev proxy is the sole direct caller; the LAN
+      # goes through the app container on :3500
+      - "127.0.0.1:3501:8000"
     volumes:
       - babylog-db:/data
     restart: unless-stopped
@@ -69,7 +71,7 @@ services:
     environment:
       <<: *laravel-env
     ports:
-      - "3502:8080"
+      - "127.0.0.1:3502:8080"
     restart: unless-stopped
 
 volumes:

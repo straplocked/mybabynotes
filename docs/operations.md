@@ -158,6 +158,8 @@ If realtime breaks remotely but works on LAN, check the websocket toggle on the 
 
 **Rate limiting behind the proxy**: by default nginx's rate limits key on the direct peer — behind a reverse proxy that's the proxy itself, making the caps instance-wide. Set `TRUSTED_PROXIES` to the proxy's IP or CIDR (comma-separated for several hops) and the limits key on real client addresses instead: on the AIO install it's a container variable; on a compose install append `TRUSTED_PROXIES=<proxy-ip>` to `/mnt/user/appdata/baby-log/.env` and re-run the install script. Only name proxies you control — this tells nginx to believe their `X-Forwarded-For`.
 
+Independently of that setting, nginx is the only writer of `X-Forwarded-For` on the way into PHP: the compose front's `/api` proxy and the AIO's `/api` + `/mcp` fastcgi locations both replace whatever the client sent with the address nginx resolved (the direct peer, or the real client once `TRUSTED_PROXIES` is set). Laravel trusts the leftmost forwarded address unconditionally, and its login/register throttles key on it — so without that rewrite a client could forge a fresh header per request and dodge the 10/min caps. The same rule applies to the Laravel throttles as to nginx's: unnamed proxies mean instance-wide buckets, forged headers never mean private ones.
+
 ## Registration policy
 
 Invite-only by default: the first sign-up claims a fresh instance; after that only invited emails with their single-use code can register. To open it up (not recommended on a publicly reachable instance): set `BABYLOG_OPEN_REGISTRATION=true`.
@@ -202,7 +204,7 @@ With mail on: invites also email the code to the partner (the on-screen code sti
 ```bash
 cp .env.example .env       # then fill APP_KEY + REVERB_APP_SECRET (commands in the file)
 npm install
-docker compose up -d --build   # full stack on http://localhost:3500 (api :3501, reverb :3502)
+docker compose up -d --build   # full stack on http://localhost:3500 (api :3501 and reverb :3502 bind to 127.0.0.1 only — the vite proxy's targets, not LAN ports)
 npm run dev                    # OR: Vite dev server on :3500, proxying to the containers
 ```
 
