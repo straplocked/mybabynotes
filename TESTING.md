@@ -69,6 +69,14 @@ Seeded from design intent + known soft spots — jot verdicts inline.
 - Does the peach/plum branding hold up on-device? Icon/splash on the home screen okay?
 - Set the app to another language for a day — does anything overflow, read wrong, or stay stubbornly English where it shouldn't?
 
+## Security audit — 2026-09-11
+
+Not feedback from use: a code audit of the repo drove one batch of ten fixes ([CHANGELOG.md](CHANGELOG.md#security)). Most are invisible day to day; three touch things the trial can bump into:
+
+- **MQTT "Test connection" now answers with one of three messages** — couldn't reach the broker, the broker rejected the credentials, or the TLS handshake failed — instead of the driver's own error text. If a test fails and the bucket isn't enough to fix it, the full detail is in the API log (`mqtt test failed`).
+- **Password-reset emails link to `/#reset=…`** (fragment) instead of `/?reset=…`. Old links in inboxes still work. Also found on the way: the plain-text reset and invite mails were HTML-escaped, so a real emailed reset link never opened the reset screen — worth a retest of "Forgot password?" end to end with SMTP on.
+- **CSV exports quote formula-looking cells** — a member name or detail starting with `=`, `+`, `-` or `@` gets a leading apostrophe so a spreadsheet reads it as text. Numbers are untouched; if a shared export ever shows a stray `'` at the start of a name, that's this.
+
 ## Iteration parking lot
 
 Bigger ideas that surfaced — no commitment implied. See also [docs/known-limitations.md](docs/known-limitations.md) for the remaining known gaps (no custom entry types or per-entry notes, no month view, household-level shifts and meds nudge, unreviewed translations…).

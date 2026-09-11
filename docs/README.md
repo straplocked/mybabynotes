@@ -37,8 +37,9 @@ private, unversioned, and free to change in any commit. `/api/v1` is the contrac
 
 Project conventions and invariants live in [CLAUDE.md](../CLAUDE.md), setup and the test commands in
 [CONTRIBUTING.md](../CONTRIBUTING.md), and the trial-period feedback journal in
-[TESTING.md](../TESTING.md). Security issues go through [private reporting](../SECURITY.md), never a
-public issue.
+[TESTING.md](../TESTING.md). What changed since the last tag is in [CHANGELOG.md](../CHANGELOG.md),
+security fixes first. Security issues go through [private reporting](../SECURITY.md), never a
+public issue; the fixes that need an operator to do something are listed in that same file.
 
 ## Also in this folder
 

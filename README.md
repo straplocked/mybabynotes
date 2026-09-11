@@ -142,6 +142,7 @@ Releases are tagged: a `v*` tag runs both test suites (the API suite against SQL
 | [docs/known-limitations.md](docs/known-limitations.md) | Honest gaps + candidate roadmap |
 | [docs/feeding-patterns.md](docs/feeding-patterns.md) | Sourced age-typical feeding/sleep norms behind the app's insights (not medical advice) |
 | [TESTING.md](TESTING.md) | Trial-period journal — the feedback that drives iteration |
+| [CHANGELOG.md](CHANGELOG.md) | What changed since the last tag, security fixes first; [SECURITY.md](SECURITY.md#fixed-issues) lists the ones that need action from you |
 | [CLAUDE.md](CLAUDE.md) | Conventions for AI-assisted development sessions |
 
 Browsing the folder itself? [docs/](docs/) groups the same set by task — running an instance,
