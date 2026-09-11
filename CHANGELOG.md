@@ -4,11 +4,20 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
-## 1.2.0 — 2026-09-11
+## 1.2.1 — 2026-09-11
+
+**1.2.0 carried this same app code but never published.** Its release build stalled in the
+all-in-one image's emulated arm64 leg — 2h35m, then 30+ minutes on a re-run, against a normal
+11 minutes — so no release, no `:latest`, and nothing to update to. 1.2.1 is that code plus the
+build fix below.
 
 ### Added
 
 - **Resume a sleep.** A baby who stirs for a few minutes and settles again used to cost two rows — stop the timer, start another — for what was one nap. The newest sleep entry now carries a **Resume** button: the timer picks back up from where that nap began, and stopping it rewrites that same entry with the whole span (Nap/Night tag and author kept) instead of stacking a second one. The link lives on the server (`POST /api/timer/resume`, `resumes` on the running timer), so either phone can end the session correctly. Offered only while that sleep is still the newest thing logged for the child on screen, and never beside a sleep timer that's already running.
+
+### Fixed
+
+- The all-in-one image's PWA and Composer stages are now pinned to the **build** platform (`FROM --platform=$BUILDPLATFORM`). That image goes multi-arch for HAOS boxes, and without the pin buildx ran the whole Vite build and Composer install a second time under arm64 emulation to produce a `dist/` and a `vendor/` that are byte-identical either way. Nothing about the published images changes — the same artifacts land in both architectures — but the release build no longer does the slowest work twice.
 
 ## 1.1.0 — 2026-09-11
 

@@ -11,7 +11,15 @@
 # All state (SQLite + the generated .env) lives under the /data volume.
 
 # ---- PWA build (mirrors the root Dockerfile) ----
-FROM node:22-alpine AS webbuild
+# Pinned to the BUILD platform, not the target one. This image goes multi-arch
+# (amd64 + arm64 for HAOS boxes), and without the pin buildx runs this whole
+# stage a second time under QEMU to produce a `dist/` that is byte-identical
+# either way — JS is architecture-independent. That emulated Vite build is what
+# stalled the v1.2.0 release: the same job that takes ~11 minutes ran 2h35m and
+# then 30+ on a re-run, both times sitting in the arm64 leg. Building natively
+# once and copying the output into both images removes the whole stage from the
+# emulated path. Same reasoning for `deps` below (Composer resolves pure PHP).
+FROM --platform=$BUILDPLATFORM node:22-alpine AS webbuild
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -30,7 +38,9 @@ ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 RUN npm run build
 
 # ---- API deps (mirrors api/Dockerfile) ----
-FROM composer:2 AS deps
+# Build-platform pinned like webbuild: `vendor/` is PHP source, and Composer
+# resolves it against the composer:2 image's own PHP, not the target arch's
+FROM --platform=$BUILDPLATFORM composer:2 AS deps
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
 RUN composer install --no-dev --no-scripts --no-autoloader --no-interaction
