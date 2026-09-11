@@ -19,7 +19,7 @@
 # then 30+ on a re-run, both times sitting in the arm64 leg. Building natively
 # once and copying the output into both images removes the whole stage from the
 # emulated path. Same reasoning for `deps` below (Composer resolves pure PHP).
-FROM --platform=$BUILDPLATFORM node:22-alpine AS webbuild
+FROM --platform=$BUILDPLATFORM node:26-alpine AS webbuild
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
