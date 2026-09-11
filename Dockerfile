@@ -17,7 +17,7 @@ ENV VITE_SOURCE_URL=$VITE_SOURCE_URL
 RUN npm run build
 
 # Serve stage
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # opt-in realip for the rate-limit zones (TRUSTED_PROXIES env, see real-ip.sh)
 COPY real-ip.sh /docker-entrypoint.d/40-real-ip.sh
