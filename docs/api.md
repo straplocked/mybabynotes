@@ -150,7 +150,7 @@ Household-level preferences, shared by every member; last write wins. `tracking`
 ```json
 { "endpoint": "https://fcm.googleapis.com/…", "keys": { "p256dh": "…", "auth": "…" }, "tz": "America/New_York" }
 ```
-Registers this device for Web Push. Upserts by `endpoint` — re-subscribing (or the partner logging in on the same phone) moves the device to the current user. Device-scoped, so no `HouseholdTouched` poke. `tz` is an IANA zone (`timezone:all` validated).
+Registers this device for Web Push. Upserts by `endpoint` — re-subscribing (or the partner logging in on the same phone) moves the device to the current user. Device-scoped, so no `HouseholdTouched` poke. `tz` is an IANA zone (`timezone:all` validated). `endpoint` must be a **public https URL** — `http:`, `localhost`/`.local`/`.internal`/single-label hosts, and any literal or resolved private/loopback/link-local/CGNAT address are rejected with 422 (`Push endpoint must be a public https URL.`), since the server will POST there on your word.
 
 ### `POST /push/unsubscribe`
 `{ endpoint }` — removes the caller's row for that endpoint (other users' rows are untouched). Expired endpoints also self-prune when a push bounces 404/410.
@@ -158,7 +158,7 @@ Registers this device for Web Push. Upserts by `endpoint` — re-subscribing (or
 ### `POST /notify-prefs`
 Any subset of the `notifyPrefs` keys shown in `/state`; provided keys merge over stored ones. `feedEvery` ∈ `null|120|150|180|210|240` (minutes; null = learned household rhythm), times are `HH:MM`. `feedEveryByChild` (`{childId: minutes}`) overrides `feedEvery` per child and replaces wholesale — keys for children outside the household and `null` values are silently dropped, not rejected. Per-user (each parent has their own), rides `/state`, pokes so the caller's other devices converge. Returns `{ ok, prefs }`.
 
-**What gets sent** (see [architecture.md](architecture.md#notifications)): handoff request/accept/handback pushes fire inline from the shift endpoints (respecting the recipient's `handoff` pref, ignoring quiet hours); member-activity pushes fire from `POST /entries` to every other member (opt-in, throttled to one per 10 min per recipient); feed-gap and wake-window reminders (per non-archived child) and the daily-meds nudge are sent by `babylog:reminders`, scheduled every minute.
+**What gets sent** (see [architecture.md](architecture.md#notifications)): handoff request/accept/handback pushes are raised by the shift endpoints (every push is sent after the response has gone out, never inside the write) (respecting the recipient's `handoff` pref, ignoring quiet hours); member-activity pushes fire from `POST /entries` to every other member (opt-in, throttled to one per 10 min per recipient); feed-gap and wake-window reminders (per non-archived child) and the daily-meds nudge are sent by `babylog:reminders`, scheduled every minute.
 
 ## Timers — all auth + throttle 120/min
 

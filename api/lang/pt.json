@@ -72,5 +72,6 @@
   "Your invite code: :code": "Seu código de convite: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "O código funciona uma única vez, e só para este endereço. Não esperava por isso? É só ignorar.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "Alguém pediu para redefinir a senha da sua conta do mybabynotes. Se foi você, crie uma nova aqui — o link vale por cerca de uma hora:",
-  "If it wasn't you, you can ignore this and your password stays put.": "Se não foi você, é só ignorar este e-mail e sua senha continua a mesma."
+  "If it wasn't you, you can ignore this and your password stays put.": "Se não foi você, é só ignorar este e-mail e sua senha continua a mesma.",
+  "Push endpoint must be a public https URL.": "O endereço de push precisa ser uma URL https pública."
 }

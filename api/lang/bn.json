@@ -72,5 +72,6 @@
   "Your invite code: :code": "আপনার আমন্ত্রণ কোড: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "কোডটি একবারই কাজ করে, এবং শুধু এই ঠিকানার জন্য। এটা আশা করেননি? স্রেফ এড়িয়ে যান।",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "কেউ আপনার mybabynotes অ্যাকাউন্টের পাসওয়ার্ড রিসেট করতে চেয়েছেন। সেটা যদি আপনি হন, এখানে নতুন পাসওয়ার্ড সেট করুন — লিঙ্কটি মোটামুটি এক ঘণ্টা কাজ করবে:",
-  "If it wasn't you, you can ignore this and your password stays put.": "যদি আপনি না হন, এটি এড়িয়ে যেতে পারেন — আপনার পাসওয়ার্ড যেমন আছে তেমনই থাকবে।"
+  "If it wasn't you, you can ignore this and your password stays put.": "যদি আপনি না হন, এটি এড়িয়ে যেতে পারেন — আপনার পাসওয়ার্ড যেমন আছে তেমনই থাকবে।",
+  "Push endpoint must be a public https URL.": "পুশ এন্ডপয়েন্ট অবশ্যই একটি পাবলিক https URL হতে হবে।"
 }

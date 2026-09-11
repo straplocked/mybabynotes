@@ -72,5 +72,6 @@
   "Your invite code: :code": "మీ ఆహ్వాన కోడ్: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "ఈ కోడ్ ఒక్కసారే పనిచేస్తుంది, ఈ చిరునామాకు మాత్రమే. ఇది మీరు ఊహించనిదా? అయితే పట్టించుకోకండి.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "మీ mybabynotes ఖాతా పాస్‌వర్డ్ రీసెట్ చేయమని ఎవరో అడిగారు. అది మీరే అయితే, ఇక్కడ కొత్తది సెట్ చేయండి — ఈ లింక్ సుమారు గంట పాటు పనిచేస్తుంది:",
-  "If it wasn't you, you can ignore this and your password stays put.": "అది మీరు కాకపోతే, దీన్ని పట్టించుకోకండి — మీ పాస్‌వర్డ్ యథాతథంగా ఉంటుంది."
+  "If it wasn't you, you can ignore this and your password stays put.": "అది మీరు కాకపోతే, దీన్ని పట్టించుకోకండి — మీ పాస్‌వర్డ్ యథాతథంగా ఉంటుంది.",
+  "Push endpoint must be a public https URL.": "పుష్ ఎండ్‌పాయింట్ తప్పనిసరిగా పబ్లిక్ https URL అయి ఉండాలి."
 }

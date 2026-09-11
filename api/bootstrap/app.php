@@ -34,6 +34,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // localize each request from the device's X-App-Lang header
         $middleware->api(append: \App\Http\Middleware\SetLocale::class);
 
+        // Web Push sends happen after the response, never inside it — global
+        // so /api, /api/v1 and /mcp producers all defer the same way
+        $middleware->append(\App\Http\Middleware\SendPushAfterResponse::class);
+
         // API-only app: no login page exists. The framework default redirects
         // guests to route('login'), which throws RouteNotFoundException (a 500)
         // for header-less probes; null lets the 401 render as JSON instead.

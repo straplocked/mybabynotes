@@ -76,5 +76,6 @@
   "Your invite code: :code": "Kode undanganmu: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "Kode ini hanya bisa dipakai sekali, dan hanya untuk alamat ini. Tidak merasa minta? Abaikan saja.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "Seseorang meminta reset kata sandi untuk akun mybabynotes kamu. Kalau itu kamu, atur kata sandi baru di sini — tautannya berlaku sekitar satu jam:",
-  "If it wasn't you, you can ignore this and your password stays put.": "Kalau bukan kamu, abaikan saja email ini dan kata sandimu tetap aman."
+  "If it wasn't you, you can ignore this and your password stays put.": "Kalau bukan kamu, abaikan saja email ini dan kata sandimu tetap aman.",
+  "Push endpoint must be a public https URL.": "Endpoint push harus berupa URL https publik."
 }

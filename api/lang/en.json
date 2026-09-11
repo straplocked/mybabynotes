@@ -78,5 +78,6 @@
   "Your invite code: :code": "Your invite code: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "The code works once, and only for this address. Not expecting this? Just ignore it.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:",
-  "If it wasn't you, you can ignore this and your password stays put.": "If it wasn't you, you can ignore this and your password stays put."
+  "If it wasn't you, you can ignore this and your password stays put.": "If it wasn't you, you can ignore this and your password stays put.",
+  "Push endpoint must be a public https URL.": "Push endpoint must be a public https URL."
 }

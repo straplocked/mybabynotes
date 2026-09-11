@@ -76,5 +76,6 @@
   "Your invite code: :code": "رمز دعوتك: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "الرمز يعمل مرة واحدة ولهذا العنوان فقط. لم تكن تتوقع هذه الرسالة؟ تجاهلها ببساطة.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "طلب أحدهم إعادة تعيين كلمة المرور لحسابك في mybabynotes. إن كان ذلك أنت، فعيّن كلمة مرور جديدة من هنا — الرابط صالح لحوالي ساعة:",
-  "If it wasn't you, you can ignore this and your password stays put.": "إن لم يكن أنت، فتجاهل هذه الرسالة وستبقى كلمة مرورك كما هي."
+  "If it wasn't you, you can ignore this and your password stays put.": "إن لم يكن أنت، فتجاهل هذه الرسالة وستبقى كلمة مرورك كما هي.",
+  "Push endpoint must be a public https URL.": "يجب أن يكون عنوان الإشعارات (push endpoint) عنوان https عامًا."
 }

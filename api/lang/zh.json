@@ -76,5 +76,6 @@
   "Your invite code: :code": "你的邀请码：:code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "邀请码只能用一次，且仅对这个邮箱有效。没在等这封邮件？忽略它就好。",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "有人请求重置你的 mybabynotes 账号密码。如果是你本人，请在这里设置新密码——链接约一小时内有效：",
-  "If it wasn't you, you can ignore this and your password stays put.": "如果不是你，忽略这封邮件即可，你的密码不会有任何变化。"
+  "If it wasn't you, you can ignore this and your password stays put.": "如果不是你，忽略这封邮件即可，你的密码不会有任何变化。",
+  "Push endpoint must be a public https URL.": "推送端点必须是公开的 https URL。"
 }

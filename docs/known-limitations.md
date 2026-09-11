@@ -37,6 +37,7 @@ Honest list of what's missing, stubbed, or deliberately deferred — the startin
 - **Carry-forward only rescues non-feed items.** Unfinished doses ride into the next shift's draft; unfinished *feeds* are dropped on purpose, since the next feed is re-predicted from the last one that actually happened. A skipped feed therefore leaves no trace in the plan — only in the log.
 - **Quiet-hours pings are dropped, not deferred** — a "shift over" (or reminder) that lands inside quiet hours never arrives.
 - **Push edges**: iOS needs the app installed to the Home Screen before push is offered, and notifications deep-link to the app root (no per-kind screen).
+- **Push endpoint validation resolves DNS once, at subscribe time.** `/push/subscribe` rejects private, loopback, link-local and CGNAT destinations (literal or resolved), but a relay hostname that later re-points at a LAN address (DNS rebinding) would steer a subsequent send there. Accepted: the payload is end-to-end encrypted, the request carries no credentials beyond the VAPID JWT for that endpoint, and it times out in 5s.
 
 ## Technical debt / release gates
 

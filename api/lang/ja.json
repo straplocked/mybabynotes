@@ -76,5 +76,6 @@
   "Your invite code: :code": "招待コード：:code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "コードは1回だけ、このアドレスでのみ使えます。心当たりがなければ、そのまま無視してください。",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "あなたのmybabynotesアカウントのパスワードリセットがリクエストされました。心当たりがあれば、こちらから新しいパスワードを設定してください — リンクの有効期限は約1時間です：",
-  "If it wasn't you, you can ignore this and your password stays put.": "心当たりがない場合はこのメールを無視してください。パスワードはそのままです。"
+  "If it wasn't you, you can ignore this and your password stays put.": "心当たりがない場合はこのメールを無視してください。パスワードはそのままです。",
+  "Push endpoint must be a public https URL.": "プッシュのエンドポイントは公開された https URL である必要があります。"
 }

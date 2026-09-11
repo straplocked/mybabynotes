@@ -6,6 +6,9 @@
 namespace App\Providers;
 
 use App\Contracts\AccountProvisioner;
+use App\Contracts\HostResolver;
+use App\Services\DnsHostResolver;
+use App\Services\PushService;
 use App\Support\ApiScopes;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
@@ -35,6 +38,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Contracts\MqttConnectionFactory::class,
             \App\Services\Mqtt\PhpMqttConnectionFactory::class,
         );
+
+        // real DNS for the push-endpoint check; tests bind a map (Tests\TestCase)
+        $this->app->bind(HostResolver::class, DnsHostResolver::class);
+
+        // one instance per request: writes buffer pushes on it and
+        // SendPushAfterResponse flushes the same instance after the response
+        $this->app->singleton(PushService::class);
     }
 
     /**

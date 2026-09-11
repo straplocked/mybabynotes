@@ -7,22 +7,47 @@ namespace App\Services;
 
 use App\Models\User;
 use GuzzleHttp\Client;
+use GuzzleHttp\ClientInterface;
 use Illuminate\Support\Facades\DB;
 use Minishlink\WebPush\Subscription;
 use Minishlink\WebPush\VAPID;
 use Minishlink\WebPush\WebPush;
+use Psr\Log\LoggerInterface;
 
 /**
  * Web Push transport. Like HouseholdTouched, delivery is best-effort — a dead
  * push service must never fail the write (or the scheduler tick) that asked
  * for it. Whether a notification *should* go out is the caller's job; this
  * class only ships it to every device the user opted in.
+ *
+ * Timing: inside an HTTP request (SendPushAfterResponse flips the service
+ * into deferred mode) notify() only buffers, and flush() runs from the
+ * kernel's terminate phase — after the response has been sent — so a slow or
+ * hostile push endpoint can't hold the partner's write. Console commands
+ * (babylog:reminders) send inline; nothing is waiting on them.
+ *
+ * Budget: 5s per endpoint (connect 3s) and 15s for one flush, whichever is
+ * hit first. A flush still occupies a php-fpm worker even though the client
+ * has its answer, so this caps how long one write can tie up the pool; a
+ * household has a handful of devices, so a healthy send never nears it.
  */
 class PushService
 {
+    public const ENDPOINT_TIMEOUT_SECONDS = 5;
+
+    public const FLUSH_BUDGET_SECONDS = 15;
+
     private ?WebPush $client = null;
 
     private ?array $keys = null;
+
+    private bool $deferred = false;
+
+    /** @var list<array{0: User, 1: string, 2: string|array, 3: string|array}> */
+    private array $pending = [];
+
+    /** @param ClientInterface|null $http override the transport (tests hand in a mock handler) */
+    public function __construct(private ?ClientInterface $http = null) {}
 
     /**
      * Copy is either a plain string (data — a user-typed note, a name) or a
@@ -49,12 +74,40 @@ class PushService
 
     public function notify(User $user, string $tag, string|array $title, string|array $body): void
     {
+        if ($this->deferred) {
+            $this->pending[] = [$user, $tag, $title, $body];
+
+            return;
+        }
+        $this->deliver($user, $tag, $title, $body, microtime(true) + self::FLUSH_BUDGET_SECONDS);
+    }
+
+    /** From here on, notify() buffers until flush() — the HTTP request lifecycle. */
+    public function deferUntilTerminate(): void
+    {
+        $this->deferred = true;
+    }
+
+    /** Ship everything buffered by notify(), inside one time budget. */
+    public function flush(): void
+    {
+        $deadline = microtime(true) + self::FLUSH_BUDGET_SECONDS;
+        while (($next = array_shift($this->pending)) !== null) {
+            $this->deliver(...$next, deadline: $deadline);
+        }
+    }
+
+    private function deliver(User $user, string $tag, string|array $title, string|array $body, float $deadline): void
+    {
         try {
             $subs = $user->pushSubscriptions;
             if ($subs->isEmpty()) {
                 return;
             }
             foreach ($subs as $sub) {
+                if (microtime(true) >= $deadline) {
+                    return; // over budget — the app still converges through sync
+                }
                 // per-device language, falling back to the account's last-seen
                 // one — a Spanish phone and an English phone on the same
                 // account each get their own copy of the same event
@@ -148,7 +201,15 @@ class PushService
                 'privateKey' => $this->keys()['privateKey'],
             ]],
             [],
-            new Client(['timeout' => 10]),
+            $this->http ?? new Client([
+                'timeout' => self::ENDPOINT_TIMEOUT_SECONDS,
+                'connect_timeout' => 3,
+            ]),
+            // with a logger the library's "install GMP/BCMath" advice is a log
+            // line; without one it's an E_USER_NOTICE, which Laravel's error
+            // handler turns into an exception — no pushes at all on an image
+            // without the extension, silently
+            logger: app(LoggerInterface::class),
         );
     }
 }

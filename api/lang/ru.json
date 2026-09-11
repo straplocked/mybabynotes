@@ -72,5 +72,6 @@
   "Your invite code: :code": "Твой код приглашения: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "Код сработает один раз и только для этого адреса. Не ждёшь такого письма? Просто проигнорируй его.",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "Кто-то запросил сброс пароля для твоего аккаунта mybabynotes. Если это был(а) ты, задай новый пароль здесь — ссылка действует около часа:",
-  "If it wasn't you, you can ignore this and your password stays put.": "Если это не ты — просто проигнорируй письмо, пароль останется прежним."
+  "If it wasn't you, you can ignore this and your password stays put.": "Если это не ты — просто проигнорируй письмо, пароль останется прежним.",
+  "Push endpoint must be a public https URL.": "Адрес push-уведомлений должен быть публичным https-URL."
 }

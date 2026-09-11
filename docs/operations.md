@@ -152,7 +152,7 @@ The feature suite runs against both drivers in CI, so a Postgres instance is a s
 
 ## Remote access (reverse proxy)
 
-Point your reverse proxy (e.g. Nginx Proxy Manager, SWAG, Caddy) at the app's mapped port: `notes.example.com → http://<host-ip>:3500` with **websocket support enabled** (required for Reverb), plus the usual Force SSL / HTTP/2 / Let's Encrypt cert. Set `APP_URL` to the public origin so emailed links and the push VAPID subject are right.
+Point your reverse proxy (e.g. Nginx Proxy Manager, SWAG, Caddy) at the app's mapped port: `notes.example.com → http://<host-ip>:3500` with **websocket support enabled** (required for Reverb), plus the usual Force SSL / HTTP/2 / Let's Encrypt cert. Set `APP_URL` to the public origin so emailed links and the push VAPID subject are right. Push endpoints a phone registers must be **public https** URLs — the server refuses `http://`, `localhost`/`.local`/`.internal` names, and anything that is or resolves to a private, loopback, link-local or CGNAT address (a self-hosted push relay on a public name is fine; a LAN-only one is not — the server would otherwise be POSTing wherever a signed-in user pointed it). Sends go out after the response, not inside the partner's write.
 
 If realtime breaks remotely but works on LAN, check the websocket toggle on the proxy host first.
 

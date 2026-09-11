@@ -8,6 +8,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\HouseholdTouched;
 use App\Http\Controllers\Controller;
 use App\Models\PushSubscription;
+use App\Rules\PublicHttpsUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -20,7 +21,9 @@ class PushController extends Controller
     public function subscribe(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'endpoint' => ['required', 'url', 'max:500'],
+            // the server will POST to this on the user's word — public https
+            // only, never the LAN, loopback or a cloud metadata address
+            'endpoint' => ['required', 'url', 'max:500', new PublicHttpsUrl],
             'keys.p256dh' => ['required', 'string', 'max:255'],
             'keys.auth' => ['required', 'string', 'max:255'],
             'tz' => ['nullable', 'timezone:all'],

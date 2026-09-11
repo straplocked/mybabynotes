@@ -60,7 +60,7 @@ HTTPS origin the app already needs.
   **prefs are per-user** (`users.notify_prefs`, edited in Settings →
   Notifications, synced through `/state` like everything else). Expired
   endpoints self-prune when a push bounces.
-- **Event pushes** fire inline from write endpoints, fanned out to every other
+- **Event pushes** are raised by write endpoints and fanned out to every other
   member: shift request / accept / handback (on by default — someone asking you
   to take over should reach a sleeping phone, so these ignore quiet hours), a
   nursing/pump/sleep/tummy-time timer starting (on by default but informational,
@@ -83,6 +83,19 @@ HTTPS origin the app already needs.
   a dead push service never fails a write or a scheduler tick. Pushes carry
   only `{title, body, tag}` — never entry data; the app still converges
   through normal sync.
+- **Sends happen after the response.** Inside an HTTP request `notify()`
+  only buffers; the global `SendPushAfterResponse` middleware flushes the
+  buffer in the kernel's terminate phase, after the response has been sent
+  (php-fpm's `fastcgi_finish_request`), so the partner's write never waits on
+  FCM/APNs. Console (`babylog:reminders`) sends inline. Budget: 5s per
+  endpoint, 15s per flush — a php-fpm worker is still occupied while sending.
+- **An endpoint is a URL the server will POST to on a user's word**, so
+  `/push/subscribe` only accepts public https ones (`App\Rules\PublicHttpsUrl`):
+  no `http:`, no `localhost`/`.local`/`.internal`/single-label names, and
+  nothing that is or resolves to a private, loopback, link-local, CGNAT or ULA
+  address — resolution goes through the injectable `HostResolver` so tests
+  never touch DNS. No vendor allowlist: a self-hosted relay on a public name
+  works.
 - Quiet hours and meds times are evaluated in the user's own IANA timezone,
   stamped from the device whenever prefs are saved.
 

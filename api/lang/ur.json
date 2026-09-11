@@ -76,5 +76,6 @@
   "Your invite code: :code": "آپ کا دعوتی کوڈ: :code",
   "The code works once, and only for this address. Not expecting this? Just ignore it.": "یہ کوڈ صرف ایک بار اور صرف اسی ایڈریس کے لیے کام کرتا ہے۔ توقع نہیں تھی؟ بس نظر انداز کر دیں۔",
   "Someone asked to reset the password for your mybabynotes account. If that was you, set a new one here — the link is good for about an hour:": "کسی نے آپ کے mybabynotes اکاؤنٹ کا پاس ورڈ ری سیٹ کرنے کی درخواست کی ہے۔ اگر یہ آپ تھے تو یہاں نیا پاس ورڈ سیٹ کریں — لنک تقریباً ایک گھنٹے تک کارآمد ہے:",
-  "If it wasn't you, you can ignore this and your password stays put.": "اگر یہ آپ نہیں تھے تو اس ای میل کو نظر انداز کر دیں، آپ کا پاس ورڈ جوں کا توں رہے گا۔"
+  "If it wasn't you, you can ignore this and your password stays put.": "اگر یہ آپ نہیں تھے تو اس ای میل کو نظر انداز کر دیں، آپ کا پاس ورڈ جوں کا توں رہے گا۔",
+  "Push endpoint must be a public https URL.": "پش اینڈپوائنٹ ایک عوامی https URL ہونا چاہیے۔"
 }
