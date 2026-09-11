@@ -22,7 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBroadcasting(
         __DIR__.'/../routes/channels.php',
-        ['prefix' => 'api', 'middleware' => ['auth:sanctum']],
+        // abilities:* — the household poke channel is for the PWA's own
+        // login tokens; a personal access token can't subscribe (see the
+        // matching guard on the unversioned group in routes/api.php)
+        ['prefix' => 'api', 'middleware' => ['auth:sanctum', 'abilities:*']],
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // TLS terminates at the reverse proxy (nginx / NPM)

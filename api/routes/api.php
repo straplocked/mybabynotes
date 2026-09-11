@@ -18,20 +18,24 @@ Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:10,1');
 Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 
-Route::middleware(['auth:sanctum', 'throttle:120,1'])->group(function () {
+// abilities:* = first-party app tokens only. Every unversioned route is the
+// PWA's private wire format; personal access tokens belong on /api/v1 and
+// /mcp, where each route checks its own scope. A login token is minted as
+// createToken('app') with Sanctum's default ['*'], and '*' is deliberately
+// absent from ApiScopes::SCOPES (TokenController validates against
+// ApiScopes::keys()), so no PAT can ever carry it — whatever scopes it
+// holds, it is 403 here. That also closes the escalation loop: a PAT can
+// never mint or revoke PATs. tests/Feature/PatBoundaryTest sweeps the group.
+Route::middleware(['auth:sanctum', 'abilities:*', 'throttle:120,1'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::post('/account/profile', [AccountController::class, 'profile']);
     Route::post('/account/email', [AccountController::class, 'email']);
     Route::post('/account/password', [AccountController::class, 'password']);
 
-    // abilities:* = first-party app tokens only — a PAT can never mint or
-    // revoke PATs, closing the escalation loop
-    Route::middleware('abilities:*')->group(function () {
-        Route::get('/tokens', [TokenController::class, 'index']);
-        Route::post('/tokens', [TokenController::class, 'store']);
-        Route::post('/tokens/revoke', [TokenController::class, 'revoke']);
-    });
+    Route::get('/tokens', [TokenController::class, 'index']);
+    Route::post('/tokens', [TokenController::class, 'store']);
+    Route::post('/tokens/revoke', [TokenController::class, 'revoke']);
 
     Route::get('/state', [SyncController::class, 'state']);
     Route::post('/baby', [SyncController::class, 'setBaby']);

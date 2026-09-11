@@ -100,9 +100,11 @@ class TokenManagementTest extends TestCase
         [, , $doula] = $this->threeMemberHousehold();
         $pat = $this->mintPat($doula, ['entries:read', 'entries:write'], name: 'Doula phone widget');
 
-        // usable where a caregiver is allowed…
-        $this->getJson('/api/state?since=0', $this->authed($pat))->assertOk();
-        // …and parent-only endpoints still say no, token or not
+        // usable on the public surface, where a caregiver is allowed…
+        $this->getJson('/api/v1/entries', $this->authed($pat))->assertOk();
+        // …and never on the PWA's own routes (parent-only or not) — PATs are
+        // 403 across the unversioned group, see PatBoundaryTest
+        $this->getJson('/api/state?since=0', $this->authed($pat))->assertForbidden();
         $this->postJson('/api/settings', ['unit' => 'ml'], $this->authed($pat))->assertForbidden();
     }
 

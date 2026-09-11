@@ -2,7 +2,7 @@
 
 This documents the **internal PWA/sync API** — the unversioned `/api/*` surface that is the app's own wire format. It is **private and unstable**: it changes whenever the app needs it to, and nothing outside this repo should depend on it. The public, stable contract for scripts and integrations is **`/api/v1`**, documented in [integrations.md](integrations.md) with a machine-readable spec at [openapi.v1.json](openapi.v1.json).
 
-Base path `/api`. JSON in/out (`Accept: application/json`). Authenticated routes take `Authorization: Bearer <token>` (Sanctum). Validation failures return `422` with `{message, errors}`; throttling returns `429`; missing/bad auth returns `401`.
+Base path `/api`. JSON in/out (`Accept: application/json`). Authenticated routes take `Authorization: Bearer <token>` (Sanctum) — and only a **first-party login token** (the one `/register` and `/login` return) is accepted. The whole authenticated group, plus `POST /broadcasting/auth`, carries `abilities:*`, so a [personal access token](integrations.md#authentication) answers **403** on every route here no matter which scopes it holds; PATs belong to `/api/v1` and `/mcp`. Validation failures return `422` with `{message, errors}`; throttling returns `429`; missing/bad auth returns `401`.
 
 ## Auth
 
@@ -44,7 +44,7 @@ Revokes the current token.
 
 ## API tokens — auth + throttle 120/min, first-party session tokens only
 
-Management of the [public API's](integrations.md) personal access tokens (PATs). The routes carry `abilities:*`, so only a first-party app token (a logged-in session) can reach them — a PAT can never mint or revoke PATs.
+Management of the [public API's](integrations.md) personal access tokens (PATs). Like every route in this group these carry `abilities:*`, so only a first-party app token (a logged-in session) can reach them — a PAT can never mint or revoke PATs. `*` is not in `ApiScopes`, so no PAT can be created with it; `tests/Feature/PatBoundaryTest.php` sweeps the group to keep it that way.
 
 ### `GET /tokens`
 The caller's PATs (`app` login tokens never appear): `{ tokens: [{id, name, abilities, createdAt, lastUsedAt, expiresAt}], scopes }` — `scopes` is the scope-name → description map for the Settings UI.

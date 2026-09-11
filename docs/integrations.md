@@ -13,7 +13,7 @@ Versioning policy: v1 never breaks. New fields, new endpoints, and new optional 
 
 ## Authentication
 
-Personal access tokens (PATs), created in the app under **Settings → API access**. Send on every request:
+Personal access tokens (PATs), created in the app under **Settings → API access**. A PAT is valid **only** on `/api/v1` and [`/mcp`](mcp.md) — the unversioned `/api/*` routes are the PWA's own and answer **403** to any PAT, whatever scopes it carries (they require the `*` ability, which only the app's login token has and which no PAT can request). Send on every request:
 
 ```
 Authorization: Bearer <token>
@@ -201,5 +201,5 @@ The machine-readable spec lives at [docs/openapi.v1.json](openapi.v1.json) — g
 
 ## v1.0 policy notes
 
-- **PATs are technically accepted on the internal `/api/*` routes.** This is undocumented and unsupported — internal routes have no scope checks and no stability promise, and this may be hardened away in a later release. Build against `/api/v1` only.
+- **PATs never reach the internal `/api/*` routes.** Every unversioned route (and the websocket auth endpoint) requires the `*` ability, which only first-party login tokens carry; a PAT gets 403 there regardless of its scopes. `/api/v1` and `/mcp` are the only surfaces a PAT can use.
 - **Caregivers may create tokens.** A token never exceeds its account's own role, and v1 has no parent-only writes, so a caregiver's PAT can do exactly what the caregiver can do in the app — no more.
