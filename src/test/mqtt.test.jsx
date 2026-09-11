@@ -135,13 +135,13 @@ describe('Home Assistant card', () => {
   it('a failed connection test shows the broker message inline', async () => {
     const user = userEvent.setup()
     routes['GET /integrations/mqtt'] = () => okJson(mqttFixture())
-    routes['POST /integrations/mqtt/test'] = () => okJson({ ok: false, message: 'Connection refused by mqtt.local:1883' })
+    routes['POST /integrations/mqtt/test'] = () => okJson({ ok: false, message: 'The broker rejected the credentials.' })
     renderApp()
 
     await user.click(screen.getByText('Home Assistant'))
     await user.click(await screen.findByText('Test connection'))
 
-    expect(await screen.findByText('Connection refused by mqtt.local:1883')).toBeInTheDocument()
+    expect(await screen.findByText('The broker rejected the credentials.')).toBeInTheDocument()
     expect(screen.queryByText('Connected ✓')).not.toBeInTheDocument()
   })
 })

@@ -20,7 +20,7 @@ In the app, as a parent: **Settings → Home Assistant**.
 
 1. Enable the integration.
 2. Enter the broker host, port, username, password, and TLS settings.
-3. **Test connection** — verifies reachability without saving anything.
+3. **Test connection** — tries the broker without saving anything. A failure says which of three things went wrong — couldn't reach the broker, the broker rejected the credentials, or the TLS handshake failed — and nothing more; the driver's full error (host, port, OpenSSL detail) goes to the api container's log at `warning` level.
 4. Save. Discovery messages publish immediately; the devices appear in HA under **Settings → Devices & Services → MQTT** within seconds.
 
 The card's status line shows the current state: Off / Connected (with last-heartbeat age) / Configured but broker unreachable. Broker credentials are stored encrypted server-side and never leave the server — they are not synced to other phones and never appear in `/state`.

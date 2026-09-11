@@ -6,7 +6,10 @@
 namespace App\Services\Mqtt;
 
 use App\Contracts\MqttConnection;
+use App\Contracts\MqttFailure;
+use App\Exceptions\MqttConnectFailedException;
 use PhpMqtt\Client\ConnectionSettings;
+use PhpMqtt\Client\Exceptions\ConnectingToBrokerFailedException;
 use PhpMqtt\Client\MqttClient;
 
 /**
@@ -46,7 +49,31 @@ class PhpMqttConnection implements MqttConnection
                 ->setRetainLastWill(true);
         }
 
-        $this->client->connect($settings, true);
+        try {
+            $this->client->connect($settings, true);
+        } catch (ConnectingToBrokerFailedException $e) {
+            throw new MqttConnectFailedException(self::classify($e), $e->getMessage(), $e);
+        }
+    }
+
+    /**
+     * Sort a driver failure into the bucket the settings card can show. The
+     * CONNACK refusals for bad username/password and "not authorized" are
+     * the credentials bucket; the driver's TLS code (or an OpenSSL/TLS
+     * mention in a socket error) is the TLS bucket; everything else —
+     * DNS, refused, timeout, protocol mismatch, broker unavailable — is
+     * simply unreachable.
+     */
+    public static function classify(ConnectingToBrokerFailedException $e): MqttFailure
+    {
+        return match ($e->getCode()) {
+            ConnectingToBrokerFailedException::EXCEPTION_CONNECTION_INVALID_CREDENTIALS,
+            ConnectingToBrokerFailedException::EXCEPTION_CONNECTION_UNAUTHORIZED => MqttFailure::Credentials,
+            ConnectingToBrokerFailedException::EXCEPTION_CONNECTION_TLS_ERROR => MqttFailure::Tls,
+            default => preg_match('/\b(tls|ssl)\b/i', $e->getMessage())
+                ? MqttFailure::Tls
+                : MqttFailure::Unreachable,
+        };
     }
 
     public function publish(string $topic, string $payload, bool $retain = false): void

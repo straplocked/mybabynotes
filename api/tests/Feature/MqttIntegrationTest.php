@@ -6,11 +6,15 @@
 namespace Tests\Feature;
 
 use App\Contracts\MqttConnectionFactory;
+use App\Contracts\MqttFailure;
+use App\Exceptions\MqttConnectFailedException;
 use App\Models\Entry;
 use App\Models\Household;
 use App\Services\Mqtt\MqttCommandHandler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use PhpMqtt\Client\Exceptions\ConnectingToBrokerFailedException;
 use Tests\Support\BabylogTestHelpers;
 use Tests\Support\FakeMqtt;
 use Tests\TestCase;
@@ -87,6 +91,101 @@ class MqttIntegrationTest extends TestCase
 
         $this->assertFalse($result['ok']);
         $this->assertNull(Household::first()->mqtt_config);
+    }
+
+    // ── test button: three buckets, never the driver's text ────────────────
+
+    public function test_test_endpoint_hides_the_driver_message_behind_the_unreachable_bucket(): void
+    {
+        [$ben] = $this->threeMemberHousehold();
+        Log::spy();
+        $this->mqtt->connectError = new \RuntimeException(
+            '[1000] Establishing a connection to the MQTT broker failed: Socket error [111]: Connection refused by SECRET-HOST-9:1883'
+        );
+
+        $response = $this->postJson('/api/integrations/mqtt/test', ['host' => 'nope.local'], $this->authed($ben))->assertOk();
+
+        $this->assertSame(['ok' => false, 'message' => 'Couldn’t reach the broker.'], $response->json());
+        $this->assertStringNotContainsString('SECRET-HOST-9', $response->content());
+        $this->assertStringNotContainsString('1883', $response->content());
+
+        // ...but the operator still gets the whole story in the log
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn ($message, $context) => $message === 'mqtt test failed'
+                && $context['household'] === Household::first()->id
+                && $context['reason'] === 'unreachable'
+                && str_contains($context['error'], 'SECRET-HOST-9:1883')
+        );
+    }
+
+    public function test_test_endpoint_reports_refused_credentials_as_their_own_bucket(): void
+    {
+        [$ben] = $this->threeMemberHousehold();
+        Log::spy();
+        $this->mqtt->connectError = new MqttConnectFailedException(
+            MqttFailure::Credentials,
+            '[5] Establishing a connection to the MQTT broker failed: SECRET-HOST-9 said bad user name or password'
+        );
+
+        $response = $this->postJson('/api/integrations/mqtt/test', ['host' => 'nope.local'], $this->authed($ben))->assertOk();
+
+        $this->assertSame(['ok' => false, 'message' => 'The broker rejected the credentials.'], $response->json());
+        $this->assertStringNotContainsString('SECRET-HOST-9', $response->content());
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn ($message, $context) => $message === 'mqtt test failed' && $context['reason'] === 'credentials'
+        );
+    }
+
+    public function test_test_endpoint_reports_a_tls_failure_as_its_own_bucket(): void
+    {
+        [$ben] = $this->threeMemberHousehold();
+        Log::spy();
+        $this->mqtt->connectError = new MqttConnectFailedException(
+            MqttFailure::Tls,
+            '[2000] Establishing a connection to the MQTT broker failed: TLS error [1416F086]: certificate verify failed for SECRET-HOST-9'
+        );
+
+        $response = $this->postJson('/api/integrations/mqtt/test', ['host' => 'nope.local'], $this->authed($ben))->assertOk();
+
+        $this->assertSame(['ok' => false, 'message' => 'TLS handshake failed.'], $response->json());
+        $this->assertStringNotContainsString('SECRET-HOST-9', $response->content());
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn ($message, $context) => $message === 'mqtt test failed' && $context['reason'] === 'tls'
+        );
+    }
+
+    public function test_test_endpoint_message_is_translated_per_request_language(): void
+    {
+        [$ben] = $this->threeMemberHousehold();
+        Log::spy();
+        $this->mqtt->connectError = new MqttConnectFailedException(MqttFailure::Credentials, 'nope');
+
+        $response = $this->postJson('/api/integrations/mqtt/test', ['host' => 'nope.local'],
+            $this->authed($ben) + ['X-App-Lang' => 'de'])->assertOk();
+
+        $this->assertSame('Der Broker hat die Zugangsdaten abgelehnt.', $response->json('message'));
+    }
+
+    /** The real adapter's driver-code → bucket mapping, with the codes written out by hand. */
+    public function test_driver_codes_map_onto_the_three_buckets(): void
+    {
+        $classify = fn (int $code, string $error) => \App\Services\Mqtt\PhpMqttConnection::classify(
+            new ConnectingToBrokerFailedException($code, $error)
+        );
+
+        // CONNACK 0x04 bad user name or password / 0x05 not authorized
+        $this->assertSame(MqttFailure::Credentials, $classify(5, 'The broker rejected the username and/or password.'));
+        $this->assertSame(MqttFailure::Credentials, $classify(6, 'The broker did not authorize the client.'));
+        // the driver's own TLS code, and a socket error that is really OpenSSL talking
+        $this->assertSame(MqttFailure::Tls, $classify(2000, 'TLS error [1416F086]: certificate verify failed'));
+        $this->assertSame(MqttFailure::Tls, $classify(1000, 'Socket error [0]: SSL routines: wrong version number'));
+        // everything else is "unreachable": socket, protocol mismatch, identifier, broker unavailable, generic
+        $this->assertSame(MqttFailure::Unreachable, $classify(1000, 'Socket error [111]: Connection refused'));
+        $this->assertSame(MqttFailure::Unreachable, $classify(1000, 'Socket error [0]: php_network_getaddresses: getaddrinfo failed'));
+        $this->assertSame(MqttFailure::Unreachable, $classify(2, 'The broker does not support the requested protocol version.'));
+        $this->assertSame(MqttFailure::Unreachable, $classify(3, 'The broker rejected the client identifier.'));
+        $this->assertSame(MqttFailure::Unreachable, $classify(4, 'The broker is currently unavailable.'));
+        $this->assertSame(MqttFailure::Unreachable, $classify(1, 'Connection failed.'));
     }
 
     // ── discovery + state publishing ───────────────────────────────────────

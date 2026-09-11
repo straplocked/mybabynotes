@@ -11,11 +11,15 @@ use App\Contracts\MqttConnectionFactory;
 /**
  * Socket-free MQTT double. The factory records every connection it makes;
  * each connection records publishes/subscriptions. Set $failConnect to make
- * the broker "unreachable".
+ * the broker "unreachable", or $connectError to have connect() throw a
+ * specific exception (a typed MqttConnectFailedException, a driver-shaped
+ * RuntimeException, ...).
  */
 class FakeMqtt implements MqttConnectionFactory
 {
     public bool $failConnect = false;
+
+    public ?\Throwable $connectError = null;
 
     /** @var FakeMqttConnection[] */
     public array $connections = [];
@@ -61,6 +65,9 @@ class FakeMqttConnection implements MqttConnection
 
     public function connect(?array $will = null): void
     {
+        if ($this->factory->connectError) {
+            throw $this->factory->connectError;
+        }
         if ($this->factory->failConnect) {
             throw new \RuntimeException('Connection refused');
         }

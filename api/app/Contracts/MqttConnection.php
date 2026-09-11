@@ -5,6 +5,8 @@
 
 namespace App\Contracts;
 
+use App\Exceptions\MqttConnectFailedException;
+
 /**
  * Thin seam over the MQTT client so tests never open sockets. One instance =
  * one broker connection; publishers connect/publish/disconnect, the listener
@@ -12,7 +14,11 @@ namespace App\Contracts;
  */
 interface MqttConnection
 {
-    /** @param  array{topic: string, payload: string}|null  $will retained LWT */
+    /**
+     * @param  array{topic: string, payload: string}|null  $will retained LWT
+     *
+     * @throws MqttConnectFailedException with the failure sorted into a reason bucket
+     */
     public function connect(?array $will = null): void;
 
     public function publish(string $topic, string $payload, bool $retain = false): void;

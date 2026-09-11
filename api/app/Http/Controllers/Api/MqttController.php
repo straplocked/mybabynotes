@@ -6,11 +6,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Contracts\MqttConnectionFactory;
+use App\Contracts\MqttFailure;
+use App\Exceptions\MqttConnectFailedException;
 use App\Http\Controllers\Controller;
 use App\Services\Mqtt\MqttPublisher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The Home Assistant / MQTT integration settings. Parent-only: broker
@@ -90,7 +93,15 @@ class MqttController extends Controller
         return response()->json(['ok' => true, 'config' => $this->publicConfig($config)]);
     }
 
-    /** Try the submitted (or stored) credentials without persisting anything. */
+    /**
+     * Try the submitted (or stored) credentials without persisting anything.
+     *
+     * The failure message is one of three fixed buckets — unreachable /
+     * credentials refused / TLS failed. The driver's own text is logged, never
+     * returned: it names hosts, ports, and OpenSSL internals, and echoing it
+     * would turn this button into a reachability probe for whatever the API
+     * container can see.
+     */
     public function test(Request $request, MqttConnectionFactory $factory): JsonResponse
     {
         if ($denied = $this->parentsOnly($request)) {
@@ -110,7 +121,16 @@ class MqttController extends Controller
             $connection->publish(($config['base_topic'] ?? 'babylog')."/{$household->id}/test", 'ok');
             $connection->disconnect();
         } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'message' => __('Couldn’t reach the broker: :err', ['err' => $e->getMessage()])]);
+            $reason = $e instanceof MqttConnectFailedException ? $e->reason : MqttFailure::Unreachable;
+            Log::warning('mqtt test failed', [
+                'household' => $household->id, 'reason' => $reason->value, 'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['ok' => false, 'message' => __(match ($reason) {
+                MqttFailure::Credentials => 'The broker rejected the credentials.',
+                MqttFailure::Tls => 'TLS handshake failed.',
+                MqttFailure::Unreachable => 'Couldn’t reach the broker.',
+            })]);
         }
 
         return response()->json(['ok' => true]);

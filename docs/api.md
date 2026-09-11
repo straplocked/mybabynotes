@@ -66,7 +66,7 @@ Settings for the [MQTT integration](home-assistant.md). Broker credentials are h
 Any subset of `{ enabled, host, port, username, password, tls, tls_verify, discovery_prefix, base_topic, acting_user_id }`; provided keys merge over stored ones. A blank/absent `password` keeps the stored one (write-only field); enabling without a host → 422; an `acting_user_id` outside the household falls back to the caller. Enabling publishes discovery + full state immediately; disabling publishes retained removals so the HA devices disappear. Returns `{ ok, config }` (masked, as in GET).
 
 ### `POST /integrations/mqtt/test`
-Same payload — tries the submitted credentials (blank password = stored one) against the broker without persisting anything. Returns `{ ok }` or `{ ok: false, message }`.
+Same payload — tries the submitted credentials (blank password = stored one) against the broker without persisting anything. Returns `{ ok }` or `{ ok: false, message }`, where `message` is one of three fixed, localized buckets — couldn't reach the broker / the broker rejected the credentials / TLS handshake failed — never the driver's own error text (that goes to the server log as `mqtt test failed`), so the button can't be used to probe what the API container can see.
 
 ## Sync — all auth + throttle 120/min
 
