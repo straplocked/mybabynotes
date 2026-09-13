@@ -276,6 +276,74 @@ const SPANS = ['sleep', 'tummy']
 const startOf = e => SPANS.includes(e.type) ? e.t - (sleepMins(e.detail) || 0) * 60000 : e.t
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'e' + Date.now() + Math.random().toString(36).slice(2, 9))
 const dayKey = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
+
+// ── the recurring nap time ───────────────────────────────────────────────────
+// "I'm noticing he sleeps around 12p every day … if the app could recognize
+// patterns and analyze trends to tell me." A nap's time-of-day is startOf(e) —
+// the wire stamps a sleep at its WAKE-UP, so reading e.t here would cluster the
+// moment the baby got up, which is a different (and wrong) question.
+//
+// OVERNIGHT SLEEP IS DELIBERATELY EXCLUDED. It is the longest and by far the
+// most regular sleep of the day, so any naive clustering reports "sleeps around
+// 8 PM for 9h" every time and never the lunchtime nap she actually asked about.
+// A sleep counts as a nap only when all three hold: it isn't tagged 'Night' in
+// its detail (the Nap/Night chips in the log sheet), it ran under 4 hours, and
+// it BEGAN between 5 AM and 7 PM. Keeping the candidate window inside one
+// calendar day is also why the clustering below needs no midnight wrap-around.
+const NAP_MAX_MINS = 240        // 4h+ is a night, not a nap
+const NAP_DAY_FROM = 5          // naps begin no earlier than 5 AM …
+const NAP_DAY_TO = 19           // … and no later than 7 PM
+const NAP_WINDOW = 45           // ± minutes around a common time = "the same nap"
+const NAP_MIN_DAYS = 3          // two days is a coincidence — say nothing instead
+const isNap = e => {
+  if (e.type !== 'sleep') return false
+  const mins = sleepMins(e.detail) || 0
+  if (mins <= 0 || mins >= NAP_MAX_MINS) return false
+  if (dSplit(e.detail).when === 'Night') return false
+  const h = new Date(startOf(e)).getHours()
+  return h >= NAP_DAY_FROM && h < NAP_DAY_TO
+}
+// lower median — an actual observed value, never an invented average
+const medianOf = a => [...a].sort((x, y) => x - y)[(a.length - 1) >> 1]
+// entries + a window start → the ONE strongest recurring nap time, or null when
+// there isn't an honest pattern. `dur` is null when the cluster's lengths don't
+// agree well enough to name one (20m / 2h / 4h has no typical length).
+const napPattern = (entries, from) => {
+  const naps = entries.filter(e => isNap(e) && startOf(e) >= from)
+    .map(e => { const start = startOf(e), d = new Date(start)
+      return { start, day: dayKey(start), mins: sleepMins(e.detail) || 0, tod: d.getHours() * 60 + d.getMinutes() } })
+  if (naps.length < NAP_MIN_DAYS) return null
+  let best = null
+  for (const centre of naps) {
+    // one nap per day — the one nearest the centre, so a cluster-nap day
+    // can't vote twice and pass the floor on its own
+    const byDay = new Map()
+    for (const n of naps) {
+      const off = Math.abs(n.tod - centre.tod)
+      if (off > NAP_WINDOW) continue
+      const cur = byDay.get(n.day)
+      if (!cur || off < Math.abs(cur.tod - centre.tod)) byDay.set(n.day, n)
+    }
+    if (byDay.size < NAP_MIN_DAYS) continue
+    const members = [...byDay.values()].sort((a, b) => a.tod - b.tod)
+    const spread = members[members.length - 1].tod - members[0].tod
+    // most days wins; a tie goes to the tighter cluster
+    if (!best || members.length > best.members.length
+      || (members.length === best.members.length && spread < best.spread)) best = { members, spread }
+  }
+  if (!best) return null
+  const { members } = best
+  const durs = members.map(m => m.mins), dur = medianOf(durs)
+  const agree = Math.max(...durs) - Math.min(...durs) <= Math.max(30, dur / 2)
+  return {
+    days: members.length,
+    at: members[(members.length - 1) >> 1].start, // the median start, by time of day
+    from: members[0].start,
+    to: members[members.length - 1].start,
+    dur: agree ? dur : null,
+  }
+}
+
 // CSV cell escaping, plus the OWASP "CSV injection" (formula injection) guard:
 // a cell opening with = + - @ tab or CR is read as a formula by Excel/Sheets/
 // LibreOffice, so free text (member names, notes) gets a leading apostrophe —
@@ -2719,6 +2787,22 @@ export default class App extends React.Component {
           ? t('Typical at {age} is {norm}. Watching this stretch out over the weeks is the rhythm maturing — not something to fight.', { age: ageI.label, norm: t(normFor(WAKE_NORMS, ageI.weeks)) })
           : t('Add {name}’s birthday below and this compares against what’s typical for their age.', { name: s.babyName || t('the baby') }),
       } : null,
+      // the recurring nap time, sibling to the wake-window card above it. No
+      // pattern → no card at all: "no pattern detected" is noise on a screen
+      // that already has plenty to read.
+      napInsight: (() => {
+        if (!this.trackOn('sleep')) return null
+        const p = napPattern(live, midnight.getTime() - 6 * DAY)
+        if (!p) return null
+        const name = (selChild && selChild.name) || s.babyName || t('the baby')
+        const span = { n: p.days, name, from: this.clock(p.from), to: this.clock(p.to) }
+        return {
+          title: t('Naps around {time} most days', { time: this.clock(p.at) }),
+          body: p.dur != null
+            ? t('On {n} of the last 7 days {name} went down between {from} and {to}, for about {dur}.', { ...span, dur: this.dur(p.dur) })
+            : t('On {n} of the last 7 days {name} went down between {from} and {to}. How long it lasts still varies.', span),
+        }
+      })(),
       trackRec: trackRec ? {
         title: t('Not tracking {thing}?', { thing: lower(trackRec.label) }),
         body: (trackRec.n ? t('Only {n} logged', { n: trackRec.n }) : t('Nothing logged')) + ' ' + t('in the last 7 days. Turning it off hides its cards and charts — nothing is deleted, and it comes back if you switch it on again.'),
@@ -3490,6 +3574,16 @@ export default class App extends React.Component {
                   <div style={S('display:flex;flex-direction:column;gap:3px')}>
                     <div style={S('font-size:14.5px;font-weight:600;color:var(--accent-deep)')}>{v.wakeInsight.title}</div>
                     <div style={S('font-size:13px;line-height:1.5;color:#5F6E42;text-wrap:pretty')}>{v.wakeInsight.body}</div>
+                  </div>
+                </div>
+              )}
+
+              {v.napInsight && (
+                <div style={S('background:rgba(var(--accent-rgb),0.10);border:1px solid rgba(var(--accent-rgb),0.22);border-radius:22px;padding:16px;margin-top:12px;display:flex;gap:12px;align-items:flex-start')}>
+                  <Sym style={{ fontSize: 20, color: 'var(--accent-text)', flexShrink: 0 }}>bedtime</Sym>
+                  <div style={S('display:flex;flex-direction:column;gap:3px')}>
+                    <div style={S('font-size:14.5px;font-weight:600;color:var(--accent-deep)')}>{v.napInsight.title}</div>
+                    <div style={S('font-size:13px;line-height:1.5;color:#5F6E42;text-wrap:pretty')}>{v.napInsight.body}</div>
                   </div>
                 </div>
               )}
