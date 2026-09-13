@@ -199,3 +199,73 @@ describe('the Charts picker in Settings', () => {
     expect(screen.queryByText('Now screen cards')).not.toBeInTheDocument()
   })
 })
+
+// Seven bars share 326px on a phone, so a bar label has about 40px. dur()'s
+// "10h 32m" needs ~52px: it wrapped onto two lines and shortened every bar to
+// pay for it. Sum charts get one decimal instead — still distinguishes days to
+// six minutes, and the exact figure is one tap away in the day view.
+describe('a sleep bar label fits on one line', () => {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(at(23, 30)) })
+  afterEach(() => vi.useRealTimers())
+
+  it('a ragged ten-and-a-half hours reads as 10.5h, not as 10h 32m', async () => {
+    // 632 minutes, every one of them STARTING today — t is the wake-up, so a
+    // 492m sleep waking at 09:00 began at 00:48, which is still today's bar
+    await openHistory({ tracking: {}, dismissed: [], charts: ['sleep'] }, [
+      { id: 'n1', type: 'sleep', t: at(9, 0), detail: 'Night · 492m', deleted: false, by: 1, babyId: null },
+      { id: 'n2', type: 'sleep', t: at(14, 0), detail: 'Nap · 80m', deleted: false, by: 1, babyId: null },
+      { id: 'n3', type: 'sleep', t: at(18, 0), detail: 'Nap · 60m', deleted: false, by: 1, babyId: null },
+    ])
+
+    const today = within(chartCard('Sleep per day')).getAllByRole('button')[6]
+    // hand-written: 492 + 80 + 60 = 632 minutes = 10.533h, one decimal → 10.5h
+    expect(today.firstChild.textContent).toBe('10.5h')
+    expect(today.firstChild.textContent).not.toBe('10h 32m') // the label that wrapped
+  })
+
+  it('under an hour still reads in plain minutes', async () => {
+    await openHistory({ tracking: {}, dismissed: [], charts: ['sleep'] }, [
+      { id: 'n1', type: 'sleep', t: at(13, 0), detail: 'Nap · 45m', deleted: false, by: 1, babyId: null },
+    ])
+
+    expect(within(chartCard('Sleep per day')).getAllByRole('button')[6].firstChild.textContent).toBe('45m')
+  })
+})
+
+// "I don't care about diapers" has to reach the header too — a tally that
+// still counts diapers over a screen you deliberately swapped them out of is
+// the app insisting on the number you just removed.
+describe('the History header tally follows the charts', () => {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(at(20, 0)) })
+  afterEach(() => vi.useRealTimers())
+
+  const aDayOfEverything = () => [
+    { id: 'f1', type: 'bottle', t: at(8, 0), detail: 4, deleted: false, by: 1, babyId: null },
+    { id: 'f2', type: 'bottle', t: at(12, 0), detail: 4, deleted: false, by: 1, babyId: null },
+    { id: 'd1', type: 'wet', t: at(9, 0), detail: null, deleted: false, by: 1, babyId: null },
+    { id: 'd2', type: 'wet', t: at(13, 0), detail: null, deleted: false, by: 1, babyId: null },
+    { id: 'd3', type: 'dirty', t: at(16, 0), detail: null, deleted: false, by: 1, babyId: null },
+    { id: 'n1', type: 'sleep', t: at(14, 0), detail: 'Nap · 90m', deleted: false, by: 1, babyId: null },
+  ]
+
+  it('a household that never chose still reads feeds and diapers', async () => {
+    await openHistory({ tracking: {}, dismissed: [] }, aDayOfEverything())
+
+    expect(screen.getByText('2 feeds · 3 diapers logged')).toBeInTheDocument()
+  })
+
+  it('swapping diapers out for sleep takes diapers out of the header too', async () => {
+    await openHistory({ tracking: {}, dismissed: [], charts: ['feeds', 'sleep'] }, aDayOfEverything())
+
+    // the diapers are still logged and still in the data — they are simply not
+    // what this household asked to be told about
+    expect(screen.getByText('2 feeds · 1h 30m sleep logged')).toBeInTheDocument()
+    expect(screen.queryByText(/diapers logged/)).not.toBeInTheDocument()
+  })
+
+  it('a tracker switched off outranks the pick here as well', async () => {
+    await openHistory({ tracking: { diapers: false }, dismissed: [], charts: ['feeds', 'diapers'] }, aDayOfEverything())
+
+    expect(screen.getByText('2 feeds logged')).toBeInTheDocument()
+  })
+})

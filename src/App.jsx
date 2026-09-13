@@ -1073,6 +1073,11 @@ export default class App extends React.Component {
     return t('{d}d {h}h', { d: Math.floor(h / 24), h: h % 24 })
   }
   dur(m) { m = m || 0; return m < 60 ? t('{n}m', { n: m }) : t('{n}h', { n: Math.floor(m / 60) }) + (m % 60 ? ' ' + t('{n}m', { n: m % 60 }) : '') }
+  // A chart bar label has ~40px on a phone (seven bars across 326px), and
+  // dur()'s "10h 32m" needs ~52px — it wrapped onto two lines and shortened
+  // every bar to pay for it. One decimal fits, keeps the day distinguishable
+  // to six minutes, and the exact figure is one tap away in the day view.
+  durCompact(m) { m = m || 0; return m < 60 ? t('{n}m', { n: m }) : t('{n}h', { n: Math.round(m / 6) / 10 }) }
   dayOf(t2) {
     const d = new Date(t2), n = new Date()
     const diff = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY)
@@ -2201,7 +2206,7 @@ export default class App extends React.Component {
     }
     const max = Math.max(...out.map(o => o.n), 1)
     return out.map((o, i) => ({
-      value: sum ? this.dur(o.n) : o.n, day: o.day, onTap: () => this.openDay(o.key),
+      value: sum ? this.durCompact(o.n) : o.n, day: o.day, onTap: () => this.openDay(o.key),
       h: Math.max(6, Math.round((o.n / max) * 100)) + '%',
       fill: i === 6 ? color : color.replace('0.075', '0.045'),
     }))
@@ -2842,7 +2847,28 @@ export default class App extends React.Component {
       handbackNote: s.handbackNote, reportNote: noteShown, hasHandbackNote: !!noteShown,
       setHandbackNote: e => this.setState({ handbackNote: e.target.value }),
 
-      historySubtitle: t('{summary} logged', { summary: t('{n} feeds', { n: feedsWk.length }) + (this.trackOn('diapers') ? ' · ' + t('{n} diapers', { n: week.filter(e => DIAPERS.includes(e.type)).length }) : '') }),
+      // The header tally follows the charts the household picked, for the same
+      // reason the charts do: "63 feeds · 36 diapers logged" over a screen you
+      // deliberately swapped diapers OUT of is the app insisting on a number
+      // you said you don't care about. Sleep reads as hours, everything else
+      // counts rows — the same split the charts use. Feeds is the fallback
+      // when every chart is off, because a bare "logged" says nothing.
+      historySubtitle: (() => {
+        const tally = k => {
+          const ch = CHARTS.find(x => x.key === k)
+          const on = week.filter(e => ch.keys.includes(e.type))
+          if (ch.sum) return t('{dur} sleep', { dur: this.dur(on.reduce((a, e) => a + (ch.sum(e) || 0), 0)) })
+          const n = on.length
+          return k === 'feeds' ? t('{n} feeds', { n })
+            : k === 'diapers' ? t('{n} diapers', { n })
+              : k === 'pump' ? t('{n} pumps', { n })
+                : k === 'tummy' ? t('{n} tummy sessions', { n })
+                  : k === 'bath' ? t('{n} baths', { n }) : t('{n} doses', { n })
+        }
+        const keys = this.chartKeys()
+        const summary = (keys.length ? keys : ['feeds']).map(tally).join(' · ')
+        return t('{summary} logged', { summary })
+      })(),
       historyDays, dayView,
       stats,
       // the chosen charts, in catalog order — an empty list (every pick's
