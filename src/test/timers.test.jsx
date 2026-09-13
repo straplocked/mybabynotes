@@ -5,7 +5,7 @@
 // tap from either surface. The device-local timerSpot pref picks the surface:
 // 'top', 'today', or 'both' (default). Timers started by someone else never
 // offer a Stop anywhere.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -281,19 +281,98 @@ describe('multi-timer rows', () => {
 describe('resuming a sleep', () => {
   // a 45-minute nap that ended three minutes ago
   const nap = (over = {}) => ({ id: 'nap-1', type: 'sleep', t: Date.now() - 3 * 60_000, detail: 45, by: 1, babyId: null, ...over })
+  // the fixture household has no birthdate on file, so the wake-window ceiling
+  // is the 120-minute fallback in every test below
+  const at = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
+  const pin = ms => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(ms) } // clock only — user-event needs real timers
+  afterEach(() => vi.useRealTimers())
 
-  it('offers Resume on the newest sleep only, and only until something lands on top of it', async () => {
+  it('offers Resume on the newest sleep, and a feed logged on top of it does NOT take that away', async () => {
+    pin(at(15, 0))
     seedSignedIn({ entries: [nap()] })
     routes['GET /state'] = () => okJson(stateFixture())
     const { unmount } = renderApp()
     expect(await screen.findByText('Resume')).toBeInTheDocument()
     unmount()
 
-    // a feed logged after the nap closes that session for good
-    seedSignedIn({ entries: [nap(), { id: 'b1', type: 'bottle', t: Date.now() - 60_000, detail: '4', by: 1, babyId: null }] })
+    // Resume used to ride the newest ENTRY, so this bottle closed the nap for
+    // good. It rides the newest SLEEP now: something logged mid-nap doesn't end
+    // the nap, only the clock does (see the five-hours-later test below).
+    seedSignedIn({ entries: [nap(), { id: 'b1', type: 'bottle', t: at(14, 59), detail: '4', by: 1, babyId: null }] })
     renderApp()
     expect(await screen.findByText('Slept')).toBeInTheDocument()
+    expect(screen.getByText('Resume')).toBeInTheDocument()
+  })
+
+  // K, mid-nap: "he was sleeping and I stopped the timer and then I nursed him
+  // so I added nursing and then the resume button went away. But he's going
+  // back to sleep so I wanna hit the resume button because it's part of the
+  // same nap."
+  it('a nursing logged after the nap still leaves Resume on the SLEEP row', async () => {
+    pin(at(15, 0))
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [
+      nap({ t: at(14, 40), detail: 'Nap · 45m' }),                              // woke 20 minutes ago
+      { id: 'n1', type: 'nurse', t: at(14, 55), detail: 'Left · 10m', by: 1, babyId: null }, // fed 5 minutes ago
+    ] })
+    let resumeBody
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/resume'] = opts => {
+      resumeBody = JSON.parse(opts.body)
+      return okJson({ ok: true, timer: { id: resumeBody.id, type: 'sleep', started_at: at(13, 55), user_id: 1, baby_id: null, resumes: 'nap-1' } })
+    }
+    renderApp()
+
+    expect(await screen.findByText('Left · 10m')).toBeInTheDocument() // the nursing row is there…
+    await user.click(screen.getByText('Resume'))                       // …and Resume survived it
+
+    // the nap re-opens, not the nursing — the id on the wire is the sleep's
+    expect(resumeBody.entry_id).toBe('nap-1')
+  })
+
+  it('a nap that ended five hours ago is a new wake cycle, not a session to resume', async () => {
+    pin(at(15, 0))
+    seedSignedIn({ entries: [nap({ t: at(10, 0), detail: 'Nap · 45m' })] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    // 300 minutes awake, ceiling 120 — whatever happens next is its own nap
+    expect(await screen.findByText('Slept')).toBeInTheDocument()
     expect(screen.queryByText('Resume')).not.toBeInTheDocument()
+  })
+
+  it('with two naps in the wake window, only the newer one offers Resume', async () => {
+    pin(at(15, 0))
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [
+      { id: 'nap-old', type: 'sleep', t: at(13, 30), detail: 'Nap · 40m', by: 1, babyId: null }, // listed first, older
+      { id: 'nap-new', type: 'sleep', t: at(14, 40), detail: 'Nap · 20m', by: 1, babyId: null },
+    ] })
+    let resumeBody
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/resume'] = opts => {
+      resumeBody = JSON.parse(opts.body)
+      return okJson({ ok: true, timer: { id: resumeBody.id, type: 'sleep', started_at: at(14, 20), user_id: 1, baby_id: null, resumes: 'nap-new' } })
+    }
+    renderApp()
+
+    expect(await screen.findByText('Nap · 20m')).toBeInTheDocument() // both naps are on screen
+    expect(screen.getByText('Nap · 40m')).toBeInTheDocument()
+    expect(screen.getAllByText('Resume')).toHaveLength(1) // one row, never both
+    await user.click(screen.getByText('Resume'))
+    expect(resumeBody.entry_id).toBe('nap-new')
+  })
+
+  it('a busy stretch that pushes the nap past the 12-row cut still shows its Resume', async () => {
+    pin(at(15, 0))
+    // thirteen rows land on top of a nap that only ended twenty minutes ago —
+    // Today normally stops at twelve, which used to swallow the sleep row whole
+    const busy = Array.from({ length: 13 }, (_, i) => ({ id: 'w' + i, type: 'wet', t: at(14, 42 + i), by: 1, babyId: null }))
+    seedSignedIn({ entries: [nap({ t: at(14, 40), detail: 'Nap · 45m' }), ...busy] })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+
+    expect(await screen.findByText('Resume')).toBeInTheDocument()
   })
 
   it('never offers Resume on a feed, or beside a sleep timer already running', async () => {
