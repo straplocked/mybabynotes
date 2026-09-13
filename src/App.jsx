@@ -344,6 +344,82 @@ const napPattern = (entries, from) => {
   }
 }
 
+// ── the feed rhythm CHANGING ─────────────────────────────────────────────────
+// "if for several feeds they are two hours apart it could say to me your baby
+// might be clusterfeeding. But then once it goes back to 4 hours apart the
+// trend would alert me too … That way I don't have to constantly look at all
+// the time stamps and what he's doing."
+//
+// The card above answers "what is normal here" with a 7-day average, which is
+// exactly what hides a change: 4h that became 2h averages out to "roughly every
+// 3h" and she learns nothing. This one answers "has it changed", and says
+// nothing at all when it hasn't.
+//
+// Three windows, newest first — a gap belongs to the window holding its LATER
+// feed, i.e. the wait she just sat through:
+//   RECENT   the last 24h — what she is living through now
+//   SPELL    24–72h back — where a tighter run would still be visible
+//   BASELINE 72h–7d back — the settled rhythm behind it
+// Feeds are stamped at the moment they happened, so unlike sleep there is no
+// start-vs-end ambiguity here; e.t is the feed.
+//
+// sessionStarts() folds a cluster BURST (feeds within 45m of each other) down
+// to one beat, and that fold is what makes this readable rather than noisy: a
+// 20-minute top-up is not a rhythm beat. The two-hour spacing she describes is
+// far wider than the 45m fold, so it survives as real gaps — the tightening she
+// wants named is visible precisely because the burst folding got out of the way.
+const TREND_RECENT_H = 24  // "the last day"
+const TREND_SPELL_H = 72   // a tighter run can last a couple of days and still be named
+const TREND_BASE_H = 168   // the settled week behind it
+// 30% shorter is past ordinary day-to-day wobble without waiting for her full
+// 4h→2h example before the card will speak
+const TREND_TIGHTEN = 0.70
+// back within 15% of the old rhythm reads as "back to normal". The two bands
+// can't overlap, so at most one of the two readings is ever true
+const TREND_RECOVER = 0.85
+// a ratio alone would fire on small numbers; the rhythm must also move half an
+// hour in wall-clock terms before it is worth a card
+const TREND_MIN_SHIFT = 30
+// enough beats that one late feed can't swing a median. Five covers a day at
+// gaps up to ~4h; ten is roughly two days of the settled stretch
+const TREND_MIN_RECENT = 5
+const TREND_MIN_SPELL = 5
+const TREND_MIN_BASE = 10
+// "about every 2h 3m" claims a precision a median of six numbers doesn't have
+const TREND_ROUND = 15
+// entries + "now" → { kind: 'tighter' | 'back', … } or null for "no news".
+// Stateless: everything it knows comes from the entries already on the device.
+const feedTrend = (entries, now) => {
+  const ts = entries.filter(e => FEEDS.includes(e.type) && e.t > now - TREND_BASE_H * 3600000 && e.t <= now)
+    .map(e => e.t).sort((a, b) => a - b)
+  const starts = sessionStarts(ts)
+  const recentFrom = now - TREND_RECENT_H * 3600000
+  const spellFrom = now - TREND_SPELL_H * 3600000
+  const recent = [], spell = [], base = []
+  for (let i = 1; i < starts.length; i++) {
+    const gap = (starts[i] - starts[i - 1]) / 60000
+    const at = starts[i] // the feed that ENDED the wait decides which window it's in
+    ;(at >= recentFrom ? recent : at >= spellFrom ? spell : base).push(gap)
+  }
+  if (recent.length < TREND_MIN_RECENT || base.length < TREND_MIN_BASE) return null
+  // medians, not means — one late feed on a steady week must not read as a trend
+  const mRecent = medianOf(recent), mBase = medianOf(base)
+  const round = m => Math.max(TREND_ROUND, Math.round(m / TREND_ROUND) * TREND_ROUND)
+  if (mRecent <= mBase * TREND_TIGHTEN && mBase - mRecent >= TREND_MIN_SHIFT)
+    return { kind: 'tighter', recent: round(mRecent), base: round(mBase) }
+  // "back to normal" is only honest if the data can still show the spell it came
+  // back FROM: the middle window has to have been tight against the same
+  // baseline. Without that this is just a steady week, which the average card
+  // above already covers. Note the recovery test is two-sided — a rhythm that
+  // stretched well PAST the baseline is a different story and gets no card.
+  if (Math.abs(mRecent - mBase) <= mBase * (1 - TREND_RECOVER) && spell.length >= TREND_MIN_SPELL) {
+    const mSpell = medianOf(spell)
+    if (mSpell <= mBase * TREND_TIGHTEN && mBase - mSpell >= TREND_MIN_SHIFT && mRecent - mSpell >= TREND_MIN_SHIFT)
+      return { kind: 'back', recent: round(mRecent), spell: round(mSpell), base: round(mBase) }
+  }
+  return null
+}
+
 // CSV cell escaping, plus the OWASP "CSV injection" (formula injection) guard:
 // a cell opening with = + - @ tab or CR is read as a formula by Excel/Sheets/
 // LibreOffice, so free text (member names, notes) gets a leading apostrophe —
@@ -2781,6 +2857,26 @@ export default class App extends React.Component {
           + (clustered ? ' ' + t('Cluster feeds ({n} within 45m of the one before) count as one feed here, so they don’t drag the average down.', { n: clustered }) : '')
           + (ageI.weeks != null ? ' ' + t('Typical at {age}: {norm}.', { age: ageI.label, norm: t(normFor(FEED_NORMS, ageI.weeks)) }) : '')
         : t('Keep logging — once there’s a rhythm, it shows up here.'),
+      // the feed rhythm CHANGING, sibling to the average card above it. At most
+      // one reading ever, and nothing at all on a steady week — "no change" is
+      // noise beside a card that already says what normal looks like here. The
+      // age norm is deliberately not repeated; patternBody already carries it.
+      feedTrend: (() => {
+        const tr = feedTrend(live, Date.now())
+        if (!tr) return null
+        const name = (selChild && selChild.name) || s.babyName || t('the baby')
+        return tr.kind === 'tighter' ? {
+          icon: 'trending_down',
+          title: t('Feeds have tightened to about every {dur}', { dur: this.dur(tr.recent) }),
+          body: t('Over the last day {name} has fed about every {dur}, against about every {base} earlier in the week. A closer run like this is often cluster feeding — normal, and it usually passes in a day or two.',
+            { name, dur: this.dur(tr.recent), base: this.dur(tr.base) }),
+        } : {
+          icon: 'trending_flat',
+          title: t('Back to about every {dur} between feeds', { dur: this.dur(tr.recent) }),
+          body: t('The tighter spell of about every {tight} has passed. {name} is back near the earlier rhythm of about every {base}.',
+            { name, tight: this.dur(tr.spell), base: this.dur(tr.base) }),
+        }
+      })(),
       wakeInsight: this.trackOn('sleep') && avgWake ? {
         title: t('Awake about {dur} between naps', { dur: this.dur(avgWake) }),
         body: ageI.weeks != null
@@ -3567,6 +3663,18 @@ export default class App extends React.Component {
                   <div style={S('font-size:13px;line-height:1.5;color:#5F6E42;text-wrap:pretty')}>{v.patternBody}</div>
                 </div>
               </div>
+
+              {/* the change, right under the average — same card language, its
+                  own icon so a glance tells the two apart */}
+              {v.feedTrend && (
+                <div style={S('background:rgba(var(--accent-rgb),0.10);border:1px solid rgba(var(--accent-rgb),0.22);border-radius:22px;padding:16px;margin-top:12px;display:flex;gap:12px;align-items:flex-start')}>
+                  <Sym style={{ fontSize: 20, color: 'var(--accent-text)', flexShrink: 0 }}>{v.feedTrend.icon}</Sym>
+                  <div style={S('display:flex;flex-direction:column;gap:3px')}>
+                    <div style={S('font-size:14.5px;font-weight:600;color:var(--accent-deep)')}>{v.feedTrend.title}</div>
+                    <div style={S('font-size:13px;line-height:1.5;color:#5F6E42;text-wrap:pretty')}>{v.feedTrend.body}</div>
+                  </div>
+                </div>
+              )}
 
               {v.wakeInsight && (
                 <div style={S('background:rgba(var(--accent-rgb),0.10);border:1px solid rgba(var(--accent-rgb),0.22);border-radius:22px;padding:16px;margin-top:12px;display:flex;gap:12px;align-items:flex-start')}>
