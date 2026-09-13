@@ -62,12 +62,31 @@ const WAKE_NORMS = [
   [4, '30–90m'], [13, '60–90m'], [17, '75m–2h'], [22, '1.5–2.5h'], [30, '2–3h'],
   [43, '2.5–3.5h'], [61, '3–4h'], [104, '4–6h'], [999, '5–6h'],
 ]
+// the same bands as WAKE_NORMS, as the UPPER bound in minutes — the display
+// strings above are copy (en dashes, mixed units) and must never be parsed, so
+// this is the machine-readable twin. KEEP THE TWO IN STEP: same [maxWeeks, …]
+// rows in the same order, each number the top of the range beside it.
+const WAKE_CAP_MINS = [
+  [4, 90],   // 30–90m
+  [13, 90],  // 60–90m
+  [17, 120], // 75m–2h
+  [22, 150], // 1.5–2.5h
+  [30, 180], // 2–3h
+  [43, 210], // 2.5–3.5h
+  [61, 240], // 3–4h
+  [104, 360], // 4–6h
+  [999, 360], // 5–6h
+]
+// no birthdate on file → no age band to look up; two hours is the middle of the
+// ladder and errs toward closing a nap rather than reopening a stale one
+const WAKE_CAP_NO_DOB = 120
 const FEED_NORMS = [
   [4, 'every 1–3h'], [13, 'every 2–4h'], [26, 'every 2.5–4h'],
   [39, 'every 3–4h plus starting solids'], [52, 'every 4–5h plus meals'],
   [999, '3 meals plus snacks, milk alongside'],
 ]
 const normFor = (norms, weeks) => (norms.find(([max]) => weeks < max) || norms[norms.length - 1])[1]
+const wakeCapMins = weeks => (weeks == null ? WAKE_CAP_NO_DOB : normFor(WAKE_CAP_MINS, weeks))
 // ── AGPL §13: an app served over a network must offer its users the source ───
 // Settings' About footer links here. Anyone deploying a MODIFIED build must
 // point this at THEIR source, not ours — hence the build-time override
@@ -2101,19 +2120,31 @@ export default class App extends React.Component {
     // row, not twice — the entry comes back when the timer stops
     const resumingIds = new Set(s.activeTimers.map(tm => tm.resumes).filter(Boolean))
     const feedEntries = [...live].filter(e => !resumingIds.has(e.id)).sort((a, b) => startOf(b) - startOf(a))
-    // Resume rides the newest sleep and only while it IS the newest: once
-    // anything else is logged on top of it, that session is closed for good.
+    // Resume rides the newest SLEEP, whatever has been logged since. It used to
+    // ride the newest ENTRY, so a nursing or a diaper mid-nap closed the session
+    // for good — but "I stopped the timer, fed him, and he's going back down,
+    // it's the same nap" is the normal shape of a night, and the button has to
+    // survive it. What ends the offer instead is the clock: measured from the
+    // wake-up (e.t IS the wake-up on a sleep row), once the baby has been up
+    // longer than an age-typical wake window, the next sleep is a NEW nap.
     // Never beside a sleep timer already running for the same child (that
     // would count the night twice), and never on a row the server hasn't
     // seen yet — the resume is resolved server-side, by entry id.
-    const newest = feedEntries[0]
-    const canResume = !!newest && newest.type === 'sleep' && !pendingIds.has(newest.id)
-      && !s.activeTimers.some(tm => tm.type === 'sleep' && (tm.baby_id ?? primId) === (newest.babyId ?? primId))
-    const entryRows = feedEntries.slice(0, 12).map(e => ({
+    const wakeCap = wakeCapMins(this.ageInfo().weeks) * 60000
+    const lastSleep = feedEntries.find(e => e.type === 'sleep')
+    const canResume = !!lastSleep && !pendingIds.has(lastSleep.id)
+      && Date.now() - lastSleep.t <= wakeCap
+      && !s.activeTimers.some(tm => tm.type === 'sleep' && (tm.baby_id ?? primId) === (lastSleep.babyId ?? primId))
+    // Today stops at 12 rows, but Resume lives ON the sleep row — a busy stretch
+    // (feeds, diapers) can push the nap past the cut and the button would just
+    // vanish. The wake cap keeps that nap recent, so reaching down to it costs a
+    // handful of extra rows at most.
+    const resumeIdx = canResume ? feedEntries.indexOf(lastSleep) : -1
+    const entryRows = feedEntries.slice(0, Math.max(12, resumeIdx + 1)).map(e => ({
       t: startOf(e), time: this.clock(startOf(e)), label: t(T(e.type).label), sub: this.subFor(e),
       icon: T(e.type).icon, color: T(e.type).color, onEdit: this.edit(e.id),
       pending: pendingIds.has(e.id), byChip: byChipFor(e),
-      onResume: canResume && e.id === newest.id ? () => this.resumeSleep(e.id) : null,
+      onResume: canResume && e.id === lastSleep.id ? () => this.resumeSleep(e.id) : null,
     }))
     // running timers woven into the Today list at their start time (timerSpot
     // 'today' or 'both') — a live elapsed sub, and every row carries its
