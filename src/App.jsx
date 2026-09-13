@@ -57,6 +57,22 @@ const WIDGETS = [
 ]
 // the Now grid before anyone customized it — matches the original fixed four
 const DEFAULT_WIDGETS = ['feeds', 'diapers', 'sleep', 'bath']
+// the 7-day bar charts on History. Same shape as WIDGETS — `track` gates a
+// chart on its tracker, catalog order is display order — plus the copy each
+// chart needs: `title` heads the card, `unit` labels its legend swatch.
+// `sum` totals a value per day instead of counting rows; a bare nap count is
+// nearly useless, since three naps could be forty-five minutes or six hours.
+const CHARTS = [
+  { key: 'feeds',   keys: FEEDS,     label: 'Feeds',      title: 'Feeds per day',      unit: 'feeds',    icon: 'local_drink',           color: 'oklch(0.60 0.075 130)' },
+  { key: 'sleep',   keys: ['sleep'], label: 'Sleep',      title: 'Sleep per day',      unit: 'hours',    icon: 'bedtime',               color: 'oklch(0.60 0.075 25)',  track: 'sleep', sum: e => sleepMins(e.detail) || 0 },
+  { key: 'diapers', keys: DIAPERS,   label: 'Diapers',    title: 'Diapers per day',    unit: 'changes',  icon: 'baby_changing_station', color: 'oklch(0.60 0.075 210)', track: 'diapers' },
+  { key: 'pump',    keys: ['pump'],  label: 'Pump',       title: 'Pumps per day',      unit: 'sessions', icon: 'opacity',               color: 'oklch(0.60 0.075 300)', track: 'pump' },
+  { key: 'tummy',   keys: ['tummy'], label: 'Tummy time', title: 'Tummy time per day', unit: 'sessions', icon: 'bedroom_baby',          color: 'oklch(0.60 0.075 95)',  track: 'tummy' },
+  { key: 'bath',    keys: ['bath'],  label: 'Bath',       title: 'Baths per day',      unit: 'baths',    icon: 'bathtub',               color: 'oklch(0.60 0.075 195)', track: 'bath' },
+  { key: 'meds',    keys: ['meds'],  label: 'Meds',       title: 'Meds per day',       unit: 'doses',    icon: 'medication',            color: 'oklch(0.60 0.075 150)', track: 'meds' },
+]
+// History before anyone customized it — the two charts that were hardcoded
+const DEFAULT_CHARTS = ['feeds', 'diapers']
 // age-typical ranges, distilled from docs/feeding-patterns.md — [max age in weeks, range]
 const WAKE_NORMS = [
   [4, '30–90m'], [13, '60–90m'], [17, '75m–2h'], [22, '1.5–2.5h'], [30, '2–3h'],
@@ -462,9 +478,10 @@ export default class App extends React.Component {
       }
       if (this.state.settingsDirty) {
         const pushed = this.state.settings
-        // widgets is null until the household customizes it — don't send the null
-        const { widgets, ...rest } = pushed
-        await api.saveSettings(widgets == null ? rest : pushed)
+        // widgets/charts are null until the household customizes them — an old
+        // server would reject the nulls, so send each key only once it's a list
+        const { widgets, charts, ...rest } = pushed
+        await api.saveSettings({ ...rest, ...(widgets == null ? {} : { widgets }), ...(charts == null ? {} : { charts }) })
         // a toggle mid-flight makes a new settings object — only clear if nothing changed
         if (this.state.settings === pushed) this.setState({ settingsDirty: false })
       }
@@ -514,7 +531,7 @@ export default class App extends React.Component {
       if (s.selectedChildId != null && !next.children.some(c => c.id === s.selectedChildId)) next.selectedChildId = null
       // server settings win unless a local toggle is still waiting to push
       if (!s.settingsDirty && st.settings && !Array.isArray(st.settings)) {
-        next.settings = { tracking: st.settings.tracking || {}, dismissed: st.settings.dismissed || [], widgets: st.settings.widgets || null, ...(st.settings.theme ? { theme: st.settings.theme } : {}), ...(st.settings.unit ? { unit: st.settings.unit } : {}), ...(st.settings.medName ? { medName: st.settings.medName } : {}) }
+        next.settings = { tracking: st.settings.tracking || {}, dismissed: st.settings.dismissed || [], widgets: st.settings.widgets || null, charts: st.settings.charts || null, ...(st.settings.theme ? { theme: st.settings.theme } : {}), ...(st.settings.unit ? { unit: st.settings.unit } : {}), ...(st.settings.medName ? { medName: st.settings.medName } : {}) }
       }
       if (!s.notifyPrefsDirty && st.user?.notifyPrefs) next.notifyPrefs = st.user.notifyPrefs
       if (st.vapidPublicKey) next.vapidKey = st.vapidPublicKey
@@ -1152,6 +1169,21 @@ export default class App extends React.Component {
     const set = new Set(on ? [...cur, key] : cur.filter(k => k !== key))
     const widgets = WIDGETS.map(w => w.key).filter(k => set.has(k)) // normalize to catalog order
     return { settings: { ...s.settings, widgets }, settingsDirty: true }
+  }, () => this.flushSoon())
+  // charts shown on History: same precedent as widgets — an absent or empty
+  // list means "use the default", so a household that never customized keeps
+  // the two charts it always had, then filtered so a chart can't outlive the
+  // tracker it depends on (that filter can empty the list; History copes)
+  chartKeys() {
+    const c = this.state.settings.charts
+    const chosen = Array.isArray(c) && c.length ? c : DEFAULT_CHARTS
+    return chosen.filter(k => { const ch = CHARTS.find(x => x.key === k); return ch && (!ch.track || this.trackOn(ch.track)) })
+  }
+  setChart = (key, on) => this.setState(s => {
+    const cur = Array.isArray(s.settings.charts) && s.settings.charts.length ? s.settings.charts : this.chartKeys()
+    const set = new Set(on ? [...cur, key] : cur.filter(k => k !== key))
+    const charts = CHARTS.map(c => c.key).filter(k => set.has(k)) // normalize to catalog order
+    return { settings: { ...s.settings, charts }, settingsDirty: true }
   }, () => this.flushSoon())
   dismissRec = key => this.setState(s => ({
     settings: { ...s.settings, dismissed: [...new Set([...s.settings.dismissed, key])] },
@@ -2008,19 +2040,24 @@ export default class App extends React.Component {
     return on ? { bg: tone || 'var(--ink)', border: tone || 'var(--ink)', fg: 'var(--bg)' }
               : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }
   }
-  bars(keys, color) {
+  // seven days of taps-through-to-that-day bars. Counts rows by default; pass
+  // `sum` (a per-entry number, e.g. a nap's minutes) and the bar totals that
+  // instead and prints it as a duration. Either way a span buckets on
+  // startOf(e) — the day the nap BEGAN, matching the drill-down it opens.
+  bars(keys, color, sum) {
     const out = []
     const live = this.live()
     const base = new Date(); base.setHours(0, 0, 0, 0)
     for (let d = 6; d >= 0; d--) {
       const from = base.getTime() - d * DAY
       // same day bucket as the History drill-down these bars tap into
-      const n = live.filter(e => keys.includes(e.type) && startOf(e) >= from && startOf(e) < from + DAY).length
+      const on = live.filter(e => keys.includes(e.type) && startOf(e) >= from && startOf(e) < from + DAY)
+      const n = sum ? on.reduce((a, e) => a + (sum(e) || 0), 0) : on.length
       out.push({ n, key: dayKey(from), day: d === 0 ? t('Today') : new Date(from).toLocaleDateString(locale(), { weekday: 'short' }) })
     }
     const max = Math.max(...out.map(o => o.n), 1)
     return out.map((o, i) => ({
-      value: o.n, day: o.day, onTap: () => this.openDay(o.key),
+      value: sum ? this.dur(o.n) : o.n, day: o.day, onTap: () => this.openDay(o.key),
       h: Math.max(6, Math.round((o.n / max) * 100)) + '%',
       fill: i === 6 ? color : color.replace('0.075', '0.045'),
     }))
@@ -2663,9 +2700,13 @@ export default class App extends React.Component {
 
       historySubtitle: t('{summary} logged', { summary: t('{n} feeds', { n: feedsWk.length }) + (this.trackOn('diapers') ? ' · ' + t('{n} diapers', { n: week.filter(e => DIAPERS.includes(e.type)).length }) : '') }),
       historyDays, dayView,
-      stats, feedBars: this.bars(FEEDS, 'oklch(0.60 0.075 130)'), diaperBars: this.bars(DIAPERS, 'oklch(0.60 0.075 210)'),
-      feedUnitLabel: t('feeds'),
-      showDiaperChart: this.trackOn('diapers'),
+      stats,
+      // the chosen charts, in catalog order — an empty list (every pick's
+      // tracker switched off) renders nothing at all, no stray heading
+      charts: this.chartKeys().map(c => {
+        const ch = CHARTS.find(x => x.key === c)
+        return { key: ch.key, title: t(ch.title), unit: t(ch.unit), color: ch.color, bars: this.bars(ch.keys, ch.color, ch.sum) }
+      }),
       patternTitle: avgGap ? t('Roughly every {dur} between feeds', { dur: this.dur(avgGap) }) : t('Patterns show up after a few feeds'),
       patternBody: avgGap
         ? t('Longest stretch this week was {dur}.', { dur: this.dur(Math.round(longest)) })
@@ -2764,6 +2805,17 @@ export default class App extends React.Component {
           return { label: t(w.label), icon: w.icon, color: w.color,
             toggleIcon: on ? 'toggle_on' : 'toggle_off', toggleColor: on ? 'var(--accent)' : 'var(--dim)',
             onToggle: () => this.setWidget(w.key, !on) }
+        })
+      })(),
+      // same picker as the Now cards, and parents-only for the same reason:
+      // the toggle writes household settings, and that endpoint 403s a carer
+      chartRows: (() => {
+        const shown = this.chartKeys()
+        return CHARTS.filter(c => !c.track || this.trackOn(c.track)).map(c => {
+          const on = shown.includes(c.key)
+          return { label: t(c.label), icon: c.icon, color: c.color,
+            toggleIcon: on ? 'toggle_on' : 'toggle_off', toggleColor: on ? 'var(--accent)' : 'var(--dim)',
+            onToggle: () => this.setChart(c.key, !on) }
         })
       })(),
       appearance: {
@@ -3401,16 +3453,19 @@ export default class App extends React.Component {
                 ))}
               </div>
 
-              <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:16px 16px 12px;margin-top:12px')}>
+              {/* the comp gives the lead chart a taller plot and the ones under
+                  it a shorter one — that stays true however many there are */}
+              {v.charts.map((c, ci) => (
+              <div key={c.key} style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:16px 16px 12px;margin-top:12px')}>
                 <div style={S('display:flex;align-items:center;justify-content:space-between;padding-bottom:14px')}>
-                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{t('Feeds per day')}</div>
+                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{c.title}</div>
                   <div style={S('display:flex;align-items:center;gap:6px')}>
-                    <div style={S('width:9px;height:9px;border-radius:3px;background:oklch(0.60 0.075 130)')} />
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>{v.feedUnitLabel}</div>
+                    <div style={S(`width:9px;height:9px;border-radius:3px;background:${c.color}`)} />
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>{c.unit}</div>
                   </div>
                 </div>
-                <div style={S('display:flex;align-items:flex-end;gap:8px;height:118px')}>
-                  {v.feedBars.map((b, i) => (
+                <div style={S(`display:flex;align-items:flex-end;gap:8px;height:${ci === 0 ? 118 : 104}px`)}>
+                  {c.bars.map((b, i) => (
                     <button key={i} type="button" onClick={b.onTap} style={S('flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;background:none;border:none;padding:0;cursor:pointer;font-family:inherit')}>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{b.value}</div>
                       <div style={S(`width:100%;border-radius:8px 8px 3px 3px;background:${b.fill};height:${b.h}`)} />
@@ -3419,27 +3474,7 @@ export default class App extends React.Component {
                   ))}
                 </div>
               </div>
-
-              {v.showDiaperChart && (
-              <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:16px 16px 12px;margin-top:12px')}>
-                <div style={S('display:flex;align-items:center;justify-content:space-between;padding-bottom:14px')}>
-                  <div style={S('font-size:15px;font-weight:600;letter-spacing:-0.01em')}>{t('Diapers per day')}</div>
-                  <div style={S('display:flex;align-items:center;gap:6px')}>
-                    <div style={S('width:9px;height:9px;border-radius:3px;background:oklch(0.60 0.075 210)')} />
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;letter-spacing:0.06em")}>{t('changes')}</div>
-                  </div>
-                </div>
-                <div style={S('display:flex;align-items:flex-end;gap:8px;height:104px')}>
-                  {v.diaperBars.map((b, i) => (
-                    <button key={i} type="button" onClick={b.onTap} style={S('flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;background:none;border:none;padding:0;cursor:pointer;font-family:inherit')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{b.value}</div>
-                      <div style={S(`width:100%;border-radius:8px 8px 3px 3px;background:${b.fill};height:${b.h}`)} />
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;letter-spacing:0.08em;color:#A79E8B")}>{b.day}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              )}
+              ))}
 
               <div style={S('background:rgba(var(--accent-rgb),0.10);border:1px solid rgba(var(--accent-rgb),0.22);border-radius:22px;padding:16px;margin-top:12px;display:flex;gap:12px;align-items:flex-start')}>
                 <Sym style={{ fontSize: 20, color: 'var(--accent-text)', flexShrink: 0 }}>insights</Sym>
@@ -3743,6 +3778,22 @@ export default class App extends React.Component {
                   </div>
                 ))}
                 <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('These are the “time since last …” cards at the top of Now. Only things you track can appear here.')}</div>
+              </div>
+              )}
+
+              {v.canManage && (
+              <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
+                <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:10px 0 4px")}>{t('History charts')}</div>
+                {v.chartRows.map((r, i) => (
+                  <div key={i} style={S('display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
+                    <Sym style={{ fontSize: 18, color: r.color }}>{r.icon}</Sym>
+                    <div style={S('flex:1;font-size:14px;font-weight:600;color:#4E4A3F')}>{r.label}</div>
+                    <button type="button" onClick={r.onToggle} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
+                      <Sym style={{ fontSize: 22, color: r.toggleColor }}>{r.toggleIcon}</Sym>
+                    </button>
+                  </div>
+                ))}
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('These are the last-7-days bars on History. Sleep counts hours, everything else counts times a day.')}</div>
               </div>
               )}
 
