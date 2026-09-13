@@ -92,7 +92,8 @@ The single polling/converge endpoint.
   "baby":    { "name": "Wren", "age": "2–8 wks", "birthdate": "2026-07-20" },  // LEGACY: the primary child, or null
   "onDutyUserId": 1,
   "settings": { "tracking": {"diapers": false}, "dismissed": ["meds"], "widgets": ["feeds","sleep"],
-                "unit": "oz", "theme": {"accent":"plum","bg":"mist"}, "medName": "Vitamin D" },  // or null
+                "charts": ["feeds","sleep"], "unit": "oz", "theme": {"accent":"plum","bg":"mist"},
+                "medName": "Vitamin D" },                                                        // or null
   "shift":   { "id": 3, "state": "requested|active|completed|cancelled", "requester_id": 1, "target_id": null,
                "user_id": 2, "note": "…", "plan": [{"id":"p1","type":"bottle","at":1750000000000}],
                "until": "Until 6 AM", "until_at": 1750000000000, "until_notified_at": null,
@@ -143,7 +144,7 @@ Batch upsert from the client outbox (≤ 500 per call).
 ```json
 { "tracking": { "diapers": false }, "dismissed": ["meds"] }
 ```
-Household-level preferences, shared by every member; last write wins. `tracking` maps a tracker key to on/off — keys outside `pump diapers sleep tummy bath meds` are silently dropped (feeds can't be turned off). `dismissed` lists trackers whose "turn this off?" nudge was declined. `widgets` is the ordered list of "since last …" cards shown on the Now screen (from `feeds pump diapers sleep tummy bath meds`; unknowns/duplicates dropped, client order kept; omitted/empty ⇒ the client's default set). `unit` is the display unit for bottle/pump amounts (`oz` or `ml`, default `oz`) — display only: entry `detail` amounts are always stored and synced in oz. `theme` is the household-shared palette: `accent` ∈ `olive clay rose plum sea denim`, `bg` ∈ `cream blush mist sage lilac` — any other value → 422; an absent key means the default (peach accent / cream background), which is why "peach" and plain "cream" are never stored. `medName` (nullable, ≤40, trimmed) names the daily med; clients show "Vitamin D" when blank. Each provided top-level key replaces the stored one wholesale. Returns `{ ok, settings }`, broadcasts a poke.
+Household-level preferences, shared by every member; last write wins. `tracking` maps a tracker key to on/off — keys outside `pump diapers sleep tummy bath meds` are silently dropped (feeds can't be turned off). `dismissed` lists trackers whose "turn this off?" nudge was declined. `widgets` is the ordered list of "since last …" cards shown on the Now screen (from `feeds pump diapers sleep tummy bath meds`; unknowns/duplicates dropped, client order kept; omitted/empty ⇒ the client's default set). `charts` is the same idea for History's 7-day bar charts (same key set; omitted/empty ⇒ the client's default `feeds diapers`, i.e. what History always drew) — a chart whose tracker is off is hidden client-side whatever the list says. `unit` is the display unit for bottle/pump amounts (`oz` or `ml`, default `oz`) — display only: entry `detail` amounts are always stored and synced in oz. `theme` is the household-shared palette: `accent` ∈ `olive clay rose plum sea denim`, `bg` ∈ `cream blush mist sage lilac` — any other value → 422; an absent key means the default (peach accent / cream background), which is why "peach" and plain "cream" are never stored. `medName` (nullable, ≤40, trimmed) names the daily med; clients show "Vitamin D" when blank. Each provided top-level key replaces the stored one wholesale. Returns `{ ok, settings }`, broadcasts a poke.
 
 ## Push notifications — all auth + throttle 120/min
 

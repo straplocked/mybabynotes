@@ -391,6 +391,45 @@ class BabylogApiTest extends TestCase
         $this->assertSame(['pump', 'feeds'], $settings['widgets']);
     }
 
+    public function test_history_charts_round_trip_ordered_and_filtered(): void
+    {
+        // "I don't care about diapers per day but can I have it show naps" —
+        // the picked list is the household's, so both parents read the same one
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code])->json('token');
+
+        // client order is preserved; unknowns and duplicates are dropped
+        $this->postJson('/api/settings', ['charts' => ['sleep', 'feeds', 'nope', 'sleep']], $this->authed($ben))->assertOk();
+
+        $settings = $this->getJson('/api/state', $this->authed($kat))->json('settings');
+        $this->assertSame(['sleep', 'feeds'], $settings['charts']);
+    }
+
+    public function test_settings_accept_a_null_charts_echo(): void
+    {
+        // an installed client that never customized History echoes charts back
+        // as null — that must not 422 the settings save it rode along with
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->postJson('/api/settings', ['charts' => null, 'unit' => 'ml'], $this->authed($ben))->assertOk();
+
+        $settings = $this->getJson('/api/state', $this->authed($ben))->json('settings');
+        $this->assertSame('ml', $settings['unit']);
+        $this->assertArrayNotHasKey('charts', $settings);
+    }
+
+    public function test_a_caregiver_cannot_choose_the_history_charts(): void
+    {
+        // /api/settings is in PARENT_ONLY_ENDPOINTS already; this pins that the
+        // charts key rides that same door and leaves nothing behind
+        [$ben, , $doula] = $this->threeMemberHousehold();
+        $this->postJson('/api/settings', ['charts' => ['feeds', 'sleep']], $this->authed($ben))->assertOk();
+
+        $this->postJson('/api/settings', ['charts' => ['meds']], $this->authed($doula))->assertStatus(403);
+
+        $this->assertSame(['feeds', 'sleep'], $this->getJson('/api/state', $this->authed($ben))->json('settings.charts'));
+    }
+
     public function test_theme_round_trips_and_rejects_unknown_presets(): void
     {
         $ben = $this->register('Ben', 'ben@example.com')->json('token');

@@ -300,12 +300,15 @@ class SyncController extends Controller
     /** "Since last …" cards the household can choose to show on the Now screen. */
     private const WIDGETS = ['feeds', 'pump', 'diapers', 'sleep', 'tummy', 'bath', 'meds'];
 
+    /** Seven-day bar charts the household can choose to show on History. */
+    private const CHARTS = ['feeds', 'sleep', 'diapers', 'pump', 'tummy', 'bath', 'meds'];
+
     /** Theme presets — keys only; the client maps them to actual colors. */
     private const THEME_ACCENTS = ['olive', 'clay', 'rose', 'plum', 'sea', 'denim'];
 
     private const THEME_BGS = ['cream', 'blush', 'mist', 'sage', 'lilac'];
 
-    /** Household-level preferences (tracking toggles, dismissed nudges, Now-screen widgets, theme). Last write wins. */
+    /** Household-level preferences (tracking toggles, dismissed nudges, Now-screen widgets, History charts, theme). Last write wins. */
     public function setSettings(Request $request): JsonResponse
     {
         if ($denied = $this->parentsOnly($request)) {
@@ -320,6 +323,9 @@ class SyncController extends Controller
             // nullable: clients that never customized widgets echo back null
             'widgets' => ['sometimes', 'nullable', 'array', 'max:8'],
             'widgets.*' => ['string', 'max:20'],
+            // same story as widgets — absent or null means "never customized"
+            'charts' => ['sometimes', 'nullable', 'array', 'max:8'],
+            'charts.*' => ['string', 'max:20'],
             'theme' => ['sometimes', 'nullable', 'array'],
             'theme.accent' => ['sometimes', 'string', 'in:'.implode(',', self::THEME_ACCENTS)],
             'theme.bg' => ['sometimes', 'string', 'in:'.implode(',', self::THEME_BGS)],
@@ -343,6 +349,9 @@ class SyncController extends Controller
         if (is_array($data['widgets'] ?? null)) {
             // keep the client's order, drop unknowns and duplicates
             $settings['widgets'] = array_values(array_unique(array_intersect($data['widgets'], self::WIDGETS)));
+        }
+        if (is_array($data['charts'] ?? null)) {
+            $settings['charts'] = array_values(array_unique(array_intersect($data['charts'], self::CHARTS)));
         }
         if (is_array($data['theme'] ?? null)) {
             $settings['theme'] = array_intersect_key($data['theme'], array_flip(['accent', 'bg']));
