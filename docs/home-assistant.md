@@ -31,7 +31,7 @@ One **household device** named "MyBabyNotes", plus one device per unarchived chi
 
 | Device | Entity | Kind | Notes |
 |---|---|---|---|
-| Household | On duty | sensor | Name of the on-duty member |
+| Household | On duty | sensor | Name of whoever is covering, or `nobody` when the grown-ups are sharing (the resting state, not an error). `nobody` is an untranslated wire identifier, like `nurse`/`wet`. |
 | Household | Active timer | sensor | `none` / `nurse` / `pump` / `sleep` / `tummy` — the newest running timer; with several stacked, the full list rides the sensor's `timers` attribute (with `count`) |
 | Household | Timer started | sensor (timestamp) | When the newest running timer started |
 | Household | Last pump | sensor (timestamp) | |

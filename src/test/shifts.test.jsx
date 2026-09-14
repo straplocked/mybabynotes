@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Chris Carvache
-// Duty and shifts. The rule these pin: holding duty and having a shift open
-// are different things — duty is seeded to the founding account at registration
-// and handed straight back by /shifts/handback, and neither opens a shift.
-// Whoever lands in that gap gets the "Start your shift" framing of the shift
-// sheet, not a dead end where the checklist should be.
+// Covers. The rule these pin: nobody is on duty unless somebody is actually
+// covering. Shared is the resting state — a fresh household boots into it, and
+// every ending returns to it — so the app stops asserting a rota that two
+// grown-ups at home don't have. Duty only exists while a cover is open.
 //
-// Now itself keeps exactly one shift surface: an incoming ask, because that one
-// needs answering. Your shift, their shift, and on-duty-with-nothing-open all
-// live in the sheet behind the header's one icon button — which is what
-// `openShiftSheet` below reaches for. There is no footer shortcut: two openers
-// labelled differently ("Hand off" over a sheet whose button said "Hand back")
-// was the confusion that removed it.
+// (The wire still says `shift`: /shifts/*, `onDutyUserId`, the MQTT on_duty
+// sensor. Installed PWAs hit the new server before their JS updates, so only
+// the copy moved.)
+//
+// Now itself keeps exactly one cover surface: an incoming ask, because that one
+// needs answering. Your cover, someone else's, and nobody's all live in the
+// sheet behind the header's one icon button — which is what `openShiftSheet`
+// below reaches for. There is no footer shortcut: two openers labelled
+// differently ("Hand off" over a sheet whose button said "Hand back") was the
+// confusion that removed it, and the same rule is why a running cover now has
+// one ending plus a neutral "Hand it to someone else" link, never two rival
+// verbs naming the same person.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -43,7 +48,7 @@ const stateFixture = (over = {}) => ({
   user: ME, partner: { id: 2, name: 'Sam' }, members: MEMBERS,
   children: [], invites: [], invitePending: null,
   baby: { name: 'Wren', age: '2–8 wks', birthdate: null },
-  entries: [], timer: null, onDutyUserId: 1, shift: null,
+  entries: [], timer: null, onDutyUserId: null, shift: null,
   serverTime: Date.now(), settings: { tracking: {}, dismissed: [] },
   ...over,
 })
@@ -60,7 +65,7 @@ const seedSignedIn = (over = {}) => {
   localStorage.setItem(STORE_KEY, JSON.stringify({
     screen: 'home', babyName: 'Wren', age: '2–8 wks',
     me: ME, partner: { id: 2, name: 'Sam' }, members: MEMBERS, children: [],
-    entries: feeds(), outbox: [], lastSync: 5, onDutyUserId: 1,
+    entries: feeds(), outbox: [], lastSync: 5, onDutyUserId: null,
     settings: { tracking: {}, dismissed: [] },
     ...over,
   }))
@@ -95,21 +100,21 @@ const activeShift = (userId, over = {}) => ({
   until: 'Until she wakes', until_at: null, started_at: Date.now() - 90 * 60_000, ...over,
 })
 
-describe('on duty with no shift open', () => {
-  it('offers the start framing instead of leaving the checklist slot empty', async () => {
+describe('nobody covering', () => {
+  it('is a real state with its own framing, not an empty checklist slot', async () => {
     const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture())
     renderApp()
 
-    const s = await openShiftSheet(user, 'Start my shift')
-    expect(s.getByText('Start your shift')).toBeInTheDocument()
-    expect(s.getByText('Plan what’s coming so Sam isn’t guessing.')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Nobody’s covering')
+    expect(s.getByText('Nobody’s covering')).toBeInTheDocument()
+    expect(s.getByText('You’re all on Wren together. Start a cover when one of you takes a stretch.')).toBeInTheDocument()
     // the drafted plan is right there, so "start" is not a leap of faith
     expect(s.getAllByText('Feed').length).toBeGreaterThan(0)
   })
 
-  it('"Start my shift" opens a real shift with the drafted plan', async () => {
+  it('starting my own cover opens a real one with the drafted plan', async () => {
     const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture())
@@ -120,19 +125,19 @@ describe('on duty with no shift open', () => {
     }
     renderApp()
 
-    const s = await openShiftSheet(user, 'Start my shift')
-    await user.click(s.getByText('Start my shift'))
+    const s = await openShiftSheet(user, 'Nobody’s covering')
+    await user.click(s.getByText('I’ve got Wren — start my cover'))
 
     await waitFor(() => expect(body).toBeTruthy())
     expect(body.plan.length).toBeGreaterThan(0)
     expect(body.plan.every(p => typeof p.at === 'number')).toBe(true)
     expect(body.until).toBe('Until she wakes') // canonical English on the wire
-    // accepting closes the sheet; the header button now names the running shift
-    expect(await screen.findByLabelText('Your shift')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Start my shift')).not.toBeInTheDocument()
+    // that closes the sheet; the header button now names the running cover
+    expect(await screen.findByLabelText('You’re covering')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Nobody’s covering')).not.toBeInTheDocument()
   })
 
-  it('a pending ask of mine reads as waiting, not as "start"', async () => {
+  it('a pending ask of mine reads as waiting, not as "nobody"', async () => {
     const user = userEvent.setup()
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({
@@ -144,104 +149,212 @@ describe('on duty with no shift open', () => {
     expect(s.getByText('Waiting for Sam to take over')).toBeInTheDocument()
     // accepting your own ask is a 422 server-side, so the CTA nudges instead
     expect(s.getByText('Ask again')).toBeInTheDocument()
-    expect(s.queryByText('Start my shift')).not.toBeInTheDocument()
+    expect(s.queryByText(/start my cover/)).not.toBeInTheDocument()
   })
 })
 
-describe('a shift that is actually open', () => {
-  it('my active shift shows the checklist, not the start framing', async () => {
+describe('a cover that is actually running', () => {
+  it('my running cover shows the checklist, not the start framing', async () => {
     const user = userEvent.setup()
     seedSignedIn()
-    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1) }))
+    routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 1, shift: activeShift(1) }))
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
-    expect(s.getByText('Your shift')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'You’re covering')
+    expect(s.getByText('You’re covering')).toBeInTheDocument()
     expect(s.getByText('Add to plan')).toBeInTheDocument()
-    expect(s.queryByText('Start your shift')).not.toBeInTheDocument()
+    expect(s.queryByText('Nobody’s covering')).not.toBeInTheDocument()
   })
 
-  it('the partner’s active shift clears a plan left over from mine', async () => {
-    // duty moved to Sam while this device was asleep; the cached plan must not
-    // paint a second, stale checklist beside theirs
+  it('someone else’s running cover clears a plan left over from mine', async () => {
+    // the cover moved to Sam while this device was asleep; the cached plan must
+    // not paint a second, stale checklist beside theirs
     const user = userEvent.setup()
     seedSignedIn({ plan: [{ id: 'p9', type: 'bottle', at: Date.now() + 3600_000 }] })
     routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 2, shift: activeShift(2) }))
     renderApp()
 
-    const s = await openShiftSheet(user, 'Sam’s shift')
-    expect(s.getByText('Sam’s shift')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Sam is covering')
+    expect(s.getByText('Sam is covering')).toBeInTheDocument()
     expect(s.getByText('Take over from Sam')).toBeInTheDocument()
-    expect(s.queryByText('Your shift')).not.toBeInTheDocument()
+    expect(s.queryByText('You’re covering')).not.toBeInTheDocument()
   })
 
-  it('Now itself stays clear of shift cards — only the header carries the state', async () => {
+  it('Now itself stays clear of cover cards — only the header carries the state', async () => {
     seedSignedIn()
-    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1) }))
+    routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 1, shift: activeShift(1) }))
     renderApp()
 
-    await screen.findByLabelText('Your shift')
-    // the sheet is unmounted, so nothing shift-shaped is on the page yet
+    await screen.findByLabelText('You’re covering')
+    // the sheet is unmounted, so nothing cover-shaped is on the page yet
     expect(document.querySelector('[style*="z-index: 50"]')).toBeNull()
     expect(screen.queryByText('Add to plan')).not.toBeInTheDocument()
   })
 })
 
-// Two actions that both move duty, and used to sit side by side naming the
-// same person. Hand back is immediate and only exists when someone handed the
-// shift TO you — it's the cover being returned. Asking waits for a yes, and is
-// the only way out of a shift you started yourself.
-describe('handing back vs asking', () => {
-  it('a shift Sam handed me offers both, with verbs that say which waits', async () => {
+// The 💔 guard. Two buttons naming the same person, with nothing saying which
+// one waited, was the worst confusion this app ever shipped. A cover now has
+// ONE ending — it stops, and nobody is covering — plus a link into the compose
+// sheet for passing it on, where the CTA says whether it starts or waits.
+describe('ending a cover vs passing it on', () => {
+  it('offers one ending and one hand-off link, never two rival verbs', async () => {
     const user = userEvent.setup()
     seedSignedIn()
-    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: 2 }) }))
+    routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 1, shift: activeShift(1, { requester_id: 2 }) }))
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
-    expect(s.getByText('Hand back to Sam now')).toBeInTheDocument()
-    expect(s.getByText('Ask Sam to take over')).toBeInTheDocument()
-    expect(s.getByText('Handing back moves duty straight away. Asking waits for them to accept.')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'You’re covering')
+    expect(s.getByText('End my cover')).toBeInTheDocument()
+    expect(s.getByText('Hand it to someone else')).toBeInTheDocument()
+    expect(s.getByText('Ending it now means nobody’s covering — you’re all back on.')).toBeInTheDocument()
+    // the old pair is gone: no button competes for the same recipient
+    expect(s.queryByText(/^Hand back to/)).not.toBeInTheDocument()
+    expect(s.queryByText(/^Ask Sam to take over$/)).not.toBeInTheDocument()
+    expect(s.queryAllByRole('button', { name: /Sam/ })).toHaveLength(0)
   })
 
-  it('a shift I started myself can only be asked away — there is nothing to hand back', async () => {
+  it('a cover I started myself can still be ended — it is not a dead end', async () => {
     const user = userEvent.setup()
     seedSignedIn()
-    // requester_id null: nobody handed me this, so "hand back to Sam" would be
-    // a transfer Sam never agreed to, dressed up as a return
-    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: null }) }))
+    // requester_id null: nobody handed me this. It used to have no exit at all.
+    routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 1, shift: activeShift(1, { requester_id: null }) }))
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
-    expect(s.getByText('Ask Sam to take over')).toBeInTheDocument()
-    expect(s.queryByText(/^Hand back to/)).not.toBeInTheDocument()
-    // the handback note goes with it — the ask sheet carries its own
+    const s = await openShiftSheet(user, 'You’re covering')
+    expect(s.getByText('End my cover')).toBeInTheDocument()
+    // no note field — the note rides a hand-back, and nobody handed me this
     expect(s.queryByText('Note for Sam')).not.toBeInTheDocument()
   })
 
-  it('handing back completes the shift and returns duty to whoever asked', async () => {
+  it('ending completes the cover and leaves nobody covering', async () => {
     const user = userEvent.setup()
     seedSignedIn()
-    routes['GET /state'] = () => okJson(stateFixture({ shift: activeShift(1, { requester_id: 2 }) }))
+    routes['GET /state'] = () => okJson(stateFixture({ onDutyUserId: 1, shift: activeShift(1, { requester_id: 2 }) }))
     let body
-    routes['POST /shifts/handback'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    routes['POST /shifts/end'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
+    const s = await openShiftSheet(user, 'You’re covering')
     await user.type(s.getByPlaceholderText(/took the 1am bottle slow/), 'she fed at 2')
-    await user.click(s.getByText('Hand back to Sam now'))
+    await user.click(s.getByText('End my cover'))
 
     await waitFor(() => expect(body).toBeTruthy())
     expect(body.note).toBe('she fed at 2')
-    // duty moved on the spot — no waiting for Sam to answer
-    expect(await screen.findByLabelText('Take over from Sam')).toBeInTheDocument()
+    // back to shared — not handed to a partner who never agreed to it
+    expect(await screen.findByLabelText('Nobody’s covering')).toBeInTheDocument()
+  })
+})
+
+// The grandparent case, and the reason this whole thing was rebuilt: by the
+// time you reach for the phone, grandma is already holding the baby.
+describe('assigning a cover', () => {
+  const GRAN = [{ id: 1, name: 'Alex' }, { id: 2, name: 'Sam' }, { id: 3, name: 'Gran', role: 'caregiver' }]
+  const withGran = (over = {}) => stateFixture({ members: GRAN, ...over })
+
+  const openCompose = async user => {
+    const s = await openShiftSheet(user, 'Nobody’s covering')
+    await user.click(s.getByText('Hand it to someone else'))
+    await settled(document.querySelector('[style*="z-index: 50"]').firstChild)
+    return sheet()
+  }
+
+  it('lists every other grown-up by name, so grandma can be picked', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ members: GRAN })
+    routes['GET /state'] = () => okJson(withGran())
+    renderApp()
+
+    const s = await openCompose(user)
+    expect(s.getByText('Who’s covering?')).toBeInTheDocument()
+    expect(s.getByRole('button', { name: 'Gran' })).toBeInTheDocument()
+    expect(s.getByRole('button', { name: 'Sam' })).toBeInTheDocument()
+  })
+
+  it('defaults a carer to "here now" and a co-parent to "ask first"', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ members: GRAN })
+    routes['GET /state'] = () => okJson(withGran())
+    renderApp()
+
+    const s = await openCompose(user)
+    await user.click(s.getByRole('button', { name: 'Gran' }))
+    expect(s.getByText('Start Gran’s cover now')).toBeInTheDocument()
+    expect(s.getByText('Starts now. Gran gets the plan and a ping.')).toBeInTheDocument()
+
+    await user.click(s.getByRole('button', { name: 'Sam' }))
+    expect(s.getByText('Send to Sam')).toBeInTheDocument()
+    expect(s.getByText('Nothing changes until they say yes.')).toBeInTheDocument()
+  })
+
+  it('assigning starts the cover immediately — there is nothing to accept', async () => {
+    const user = userEvent.setup()
+    seedSignedIn({ members: GRAN })
+    routes['GET /state'] = () => okJson(withGran())
+    let body
+    routes['POST /shifts/assign'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+
+    const s = await openCompose(user)
+    await user.click(s.getByRole('button', { name: 'Gran' }))
+    await user.type(s.getByPlaceholderText(/bottle’s in the fridge/), 'bottle in the fridge')
+    await user.click(s.getByText('Start Gran’s cover now'))
+
+    await waitFor(() => expect(body).toBeTruthy())
+    expect(body.user_id).toBe(3)
+    expect(body.note).toBe('bottle in the fridge')
+    expect(body.plan.length).toBeGreaterThan(0)
+    expect(body.until).toBe('Until she wakes') // canonical English on the wire
+    // and the header says who has the baby, without a round trip
+    expect(await screen.findByLabelText('Gran is covering')).toBeInTheDocument()
+  })
+
+  it('a caregiver is never offered the assign option — only a parent may', async () => {
+    const user = userEvent.setup()
+    const carerMe = { id: 3, name: 'Gran', householdId: 7, role: 'caregiver' }
+    seedSignedIn({ me: carerMe, members: GRAN })
+    routes['GET /state'] = () => okJson(withGran({ user: carerMe }))
+    renderApp()
+
+    const s = await openCompose(user)
+    await user.click(s.getByRole('button', { name: 'Sam' }))
+    expect(s.queryByText('They’re here now')).not.toBeInTheDocument()
+    expect(s.getByText('Send to Sam')).toBeInTheDocument()
+  })
+})
+
+describe('a cover that ends on its own', () => {
+  it('surfaces the report once when the clock closed my own cover', async () => {
+    seedSignedIn()
+    // the until passed and the server swept it up: duty is nobody's again and
+    // the row is completed with ended_by 'until'
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: null,
+      shift: activeShift(1, { state: 'completed', ended_at: Date.now(), ended_by: 'until' }),
+    }))
+    renderApp()
+
+    // I didn't do this, so it's news — the report opens without being asked for
+    expect(await screen.findByText('Your cover ended')).toBeInTheDocument()
+  })
+
+  it('stays quiet about a cover I ended myself', async () => {
+    seedSignedIn()
+    routes['GET /state'] = () => okJson(stateFixture({
+      onDutyUserId: null,
+      shift: activeShift(1, { state: 'completed', ended_at: Date.now(), ended_by: 'holder' }),
+    }))
+    renderApp()
+
+    await screen.findByLabelText('Nobody’s covering')
+    // popping a report at yourself for something you just did is pure noise
+    expect(document.querySelector('[style*="z-index: 50"]')).toBeNull()
   })
 })
 
 describe('the ask carries the plan its author wrote', () => {
   const openAsk = async user => {
-    await openShiftSheet(user, 'Start my shift')
-    await user.click(await settled(await screen.findByText('Ask Sam to take over')))
+    await openShiftSheet(user, 'Nobody’s covering')
+    await user.click(await settled(await screen.findByText('Hand it to someone else')))
   }
 
   it('composing a handoff sends the plan, window, and note — not just prose', async () => {
@@ -277,7 +390,7 @@ describe('the ask carries the plan its author wrote', () => {
     renderApp()
 
     // an incoming ask is the one shift card Now still owns — it needs answering
-    expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
+    expect(await screen.findByText('Sam is asking you to cover')).toBeInTheDocument()
     expect(screen.getByText(/^Nursing ~/)).toBeInTheDocument()
     expect(screen.queryByText(/^Feed ~/)).not.toBeInTheDocument()
   })
@@ -313,15 +426,15 @@ describe('the ask carries the plan its author wrote', () => {
     }))
     renderApp()
 
-    expect(await screen.findByText('Sam is handing off')).toBeInTheDocument()
+    expect(await screen.findByText('Sam is asking you to cover')).toBeInTheDocument()
     expect(screen.getAllByText(/^Feed ~/).length).toBeGreaterThan(0)
   })
 })
 
 describe('the plan is editable, not take-it-or-leave-it', () => {
   const openAsk = async user => {
-    await openShiftSheet(user, 'Start my shift')
-    await user.click(await settled(await screen.findByText('Ask Sam to take over')))
+    await openShiftSheet(user, 'Nobody’s covering')
+    await user.click(await settled(await screen.findByText('Hand it to someone else')))
   }
 
   it('a time you pick on a drafted row is the time that gets sent', async () => {
@@ -377,7 +490,7 @@ describe('the plan is editable, not take-it-or-leave-it', () => {
     routes['POST /shifts/plan'] = opts => { body = JSON.parse(opts.body); return okJson({ ok: true }) }
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
+    const s = await openShiftSheet(user, 'You’re covering')
     await user.click(s.getAllByLabelText('Remove')[0])
 
     await waitFor(() => expect(body).toBeTruthy())
@@ -400,7 +513,7 @@ describe('the plan is editable, not take-it-or-leave-it', () => {
     }))
     renderApp()
 
-    const s = await openShiftSheet(user, 'Your shift')
+    const s = await openShiftSheet(user, 'You’re covering')
     // one row is done and frozen; only the pending one stays editable
     expect(s.getAllByLabelText('Remove')).toHaveLength(1)
   })
@@ -410,9 +523,9 @@ describe('unfinished plan items outlive the shift', () => {
   it('a missed dose carries into the next draft; a missed feed does not', async () => {
     const user = userEvent.setup()
     seedSignedIn()
-    // Sam's shift ended with a meds item and a feed item, neither logged
+    // Sam's cover ended with a meds item and a feed item, neither logged
     routes['GET /state'] = () => okJson(stateFixture({
-      onDutyUserId: 1,
+      onDutyUserId: null,
       settings: { tracking: { meds: true }, dismissed: [] },
       shift: {
         id: 23, state: 'completed', user_id: 2, requester_id: 1,
@@ -429,7 +542,7 @@ describe('unfinished plan items outlive the shift', () => {
     // the handback report auto-opens; dismiss it to reach the start framing
     await user.click(await settled(await screen.findByText('Done')))
     await sheetClosed()
-    const s = await openShiftSheet(user, 'Start my shift')
+    const s = await openShiftSheet(user, 'Nobody’s covering')
     // the draft keeps the dose at its original (now late) time
     expect(s.getByText('Meds')).toBeInTheDocument()
     // feeds are rhythmic, not owed — the two previewed feeds are fresh predictions
@@ -437,14 +550,14 @@ describe('unfinished plan items outlive the shift', () => {
   })
 })
 
-describe('after a hand back', () => {
-  it('the report lands first, and duty without a shift is a start framing behind it', async () => {
+describe('after a cover ends', () => {
+  it('the report lands first, and the shared state is behind it', async () => {
     const user = userEvent.setup()
-    // Sam handed back: their shift is completed and duty is mine again — the
-    // state that used to leave me with no plan and no way to start one
+    // Sam's cover is completed and nobody is covering — the app no longer
+    // crowns whoever happens to be left
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture({
-      onDutyUserId: 1,
+      onDutyUserId: null,
       shift: {
         id: 13, state: 'completed', user_id: 2, requester_id: 1, plan: [],
         started_at: Date.now() - 5 * 3600_000, ended_at: Date.now() - 60_000,
@@ -453,14 +566,14 @@ describe('after a hand back', () => {
     }))
     renderApp()
 
-    expect(await screen.findByText('Sam handed back')).toBeInTheDocument()
+    expect(await screen.findByText('Sam’s cover is over')).toBeInTheDocument()
     expect(screen.getByText('“took the 1am bottle slow”')).toBeInTheDocument()
 
     await user.click(await settled(screen.getByText('Done')))
     await sheetClosed()
 
-    const s = await openShiftSheet(user, 'Start my shift')
-    expect(s.getByText('Start your shift')).toBeInTheDocument()
+    const s = await openShiftSheet(user, 'Nobody’s covering')
+    expect(s.getByText('You’re all on Wren together. Start a cover when one of you takes a stretch.')).toBeInTheDocument()
   })
 })
 
@@ -472,7 +585,7 @@ describe('after a hand back', () => {
 const shiftPanel = () => document.querySelector('[style*="z-index: 50"]').lastChild
 const handle = () => shiftPanel().firstElementChild
 const body = () => shiftPanel().children[1]
-const stillOpen = () => sheet().getByText('Plan what’s coming so Sam isn’t guessing.')
+const stillOpen = () => sheet().getByText('You’re all on Wren together. Start a cover when one of you takes a stretch.')
 // One pointer stroke. jsdom's clock never advances between synthetic events, so
 // any move reads as an infinite-velocity flick — `flick: false` ends on a
 // zero-delta move that settles velocity back to 0, which is what lets the
@@ -490,7 +603,7 @@ describe('dragging the hand-off drawer', () => {
     seedSignedIn()
     routes['GET /state'] = () => okJson(stateFixture())
     renderApp()
-    await openShiftSheet(user, 'Start my shift')
+    await openShiftSheet(user, 'Nobody’s covering')
     return user
   }
 
@@ -550,7 +663,7 @@ describe('dragging the hand-off drawer', () => {
     await openIt()
     // dispatched on the button, so it bubbles to the body handler with the
     // button as e.target — the case that would otherwise swallow the tap
-    const btn = sheet().getByRole('button', { name: /Start my shift/i })
+    const btn = sheet().getByRole('button', { name: /start my cover/i })
     fireEvent.pointerDown(btn, { clientY: 400, pointerId: 1, pointerType: 'touch' })
     fireEvent.pointerMove(btn, { clientY: 560, pointerId: 1, pointerType: 'touch' })
     fireEvent.pointerUp(btn, { clientY: 560, pointerId: 1, pointerType: 'touch' })

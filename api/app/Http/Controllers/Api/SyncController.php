@@ -74,13 +74,6 @@ class SyncController extends Controller
         ]);
     }
 
-    /** Caregivers log and cover shifts; only parents shape the household itself. */
-    private function parentsOnly(Request $request): ?JsonResponse
-    {
-        return $request->user()->isParent()
-            ? null
-            : response()->json(['message' => __('Only a parent can change that.')], 403);
-    }
 
     public function setBaby(Request $request): JsonResponse
     {
@@ -268,15 +261,17 @@ class SyncController extends Controller
         $target->tokens()->delete();            // every session 401s from here on
         $target->pushSubscriptions()->delete(); // no more pushes at their devices
 
-        // duty can't sit with someone who's gone, and their in-flight shift
-        // paperwork would only render ghost cards
+        // duty can't sit with someone who's gone, and their in-flight cover
+        // paperwork would only render ghost cards. Duty goes to *nobody*:
+        // removing a member doesn't put the remover in charge, and shared is
+        // the resting state.
         if ($household->on_duty_user_id === $target->id) {
-            $household->update(['on_duty_user_id' => $user->id]);
+            $household->update(['on_duty_user_id' => null]);
         }
         $household->shifts()->where('state', 'requested')->where('requester_id', $target->id)
             ->update(['state' => 'cancelled']);
         $household->shifts()->where('state', 'active')->where('user_id', $target->id)
-            ->update(['state' => 'cancelled', 'ended_at' => now()->getTimestampMs()]);
+            ->update(['state' => 'cancelled', 'ended_at' => now()->getTimestampMs(), 'ended_by' => 'removed']);
 
         // snapshot {id, name} before the row goes: entries keep their user_id,
         // and this list lets clients still put a name to it (dedupe by id in

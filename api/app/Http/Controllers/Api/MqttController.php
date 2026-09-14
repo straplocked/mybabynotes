@@ -30,13 +30,6 @@ class MqttController extends Controller
         'acting_user_id' => null,
     ];
 
-    private function parentsOnly(Request $request): ?JsonResponse
-    {
-        return $request->user()->isParent()
-            ? null
-            : response()->json(['message' => __('Only a parent can change that.')], 403);
-    }
-
     private function publicConfig(array $config): array
     {
         $public = array_intersect_key($config + self::DEFAULTS, self::DEFAULTS);

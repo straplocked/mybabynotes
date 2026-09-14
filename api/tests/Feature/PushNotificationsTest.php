@@ -171,11 +171,42 @@ class PushNotificationsTest extends TestCase
 
         $this->postJson('/api/shifts/accept', ['plan' => [], 'until' => 'Until 6 AM'], $this->authed($kat))->assertOk();
         $this->assertCount(1, $this->push->to($benId));
-        $this->assertStringContainsString('you’re covered', $this->push->to($benId)[0]['title']);
+        $this->assertStringContainsString('you’re off', $this->push->to($benId)[0]['title']);
 
         $this->postJson('/api/shifts/handback', ['note' => 'went fine'], $this->authed($kat))->assertOk();
         $this->assertCount(2, $this->push->to($benId));
         $this->assertSame('went fine', $this->push->to($benId)[1]['body']);
+    }
+
+    public function test_assigning_a_cover_pings_the_person_and_tells_the_others(): void
+    {
+        [$ben, , $benId, $katId] = $this->household();
+
+        $this->postJson('/api/shifts/assign', [
+            'user_id' => $katId, 'note' => 'bottle in the fridge', 'until' => 'Until 4 PM',
+        ], $this->authed($ben))->assertOk();
+
+        // the person now covering hears it directly, in their own words
+        $this->assertCount(1, $this->push->to($katId));
+        $this->assertStringContainsString('asked you to cover', $this->push->to($katId)[0]['title']);
+        $this->assertSame('bottle in the fridge', $this->push->to($katId)[0]['body']);
+        // the assigner isn't told what they just did
+        $this->assertCount(0, $this->push->to($benId));
+    }
+
+    public function test_ending_a_cover_tells_everyone_else(): void
+    {
+        [$ben, $kat, $benId, $katId] = $this->household();
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($kat))->assertOk();
+        $before = count($this->push->to($benId));
+
+        $this->postJson('/api/shifts/end', ['note' => 'two naps, one bottle'], $this->authed($kat))->assertOk();
+
+        $this->assertCount($before + 1, $this->push->to($benId));
+        $this->assertStringContainsString('finished covering', $this->push->to($benId)[$before]['title']);
+        $this->assertSame('two naps, one bottle', $this->push->to($benId)[$before]['body']);
+        $this->assertCount(0, $this->push->to($katId));
     }
 
     public function test_asking_again_nudges_the_partner(): void

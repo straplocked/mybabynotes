@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0
+
+- **Shifts became covers, and nobody is on duty by default.** The app no longer insists one grown-up
+  is always responsible — a cover is what you start when someone actually takes over, and every
+  cover ends back at "you're both on it". Existing households are migrated on upgrade; one that's
+  genuinely mid-cover keeps its holder.
+- **Put a sitter on cover in one tap.** A parent can hand the cover straight to a grandparent or
+  caregiver with the plan and a note, no acceptance step — and a named "until" now ends the cover on
+  its own rather than only pinging about it.
+- **One ending, not two.** A running cover has a single "End my cover" plus a link to hand it on,
+  replacing the two buttons that named the same person without saying which one waited. See the
+  app's [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#140--2026-09-14).
+- The Home Assistant `on_duty` sensor is unchanged — it still publishes a name, or `nobody`, which
+  now means the grown-ups are sharing rather than something being wrong.
+
 ## 1.3.0
 
 - **History reflects the household reading it.** A new **History charts** picker in Settings chooses

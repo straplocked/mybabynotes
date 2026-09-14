@@ -73,9 +73,9 @@ class AuthController extends Controller
         // controller change
         event(new Registered($user));
 
-        if (! $household->on_duty_user_id) {
-            $household->update(['on_duty_user_id' => $user->id]);
-        }
+        // duty is deliberately left unset: a household nobody has taken cover in
+        // is "we're both on it", which is the resting state. Crowning the
+        // founding account made the app assert a rota that didn't exist.
 
         if ($invite) {
             HouseholdTouched::send($household->id, 'partner', toOthers: false);

@@ -108,6 +108,10 @@ class LocaleTest extends TestCase
 
     public function test_every_supported_locale_ships_a_server_catalog(): void
     {
+        $reference = json_decode((string) file_get_contents(base_path('lang/en.json')), true);
+        unset($reference['__comment']);
+        $this->assertNotEmpty($reference);
+
         foreach (config('babylog.locales') as $code) {
             if ($code === 'en') {
                 continue; // English is the key itself
@@ -116,8 +120,23 @@ class LocaleTest extends TestCase
             $this->assertFileExists($file, $code);
             $data = json_decode((string) file_get_contents($file), true);
             $this->assertIsArray($data, $code);
-            // spot-check a core push key is present and actually translated
-            $this->assertArrayHasKey('Meds time', $data, $code);
+            // every key en.json carries, not a spot-check: a spot-check on one
+            // core string is exactly what let a vocabulary sweep ship with
+            // half the catalogs missing the new push copy
+            $this->assertSame([], array_keys(array_diff_key($reference, $data)), $code.' is missing keys');
+            $this->assertSame([], array_keys(array_diff_key($data, $reference)), $code.' has keys en.json dropped');
+            foreach ($reference as $key => $english) {
+                // a :param dropped in translation renders the raw placeholder.
+                // Compared as a set, not a sequence — word order legitimately
+                // moves placeholders around (Chinese puts :child before :what)
+                preg_match_all('/:[a-z]+/', $english, $want);
+                preg_match_all('/:[a-z]+/', (string) $data[$key], $got);
+                $want = array_unique($want[0]);
+                $got = array_unique($got[0]);
+                sort($want);
+                sort($got);
+                $this->assertSame(array_values($want), array_values($got), $code.' → '.$key);
+            }
             $this->assertFileExists(base_path('lang/'.$code.'/validation.php'), $code);
         }
     }

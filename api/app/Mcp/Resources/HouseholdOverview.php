@@ -38,7 +38,7 @@ class HouseholdOverview extends Resource
                 ->map(fn ($b) => $b->name.($b->birthdate ? " (born {$b->birthdate})" : ''))->implode(', ') ?: 'none yet'),
             'Members: '.$household->users->sortBy('id')
                 ->map(fn ($u) => $u->name.' ('.($u->role ?? 'parent').')')->implode(', '),
-            'On duty: '.($onDuty ?? 'nobody'),
+            'Covering: '.($onDuty ?? 'nobody — the grown-ups are sharing'),
             'Running timers: '.($timers
                 ? collect($timers)->map(fn ($t) => $t['type'].' since '.Carbon::createFromTimestampMs($t['started_at'])->toIso8601String())->implode(', ')
                 : 'none'),

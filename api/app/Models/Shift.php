@@ -12,7 +12,8 @@ class Shift extends Model
 {
     protected $fillable = [
         'household_id', 'state', 'requester_id', 'target_id', 'user_id', 'note', 'plan', 'until',
-        'until_at', 'until_notified_at', 'requested_at', 'started_at', 'ended_at', 'handback_note',
+        'until_at', 'until_notified_at', 'requested_at', 'started_at', 'ended_at', 'ended_by',
+        'handback_note',
     ];
 
     protected $casts = [

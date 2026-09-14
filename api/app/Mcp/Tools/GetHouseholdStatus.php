@@ -12,7 +12,7 @@ use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[IsReadOnly]
-#[Description('Who is in the household, who is on duty, the latest shift, and any running timers.')]
+#[Description('Who is in the household, who is covering right now (null when the grown-ups are sharing), the latest cover, and any running timers.')]
 class GetHouseholdStatus extends BabylogTool
 {
     public function handle(Request $request): Response
@@ -47,6 +47,8 @@ class GetHouseholdStatus extends BabylogTool
                 'user_id' => $shift->user_id,
                 'note' => $shift->note,
                 'until' => $shift->until,
+                // which exit closed it: holder | parent | until | handback | assign | removed
+                'ended_by' => $shift->ended_by,
             ] : null,
             'timer' => $legacy ? $enrich($legacy) : null,
             'timers' => array_map($enrich, $household->runningTimers()),

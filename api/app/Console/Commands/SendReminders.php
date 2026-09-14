@@ -5,6 +5,7 @@
 
 namespace App\Console\Commands;
 
+use App\Events\HouseholdTouched;
 use App\Models\Household;
 use App\Models\Shift;
 use App\Models\User;
@@ -34,7 +35,9 @@ class SendReminders extends Command
 
     public function handle(PushService $push): void
     {
-        $this->untilReminder($push);
+        // first, so the same tick's feed reminders already see duty as it is
+        // after any cover that just ended
+        $this->coverWindow($push);
 
         $users = User::whereHas('pushSubscriptions')->with(['household.children'])->get();
         foreach ($users as $user) {
@@ -55,20 +58,33 @@ class SendReminders extends Command
         }
     }
 
+    /** A cover window is a plan, not a contract — warn at `until`, end it this long after. */
+    private const UNTIL_GRACE_MS = 15 * 60000;
+
     /**
-     * An active shift's clock-time "until" has passed: ping the shift-holder
-     * ("hand back?") and their counterpart — the member who asked for the
-     * cover (a self-started shift falls back to the first other member) —
-     * once, and change nothing: duty only ever moves through an explicit
-     * handback. The rest of the household isn't part of this exchange and
-     * stays unpinged. The marker lives on the shift row (until_notified_at),
-     * so the every-minute schedule can't re-fire it; it is stamped before
-     * pushing so a transport hiccup degrades to a missed ping, never a
-     * nightly spam loop.
+     * Two passes over a cover's clock-time "until".
+     *
+     * **Warn** at `until_at`: ping the holder and their counterpart — the member
+     * who asked for the cover (a self-started one falls back to the first other
+     * member). The rest of the household isn't part of this exchange and stays
+     * unpinged. The marker lives on the row (until_notified_at) so the
+     * every-minute schedule can't re-fire it, and it is stamped before pushing
+     * so a transport hiccup degrades to a missed ping, never a nightly loop.
+     *
+     * **End** a grace period later: complete the cover and hand duty back to
+     * nobody. "Grandma until 4" has to end at 4 without anyone acting at 4 —
+     * that's the whole point of naming a window. The grace exists so the warn
+     * lands first and a cover that's simply running long isn't yanked away
+     * mid-feed.
+     *
+     * The end pass deliberately does NOT require the warn to have gone out:
+     * quiet hours silence *pushes*, not state, and a cover that expires at 2am
+     * must not stay open until morning.
      */
-    private function untilReminder(PushService $push): void
+    private function coverWindow(PushService $push): void
     {
         $now = now()->getTimestampMs();
+
         $due = Shift::where('state', 'active')
             ->whereNotNull('until_at')
             ->where('until_at', '<=', $now)
@@ -93,18 +109,54 @@ class SendReminders extends Command
                 $push->notify(
                     $holder,
                     'shift',
-                    ['Shift over — hand back?'],
-                    ['You said :said — nothing changes until you hand :baby back.', ['said' => $said, 'baby' => $baby]],
+                    ['Your cover is up'],
+                    ['You said :said — it ends on its own shortly unless you carry on.', ['said' => $said]],
                 );
             }
             if ($counterpart && $counterpart->notifyPrefs()['handoff'] && ! $counterpart->inQuietHours()) {
                 $push->notify(
                     $counterpart,
                     'shift',
-                    [':name’s shift is up', ['name' => $holder->name]],
+                    [':name’s cover is up', ['name' => $holder->name]],
                     ['They said :said — ready to take :baby back?', ['said' => $said, 'baby' => $baby]],
                 );
             }
+        }
+
+        $expired = Shift::where('state', 'active')
+            ->whereNotNull('until_at')
+            ->where('until_at', '<=', $now - self::UNTIL_GRACE_MS)
+            ->with(['household.users'])
+            ->get();
+        foreach ($expired as $shift) {
+            $shift->update(['state' => 'completed', 'ended_at' => $now, 'ended_by' => 'until']);
+            $household = $shift->household;
+            if (! $household) {
+                continue;
+            }
+            // only clear duty if it's still this cover's — an assign or a
+            // handback may have moved it on while the window was running out
+            if ($household->on_duty_user_id === $shift->user_id) {
+                $household->update(['on_duty_user_id' => null]);
+            }
+            $holder = $household->users->firstWhere('id', $shift->user_id);
+            $said = [$shift->until ? lcfirst($shift->until) : 'until about now'];
+            foreach ($household->users as $member) {
+                // unlike a handoff — one grown-up addressing another — this is
+                // the app acting on a timer, so quiet hours apply
+                if (! $member->notifyPrefs()['handoff'] || $member->inQuietHours()) {
+                    continue;
+                }
+                $push->notify(
+                    $member,
+                    'shift',
+                    [':name’s cover ended', ['name' => $holder?->name ?? ['someone']]],
+                    ['It ran to :said — back to sharing.', ['said' => $said]],
+                );
+            }
+            // without this nobody re-pulls /state and the Home Assistant
+            // on_duty sensor sits on the holder's name indefinitely
+            HouseholdTouched::send($household->id, 'shift');
         }
     }
 

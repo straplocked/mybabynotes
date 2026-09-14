@@ -490,6 +490,9 @@ export default class App extends React.Component {
       // the ask's note is its own field: a half-typed handback note must not
       // silently become the message you send asking for cover
       askNote: '', askTarget: null, askSeenId: null, planAddOpen: null,
+      // null = infer from the picked member's role (a carer is here now, a
+      // co-parent gets asked); set once you tap either chip
+      coverKind: null,
       fx: getFx(), // device-local (babylog:fx), not in PERSIST
     }
     const saved = loadSaved()
@@ -707,9 +710,13 @@ export default class App extends React.Component {
       return next
     }, () => {
       this.ensureEcho()
-      // partner just handed back to me → surface the shift report once
+      // someone's cover just ended → surface the report once. `ended_by` is
+      // what makes my *own* cover qualify: one the clock closed is news to me,
+      // one I ended by hand is not, and popping a report at yourself for
+      // something you just did is pure noise.
       const { serverShift: sh, me, shiftOpen, dismissedShiftId, screen } = this.state
-      if (sh && sh.state === 'completed' && me && sh.user_id !== me.id && sh.id !== dismissedShiftId
+      const mine = me && sh && sh.user_id === me.id
+      if (sh && sh.state === 'completed' && me && (!mine || sh.ended_by === 'until') && sh.id !== dismissedShiftId
         && !shiftOpen && this._autoOpened !== sh.id && screen === 'home') {
         this._autoOpened = sh.id
         this.mountShift()
@@ -1585,12 +1592,42 @@ export default class App extends React.Component {
     if (!this.state.partner) return // no one to hand to yet
     this.mountShift(s => ({ shiftMode: null, planDraft: s.planDraft || this.draftPlan(), planAddOpen: null }))
   }
-  // composing a handoff: the plan, window, and note the *asker* is proposing.
-  // This used to be a one-tap link that fired prose — there was nothing to
-  // author, which is most of why it went unused.
+  // composing a cover: who's taking it, whether they're already here or still
+  // need asking, the plan, the window, and a note. This used to be a one-tap
+  // link that fired prose — there was nothing to author, which is most of why
+  // it went unused.
   openAsk = () => {
     if (!this.state.partner) return
-    this.mountShift(s => ({ shiftMode: 'ask', planDraft: s.planDraft || this.draftPlan(), planOff: [], planAddOpen: null }))
+    this.mountShift(s => ({ shiftMode: 'ask', planDraft: s.planDraft || this.draftPlan(), planOff: [], planAddOpen: null, coverKind: null }))
+  }
+  // a carer standing in your kitchen is already holding the baby, so "they're
+  // here now" is the honest default for them; a co-parent gets asked
+  coverKind(target) {
+    return this.state.coverKind || (target && target.role === 'caregiver' ? 'now' : 'ask')
+  }
+  // one compose sheet, two endings: assigning starts the cover on the spot,
+  // asking waits for a yes. The CTA says which — they're never two buttons.
+  submitCover = () => {
+    const s = this.state
+    const target = s.askTarget != null ? this.memberById(s.askTarget) : null
+    // the server is the real gate (403); this keeps a caregiver's UI honest
+    return target && this.isParent() && this.coverKind(target) === 'now'
+      ? this.assignCover(target) : this.sendAsk()
+  }
+  assignCover = target => {
+    const s = this.state
+    const plan = (s.planDraft || this.draftPlan()).filter(p => !s.planOff.includes(p.id))
+    const until = s.until, untilAt = this.untilAt(until)
+    const note = s.askNote
+    this.closeShift()
+    this.setState(st => ({
+      shiftMode: null, planDraft: null, planOff: [], askNote: '',
+      onDutyUserId: target.id,
+      serverShift: { id: -4, state: 'active', user_id: target.id, requester_id: st.me?.id, target_id: target.id, note, plan, until, until_at: untilAt, started_at: Date.now() },
+      toast: t('{name} is covering now', { name: target.name }), undoAction: null,
+    }), () => this.bumpToast())
+    api.shiftAssign(target.id, note, plan, until, untilAt)
+      .then(r => { if (r.shift) this.setState({ serverShift: r.shift }) }).catch(this.shiftFail)
   }
   sendAsk = () => {
     const s = this.state
@@ -1604,8 +1641,8 @@ export default class App extends React.Component {
       shiftMode: null, planDraft: null, planOff: [],
       serverShift: { id: -3, state: 'requested', requester_id: st.me?.id, target_id: target?.id ?? null, note, plan, until, until_at: untilAt, requested_at: Date.now() },
       toast: target
-        ? t('{who} will get your handoff ask', { who: target.name })
-        : t('{who} will get your handoff ask', { who: others.length > 1 ? t('Everyone else') : (st.partner?.name || t('Your partner')) }),
+        ? t('{who} will get your cover ask', { who: target.name })
+        : t('{who} will get your cover ask', { who: others.length > 1 ? t('Everyone else') : (st.partner?.name || t('Your partner')) }),
       undoAction: null,
     }), () => this.bumpToast())
     api.shiftRequest(note, plan, until, untilAt, target?.id ?? null).catch(this.shiftFail)
@@ -1653,7 +1690,7 @@ export default class App extends React.Component {
         serverShift: { id: st.serverShift?.id ?? -1, state: 'active', user_id: st.me?.id, requester_id: st.serverShift?.state === 'requested' ? st.serverShift.requester_id : null, plan, until, until_at: untilAt, started_at: Date.now() },
         // starting a shift while already holding duty isn't a takeover — don't
         // announce a change that didn't happen
-        toast: t(fromId ? 'You’re on duty · {name} notified' : 'Shift started · {name} notified',
+        toast: t(fromId ? 'You’re covering · {name} notified' : 'Cover started · {name} notified',
           { name: this.memberName(fromId, st.partner?.name) || st.partner?.name || t('your partner') }), undoAction: null,
       }
     }, () => this.bumpToast())
@@ -1703,6 +1740,24 @@ export default class App extends React.Component {
       return [...plan, { id: 'p' + Date.now(), type, at }]
     })
   }
+  // "I'm done" — the cover closes and duty goes back to *nobody*, which is the
+  // state two grown-ups at home are actually in. This is the exit a cover you
+  // started yourself never had: hand-back needs a person to hand to, and there
+  // isn't always one.
+  endCover = () => {
+    const note = this.state.handbackNote
+    this.setState(s => {
+      const sh = s.serverShift
+      return {
+        plan: [],
+        serverShift: sh && sh.state === 'active'
+          ? { ...sh, state: 'completed', ended_at: Date.now(), ended_by: 'holder', handback_note: note }
+          : { id: -2, state: 'completed', user_id: s.me?.id, started_at: sh?.started_at ?? Date.now(), ended_at: Date.now(), ended_by: 'holder', handback_note: note },
+        onDutyUserId: null,
+      }
+    })
+    api.shiftEnd(note).then(r => { if (r.shift) this.setState({ serverShift: r.shift }) }).catch(this.shiftFail)
+  }
   handBack = () => {
     const note = this.state.handbackNote
     this.setState(s => {
@@ -1733,7 +1788,7 @@ export default class App extends React.Component {
     const others = s.members.filter(m => s.me && m.id !== s.me.id)
     this.closeShift()
     this.setState({
-      toast: t('{who} will get your handoff ask', {
+      toast: t('{who} will get your cover ask', {
         who: to ? to.name : (others.length > 1 ? t('Everyone else') : (s.partner?.name || t('Your partner'))),
       }), undoAction: null,
     }, () => this.bumpToast())
@@ -2510,6 +2565,9 @@ export default class App extends React.Component {
     // my own outstanding ask: /state carries one shift, so a pending request
     // hides an active shift of mine behind it while it's open
     const myAsk = !!(me && sh && sh.state === 'requested' && sh.requester_id === me.id)
+    // the resting state, and now a real one: nobody has taken cover, so the
+    // grown-ups are sharing. Duty only exists while a cover is open.
+    const nobodyCovering = !activeMine && !activeTheirs && s.onDutyUserId == null
     // the humans on the other side of each surface — with two members these
     // all collapse to "the partner", with more they name the right person
     const requesterName = incomingReq ? this.memberName(sh.requester_id, partnerName) : partnerName
@@ -2606,6 +2664,9 @@ export default class App extends React.Component {
     const askTo = s.askTarget != null ? this.memberById(s.askTarget)
       : (s.members.length > 2 ? null : (partner ? this.memberById(partner.id) || partner : null))
     const askToCarer = !!askTo && askTo.role === 'caregiver'
+    // only a parent can put someone else on cover, so a caregiver composing one
+    // only ever gets to ask
+    const askKind = askTo && this.isParent() ? this.coverKind(askTo) : 'ask'
     const theirShiftLine = completed
       ? t('{name} has been on since {time}', { name: dutyName, time: this.clock(sh.ended_at) })
       : t('{name} has {baby} right now', { name: dutyName, baby: s.babyName || t('the baby') })
@@ -2759,7 +2820,9 @@ export default class App extends React.Component {
       relieveColor: !iAmOnDuty && s.members.length > 2 && s.onDutyUserId != null ? this.memberColor(s.onDutyUserId) : PARTNER_COLOR,
       hbName,
       // opens the compose sheet now — there's a plan to author, not just a note to fire
-      askLabel: askTo ? t('Ask {name} to take over', { name: askTo.name }) : t('Ask someone else to take over'),
+      // the compose sheet can assign or ask, so its opener stays neutral —
+      // the CTA inside is what says which one you're about to do
+      askLabel: t('Hand it to someone else'),
       // a shift someone handed you is owed back; one you started yourself has
       // nobody to hand it back TO, so asking is the only honest way out of it
       handedToMe: !!myShiftReqId,
@@ -2775,10 +2838,11 @@ export default class App extends React.Component {
       // mirrors what the sheet opens on — with the footer shortcut gone this
       // is the only place the duty state is spelled out, so it can't skip the
       // "someone else has them" case the footer used to cover
-      shiftBtnLabel: incomingReq ? t('{name} is handing off', { name: requesterName })
-        : activeMine ? t('Your shift') : activeTheirs ? t('{name}’s shift', { name: shiftOwnerName })
+      shiftBtnLabel: incomingReq ? t('{name} is asking you to cover', { name: requesterName })
+        : activeMine ? t('You’re covering') : activeTheirs ? t('{name} is covering', { name: shiftOwnerName })
           : !iAmOnDuty ? t('Take over from {name}', { name: dutyName })
-            : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start my shift'),
+            : myAsk ? t('Waiting for {name}', { name: partnerName })
+              : nobodyCovering ? t('Nobody’s covering') : t('Start my cover'),
       shiftBtnBg: incomingReq ? 'rgba(var(--accent-rgb),0.16)' : 'var(--surface)',
       shiftBtnBorder: incomingReq ? OLIVE : 'rgba(var(--ink-rgb),0.08)',
       shiftBtnFg: incomingReq || activeMine ? 'var(--accent-deep)' : 'var(--muted)',
@@ -2802,48 +2866,75 @@ export default class App extends React.Component {
       shiftDragging: s.shiftDragging,
       // composing an ask — the plan/window/note you're proposing to someone else
       sheetAsk: shiftUp && !showReport && s.shiftMode === 'ask',
-      askTitle: askTo ? t('Ask {name} to take over', { name: askTo.name }) : t('Ask someone to take over'),
+      askTitle: t('Who’s covering?'),
       // a carer is being told what needs doing; a partner is being asked a favor
-      askSub: askToCarer
-        ? t('They’ll get the plan and can adjust it if something changes.')
-        : t('They can adjust the plan before taking over.'),
-      askPlanLabel: askToCarer ? t('What needs to happen') : t('The plan for your shift'),
+      askSub: !askTo ? t('Pick who has {baby} — anyone else can answer an open ask.', { baby: s.babyName || t('the baby') })
+        : askKind === 'now' ? t('They’re with {baby} already — this just starts their cover.', { baby: s.babyName || t('the baby') })
+          : askToCarer
+            ? t('They’ll get the plan and can adjust it if something changes.')
+            : t('They can adjust the plan before taking over.'),
+      askPlanLabel: askKind === 'now' || askToCarer ? t('What needs to happen') : t('The plan for their cover'),
       askNote: s.askNote,
       setAskNote: e => this.setState({ askNote: e.target.value }),
       askNotePlaceholder: t('e.g. she went down at 11, bottle’s in the fridge'),
-      // only worth choosing with three or more grown-ups; two adults have an
-      // obvious recipient and shouldn't be made to pick
-      askTargets: s.members.length > 2 ? [{ id: null, name: t('Anyone') }, ...s.members.filter(m => m.id !== me?.id)].map(m => {
+      // always offered now: naming grandma is the point, and with two adults the
+      // "Anyone" chip is simply the one that's already on
+      askTargets: [{ id: null, name: t('Anyone') }, ...s.members.filter(m => m.id !== me?.id)].map(m => {
         const on = (s.askTarget ?? null) === (m.id ?? null)
-        return { key: m.id ?? 'any', label: m.name, onTap: () => this.setState({ askTarget: m.id ?? null }),
+        return { key: m.id ?? 'any', label: m.name, onTap: () => this.setState({ askTarget: m.id ?? null, coverKind: null }),
+          ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
+      }),
+      // assigning vs asking, chosen explicitly — and only when someone is named,
+      // since an open ask has nobody to assign to. Parents only: taking a cover
+      // is volunteering, putting someone else on one isn't.
+      askKinds: askTo && this.isParent() ? [
+        { key: 'now', label: t('They’re here now') },
+        { key: 'ask', label: t('Ask them first') },
+      ].map(k => {
+        const on = askKind === k.key
+        return { ...k, onTap: () => this.setState({ coverKind: k.key }),
           ...(on ? { bg: 'rgba(var(--accent-rgb),0.16)', border: OLIVE, fg: 'var(--accent-deep)' } : { bg: 'var(--surface)', border: 'rgba(var(--ink-rgb),0.12)', fg: 'var(--muted)' }) }
       }) : null,
-      askCta: askTo ? t('Send to {name}', { name: askTo.name }) : t('Send the ask'),
-      openAsk: this.openAsk, sendAsk: this.sendAsk,
+      // the you→them graphic follows the chip you picked; it used to be hard-wired
+      // to the legacy "partner", so choosing the carer still drew your co-parent
+      askToName: askTo ? askTo.name : partnerName,
+      askToInitial: initial(askTo ? askTo.name : partner?.name),
+      askToColor: askTo && s.members.length > 2 ? this.memberColor(askTo.id) : PARTNER_COLOR,
+      askCta: askTo
+        ? (askKind === 'now' ? t('Start {name}’s cover now', { name: askTo.name }) : t('Send to {name}', { name: askTo.name }))
+        : t('Send the ask'),
+      askFoot: askTo && askKind === 'now'
+        ? t('Starts now. {name} gets the plan and a ping.', { name: askTo.name })
+        : t('Nothing changes until they say yes.'),
+      openAsk: this.openAsk, sendAsk: this.submitCover,
       // one "open a shift" sheet, two framings: relieving someone, or starting
       // your own while already holding duty. sheetMine is the running shift.
       sheetStart: shiftUp && !showReport && s.shiftMode !== 'ask' && !activeMine,
       startPair: !iAmOnDuty, // the them→you handoff graphic only reads when duty moves
       startTitle: !iAmOnDuty ? t('Take over from {name}', { name: dutyName })
-        : myAsk ? t('Waiting for {name}', { name: partnerName }) : t('Start your shift'),
+        : myAsk ? t('Waiting for {name}', { name: partnerName })
+          : nobodyCovering ? t('Nobody’s covering') : t('Start your cover'),
       startSub: !iAmOnDuty ? theirShiftLine
         : myAsk ? t('Waiting for {name} to take over', { name: partnerName })
-          : t('Plan what’s coming so {name} isn’t guessing.', { name: partnerName }),
-      startCta: myAsk ? t('Ask again') : iAmOnDuty ? t('Start my shift') : t('I’ve got him — start my shift'),
+          : nobodyCovering
+            ? t('You’re all on {baby} together. Start a cover when one of you takes a stretch.', { baby: s.babyName || t('the baby') })
+            : t('Plan what’s coming so {name} isn’t guessing.', { name: partnerName }),
+      startCta: myAsk ? t('Ask again') : iAmOnDuty ? t('I’ve got {baby} — start my cover', { baby: s.babyName || t('the baby') }) : t('I’ve got them — start my cover'),
       startAction: myAsk ? this.requestHandoff : this.acceptShift,
       startFoot: iAmOnDuty
         ? t('{name} sees your plan and how it’s going — without asking.', { name: partnerName })
-        : t('{name} gets a “you’re covered” ping and can sleep.', { name: dutyName }),
+        : t('{name} gets a “you’re off” ping and can sleep.', { name: dutyName }),
       sheetMine: shiftUp && !showReport && s.shiftMode !== 'ask' && activeMine,
       sheetReport: showReport,
-      reportTitle: iHandedBack ? t('{name}’s back on', { name: dutyName }) : t('{name} handed back', { name: shiftOwnerName }),
+      reportTitle: completed && sh.ended_by === 'until' && iHandedBack ? t('Your cover ended')
+        : iHandedBack ? t('Cover ended') : t('{name}’s cover is over', { name: shiftOwnerName }),
       openShift: this.openShift, closeShift: this.closeShift, acceptShift: this.acceptShift, handBack: this.handBack,
-      requestHandoff: this.requestHandoff,
+      endCover: this.endCover, requestHandoff: this.requestHandoff,
       canRequest: iAmOnDuty && !!partner && !(sh && sh.state === 'requested'),
       shiftSince: t('since {time}', { time: this.clock(shiftStart) }), shiftElapsed: this.elapsed(shiftStart),
       nextUp: nextRow ? t('Next: {what} {when}', { what: lower(nextRow.label.split(' · ')[0]), when: nextRow.when }) : t('Plan done'),
       plan: planRows, reportRows,
-      reportRange: this.clock(shiftStart) + ' – ' + this.clock(shiftEnd || Date.now()) + ' · ' + t('{dur} on duty', { dur: this.elapsed(shiftStart) }),
+      reportRange: this.clock(shiftStart) + ' – ' + this.clock(shiftEnd || Date.now()) + ' · ' + t('{dur} covering', { dur: this.elapsed(shiftStart) }),
       handbackNote: s.handbackNote, reportNote: noteShown, hasHandbackNote: !!noteShown,
       setHandbackNote: e => this.setState({ handbackNote: e.target.value }),
 
@@ -2951,7 +3042,7 @@ export default class App extends React.Component {
             : t(s.pushOn ? 'This phone gets pings. Pick what’s worth one below — each grown-up sets their own.'
             : 'Flip it on and allow the permission — then pick what’s worth a ping.'),
           rows: [
-            row('handoff', t('Handoff asks & handbacks'), 'swap_horiz', 'var(--accent)'),
+            row('handoff', t('Cover asks & endings'), 'swap_horiz', 'var(--accent)'),
             ...(partner ? [row('timer', t('{name} starts a timer', { name: s.members.length > 2 ? t('Someone') : partnerName }), 'timer', 'oklch(0.60 0.075 350)')] : []),
             ...(partner ? [row('partner', t('{name} logs something', { name: s.members.length > 2 ? t('Someone') : partnerName }), 'edit_note', 'oklch(0.60 0.075 300)')] : []),
             row('feed', t('Feed reminder'), 'local_drink', 'oklch(0.60 0.075 250)'),
@@ -3137,8 +3228,8 @@ export default class App extends React.Component {
           full: canManage && seats >= this.maxMembers(),
           capWord: t(spellCount(this.maxMembers())),
           hint: canManage
-            ? t('Up to {n} grown-ups share one log. Parents can change anything here; caregivers log, run timers, and cover shifts.', { n: t(spellCount(this.maxMembers())) })
-            : t('Only a parent can invite or remove people. You can log, run timers, and cover shifts.'),
+            ? t('Up to {n} grown-ups share one log. Parents can change anything here; caregivers log, run timers, and cover.', { n: t(spellCount(this.maxMembers())) })
+            : t('Only a parent can invite or remove people. You can log, run timers, and cover for the others.'),
         }
       })(),
       account: {
@@ -3375,7 +3466,7 @@ export default class App extends React.Component {
                     <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
                   ))}
                 </div>
-                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>{t('They see the same log live. No “when did you…” texts. Caregivers can log and cover shifts, but can’t change settings.')}</div>
+                <div style={S('font-size:12.5px;color:#8C8474;padding-left:2px')}>{t('They see the same log live. No “when did you…” texts. Caregivers can log and cover, but can’t change settings.')}</div>
               </div>
             </div>
 
@@ -3451,14 +3542,14 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;gap:10px')}>
                     <div style={S(`width:34px;height:34px;border-radius:999px;background:${v.requesterColor};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#FCFBF6`)}>{v.requesterInitial}</div>
                     <div style={S('flex:1;display:flex;flex-direction:column;gap:1px')}>
-                      <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('{name} is handing off', { name: v.requesterName })}</div>
+                      <div style={S('font-size:15px;font-weight:700;letter-spacing:-0.01em')}>{t('{name} is asking you to cover', { name: v.requesterName })}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{v.requestAgo}</div>
                     </div>
                     <Sym style={{ fontSize: 22, color: 'var(--accent)' }}>swap_horiz</Sym>
                   </div>
                   <div style={S('font-size:15px;line-height:1.45;color:#4E4A3F;background:rgba(var(--accent-rgb),0.09);border-radius:16px;padding:12px 14px;text-wrap:pretty')}>“{v.requestNote}”</div>
                   <div style={S('display:flex;flex-direction:column;gap:6px')}>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('What needs to happen')}</div>
                     <div style={S('display:flex;flex-wrap:wrap;gap:6px')}>
                       {v.requestPlan.map((p, i) => (
                         <div key={i} style={S('display:flex;align-items:center;gap:6px;background:#FFFDF8;border:1px solid rgba(38,35,29,0.12);border-radius:999px;padding:6px 11px 6px 8px')}>
@@ -4107,7 +4198,7 @@ export default class App extends React.Component {
                         </div>
                         )}
                         <div style={S('display:flex;align-items:center;gap:11px;padding:0 0 8px 29px')}>
-                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>{t('Only while I’m on duty')}</div>
+                          <div style={S('flex:1;font-size:13px;color:#6E6659')}>{t('Mute while someone else is covering')}</div>
                           <button type="button" onClick={v.notify.toggleOnDuty} style={S('background:none;border:none;padding:0;cursor:pointer;display:flex')}>
                             <Sym style={{ fontSize: 20, color: v.notify.onDutyToggleColor }}>{v.notify.onDutyToggleIcon}</Sym>
                           </button>
@@ -4124,7 +4215,7 @@ export default class App extends React.Component {
                     )}
                   </React.Fragment>
                 ))}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('Quiet hours pause reminders and activity pings — handoff asks always come through. Reminders reach every phone you’ve switched on.')}</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:8px;text-wrap:pretty')}>{t('Quiet hours pause reminders and activity pings — cover asks always come through. Reminders reach every phone you’ve switched on.')}</div>
               </div>
 
               <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:12px')}>
@@ -4358,7 +4449,7 @@ export default class App extends React.Component {
                     <div style={S('font-size:11.5px;color:#B5AC98;text-wrap:pretty')}>{t('Every other phone gets logged out — this one stays signed in.')}</div>
                   </div>
                 )}
-                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Your name is what your partner sees on duty and handoffs.')}</div>
+                <div style={S('font-size:12px;color:#B5AC98;padding-top:6px;text-wrap:pretty')}>{t('Your name is what the others see on covers and asks.')}</div>
               </div>
 
               <div style={S('text-align:center;padding:16px 0 0')}>
@@ -4587,8 +4678,8 @@ export default class App extends React.Component {
                     </div>
                     <Sym style={{ fontSize: 28, color: 'var(--faint)', marginBottom: 22 }}>arrow_forward</Sym>
                     <div style={S('display:flex;flex-direction:column;align-items:center;gap:6px')}>
-                      <div style={S(`width:56px;height:56px;border-radius:999px;background:${v.relieveColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.partnerInitial}</div>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{v.partnerName}</div>
+                      <div style={S(`width:56px;height:56px;border-radius:999px;background:${v.askToColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#FCFBF6`)}>{v.askToInitial}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#6E6659")}>{v.askToName}</div>
                     </div>
                   </div>
                   <div style={S("text-align:center;font-family:'Nunito',sans-serif;font-weight:800;font-size:23px;letter-spacing:-0.02em")}>{v.askTitle}</div>
@@ -4598,6 +4689,16 @@ export default class App extends React.Component {
                     <div style={S('display:flex;gap:6px;flex-wrap:wrap;padding-top:14px')}>
                       {v.askTargets.map(c => (
                         <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;min-width:80px;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
+                      ))}
+                    </div>
+                  )}
+                  {/* the difference between assigning and asking, made a choice
+                      rather than a guess — grandma in your kitchen isn't a
+                      negotiation, your partner upstairs is */}
+                  {v.askKinds && (
+                    <div style={S('display:flex;gap:6px;padding-top:8px')}>
+                      {v.askKinds.map(c => (
+                        <button key={c.key} type="button" onClick={c.onTap} style={S(`flex:1;background:${c.bg};border:1px solid ${c.border};border-radius:999px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;color:${c.fg};cursor:pointer`)}>{c.label}</button>
                       ))}
                     </div>
                   )}
@@ -4636,7 +4737,7 @@ export default class App extends React.Component {
                           </button>
                         )}
                     </div>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Covering until')}</div>
                     <div style={S('display:flex;gap:6px;padding-top:6px')}>
                       {v.untilOptions.map((u, i) => (
                         <button key={i} type="button" onClick={u.onTap} style={S(`flex:1;background:${u.bg};border:1px solid ${u.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${u.fg};cursor:pointer`)}>{u.label}</button>
@@ -4653,7 +4754,7 @@ export default class App extends React.Component {
                     <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>send</Sym>
                     <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.askCta}</div>
                   </button>
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t('Duty moves when they accept — you stay on until then.')}</div>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{v.askFoot}</div>
                 </>
               )}
 
@@ -4683,7 +4784,7 @@ export default class App extends React.Component {
                   {v.theirs && v.plan.length > 0 && (
                     <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 10px;margin-top:18px')}>
                       <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 2px')}>
-                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('{name}’s shift', { name: v.shiftOwnerName })}</div>
+                        <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('{name} is covering', { name: v.shiftOwnerName })}</div>
                         <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
                       </div>
                       {v.plan.map((p, i) => (
@@ -4712,7 +4813,7 @@ export default class App extends React.Component {
 
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 12px;margin-top:10px')}>
                     <div style={S('display:flex;align-items:center;justify-content:space-between;padding:10px 0 4px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('Plan for your shift')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your cover')}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#B5AC98")}>{t('from the usual rhythm')}</div>
                     </div>
                     {v.requestPlanRows.map((p, i) => (
@@ -4744,7 +4845,7 @@ export default class App extends React.Component {
                           </button>
                         )}
                     </div>
-                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Until')}</div>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding-top:6px")}>{t('Covering until')}</div>
                     <div style={S('display:flex;gap:6px;padding-top:6px')}>
                       {v.untilOptions.map((u, i) => (
                         <button key={i} type="button" onClick={u.onTap} style={S(`flex:1;background:${u.bg};border:1px solid ${u.border};border-radius:999px;padding:8px 6px;font-family:inherit;font-size:12.5px;font-weight:600;color:${u.fg};cursor:pointer`)}>{u.label}</button>
@@ -4771,7 +4872,7 @@ export default class App extends React.Component {
                   <div style={S('display:flex;align-items:center;gap:12px;padding:4px 4px 14px')}>
                     <div style={S(`width:48px;height:48px;border-radius:999px;background:${ME_COLOR};display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:#FCFBF6`)}>{v.myInitial}</div>
                     <div style={S('display:flex;flex-direction:column;gap:2px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>{t('Your shift')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:800;font-size:22px;letter-spacing:-0.02em")}>{t('You’re covering')}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#8C8474")}>{v.shiftSince} · {v.shiftElapsed}</div>
                     </div>
                   </div>
@@ -4780,7 +4881,7 @@ export default class App extends React.Component {
                       same editable times, same one-tap drop */}
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px 8px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px')}>
                     <div style={S('display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0 2px')}>
-                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your shift')}</div>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474")}>{t('The plan for your cover')}</div>
                       <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-deep);background:rgba(var(--accent-rgb),0.14);border-radius:999px;padding:5px 11px")}>{v.nextUp}</div>
                     </div>
                     {v.plan.map((p, i) => (
@@ -4824,7 +4925,7 @@ export default class App extends React.Component {
                     </div>
                   </div>
 
-                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:0 4px 6px")}>{t('Your shift so far')}</div>
+                  <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:#8C8474;padding:0 4px 6px")}>{t('Your cover so far')}</div>
                   <div style={S('background:#FFFDF8;border:1px solid rgba(38,35,29,0.07);border-radius:26px;box-shadow:0 2px 14px rgba(38,35,29,0.06);padding:6px 16px')}>
                     {v.reportRows.map((r, i) => (
                       <div key={i} style={S('display:flex;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid rgba(38,35,29,0.07)')}>
@@ -4842,29 +4943,23 @@ export default class App extends React.Component {
                       <input value={v.handbackNote} onChange={v.setHandbackNote} placeholder={t('e.g. took the 1am bottle slow, fell asleep on me')} style={S('width:100%;box-sizing:border-box;background:rgba(38,35,29,0.04);border:none;border-radius:12px;padding:12px 13px;font-size:14.5px;color:#26231D;outline:none')} />
                     </div>
                   )}
-                  {/* two different things, and the verbs now say which is which:
-                      handing back moves duty on the spot (they asked you to
-                      cover, they're owed it back); asking waits for a yes */}
-                  {v.handedToMe ? (
-                    <>
-                      <button type="button" onClick={v.handBack} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
-                        <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>swap_horiz</Sym>
-                        <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('Hand back to {name} now', { name: v.hbName })}</div>
-                      </button>
-                      {v.canRequest && (
-                        <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
-                          <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>schedule_send</Sym>
-                          {v.askLabel}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <button type="button" onClick={v.openAsk} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
-                      <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>schedule_send</Sym>
-                      <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{v.askLabel}</div>
+                  {/* One ending, one way to pass it on. Two buttons naming the
+                      same person, with nothing saying which one waited, was the
+                      worst confusion this app ever shipped — so the primary verb
+                      stops the cover outright, and handing it on is a link into
+                      the compose sheet, where the CTA says whether it starts now
+                      or waits for a yes. Nobody has to compare two verbs here. */}
+                  <button type="button" onClick={v.endCover} className="hov-olive" style={S('margin-top:14px;width:100%;height:62px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
+                    <Sym style={{ fontSize: 22, color: 'var(--on-accent)' }}>task_alt</Sym>
+                    <div style={S('font-size:16.5px;font-weight:700;color:#FCFBF6')}>{t('End my cover')}</div>
+                  </button>
+                  {v.canRequest && (
+                    <button type="button" onClick={v.openAsk} className="hov-dim" style={S("margin-top:10px;width:100%;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:'Nunito',sans-serif;font-weight:600;font-size:12.5px;color:#5F6E42;padding:6px 0")}>
+                      <Sym style={{ fontSize: 16, color: 'var(--accent-text)' }}>swap_horiz</Sym>
+                      {t('Hand it to someone else')}
                     </button>
                   )}
-                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t(v.handedToMe ? 'Handing back moves duty straight away. Asking waits for them to accept.' : 'Duty moves when they accept — you stay on until then.')}</div>
+                  <div style={S('text-align:center;font-size:12px;color:#8C8474;padding-top:10px;text-wrap:pretty')}>{t('Ending it now means nobody’s covering — you’re all back on.')}</div>
                 </>
               )}
 

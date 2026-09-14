@@ -42,7 +42,7 @@ Every PAT carries one or more scopes; a route rejects a token without its scope 
 
 | Scope | Grants |
 |---|---|
-| `profile:read` | `GET /v1/me` — your account, household members, who's on duty |
+| `profile:read` | `GET /v1/me` — your account, household members, who's covering (`on_duty_user_id`, null when nobody is) |
 | `children:read` | `GET /v1/children`, `GET /v1/children/{id}` |
 | `entries:read` | `GET /v1/entries`, `GET /v1/entries/{id}` |
 | `entries:write` | `POST /v1/entries`, `PATCH /v1/entries/{id}`, `DELETE /v1/entries/{id}` |
@@ -175,7 +175,7 @@ Poll politely: `GET /v1/entries?updated_after=<last rev>&include_deleted=true&so
 HOST=https://notes.example.com
 AUTH='Authorization: Bearer <token>'
 
-# Who am I, who's on duty
+# Who am I, who's covering
 curl -s "$HOST/api/v1/me" -H "$AUTH" -H 'Accept: application/json'
 
 # Last 24h of feedings for child 10

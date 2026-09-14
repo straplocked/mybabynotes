@@ -78,4 +78,11 @@ export const api = {
   shiftAccept: (plan, until, untilAt) => call('/shifts/accept', { method: 'POST', body: { plan, until, until_at: untilAt } }), // until_at: ms epoch or null
   shiftPlan: plan => call('/shifts/plan', { method: 'POST', body: { plan } }),
   shiftHandback: note => call('/shifts/handback', { method: 'POST', body: { note } }),
+  // put someone else on cover, starting now — grandma is already holding the
+  // baby, so there is nothing to accept. Parent-only on the server.
+  shiftAssign: (userId, note, plan, until, untilAt) => call('/shifts/assign', {
+    method: 'POST', body: { user_id: userId, note, plan, until, until_at: untilAt },
+  }),
+  // end the cover outright: duty goes back to nobody rather than to a person
+  shiftEnd: note => call('/shifts/end', { method: 'POST', body: { note } }),
 }

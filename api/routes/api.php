@@ -62,4 +62,8 @@ Route::middleware(['auth:sanctum', 'abilities:*', 'throttle:120,1'])->group(func
     Route::post('/shifts/accept', [ShiftController::class, 'accept']);
     Route::post('/shifts/plan', [ShiftController::class, 'plan']);
     Route::post('/shifts/handback', [ShiftController::class, 'handback']);
+    // the UI calls these "covers"; the wire keeps the old noun so installed
+    // PWAs that POST /shifts/* keep working
+    Route::post('/shifts/assign', [ShiftController::class, 'assign']);
+    Route::post('/shifts/end', [ShiftController::class, 'end']);
 });

@@ -506,8 +506,9 @@ class BabylogApiTest extends TestCase
         $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
         $katId = $this->getJson('/api/state', $this->authed($kat))->json('user.id');
 
-        // Ben (first user) starts on duty and asks Katrina to take over
-        $this->assertSame($benId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+        // nobody is covering to begin with — the grown-ups are sharing, which
+        // is the resting state — and Ben asks Katrina to take over from there
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
         $this->postJson('/api/shifts/request', ['note' => 'need sleep'], $this->authed($ben))->assertOk();
         $this->assertSame('requested', $this->getJson('/api/state', $this->authed($kat))->json('shift.state'));
 
@@ -519,6 +520,151 @@ class BabylogApiTest extends TestCase
         $this->assertSame($benId, $state['onDutyUserId']);
         $this->assertSame('completed', $state['shift']['state']);
         $this->assertSame('went fine', $state['shift']['handback_note']);
+    }
+
+    public function test_a_new_household_starts_with_nobody_covering(): void
+    {
+        // shared is the resting state: two grown-ups at home don't need a rota,
+        // and crowning the founding account made the app assert one anyway
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code]);
+
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+    }
+
+    public function test_ending_a_cover_returns_duty_to_nobody(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code])->json('token');
+
+        $this->postJson('/api/shifts/accept', ['plan' => [], 'until' => 'Open-ended'], $this->authed($kat))->assertOk();
+        $this->postJson('/api/shifts/end', ['note' => 'she napped twice'], $this->authed($kat))->assertOk();
+
+        $state = $this->getJson('/api/state', $this->authed($ben))->json();
+        $this->assertNull($state['onDutyUserId']);
+        $this->assertSame('completed', $state['shift']['state']);
+        $this->assertSame('holder', $state['shift']['ended_by']);
+        $this->assertSame('she napped twice', $state['shift']['handback_note']);
+    }
+
+    public function test_a_cover_you_started_yourself_can_be_ended_by_you(): void
+    {
+        // the missing primitive: a self-started cover used to have no exit but
+        // somebody else taking it, so its row sat `active` forever
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben));
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($ben))->assertOk();
+        $this->postJson('/api/shifts/end', [], $this->authed($ben))->assertOk();
+
+        $state = $this->getJson('/api/state', $this->authed($ben))->json();
+        $this->assertNull($state['onDutyUserId']);
+        $this->assertSame('completed', $state['shift']['state']);
+    }
+
+    public function test_a_parent_can_end_a_cover_someone_forgot_to_close(): void
+    {
+        // grandma leaves at four and never taps
+        [$ben, , $doula] = $this->threeMemberHousehold();
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($doula))->assertOk();
+        $this->postJson('/api/shifts/end', [], $this->authed($ben))->assertOk();
+
+        $state = $this->getJson('/api/state', $this->authed($ben))->json();
+        $this->assertNull($state['onDutyUserId']);
+        $this->assertSame('parent', $state['shift']['ended_by']);
+    }
+
+    public function test_a_caregiver_cannot_end_someone_elses_cover(): void
+    {
+        [, $kat, $doula] = $this->threeMemberHousehold();
+        $katId = $this->getJson('/api/state', $this->authed($kat))->json('user.id');
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($kat))->assertOk();
+        $this->postJson('/api/shifts/end', [], $this->authed($doula))->assertStatus(403);
+
+        $this->assertSame($katId, $this->getJson('/api/state', $this->authed($kat))->json('onDutyUserId'));
+    }
+
+    public function test_a_parent_assigns_a_cover_and_it_starts_immediately(): void
+    {
+        // grandma is standing in the kitchen — the handover already happened,
+        // so there is nothing to accept
+        [$ben, , $doula] = $this->threeMemberHousehold();
+        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        $this->postJson('/api/shifts/assign', [
+            'user_id' => $doulaId,
+            'note' => 'bottle is in the fridge',
+            'plan' => [['id' => 'p1', 'type' => 'bottle', 'at' => now()->getTimestampMs() + 3600000]],
+            'until' => 'Until 4 PM',
+            'until_at' => now()->getTimestampMs() + 7200000,
+        ], $this->authed($ben))->assertOk();
+
+        $state = $this->getJson('/api/state', $this->authed($doula))->json();
+        $this->assertSame($doulaId, $state['onDutyUserId']);
+        $this->assertSame('active', $state['shift']['state']);
+        $this->assertSame($doulaId, $state['shift']['user_id']);
+        // the assigner is recorded as the requester, so ending the cover still
+        // knows who arranged it
+        $this->assertSame($benId, $state['shift']['requester_id']);
+        $this->assertSame('Until 4 PM', $state['shift']['until']);
+        $this->assertCount(1, $state['shift']['plan']);
+    }
+
+    public function test_assign_supersedes_a_running_cover_and_a_pending_ask(): void
+    {
+        [$ben, $kat, $doula] = $this->threeMemberHousehold();
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($kat))->assertOk();
+        $this->postJson('/api/shifts/request', ['note' => 'anyone?'], $this->authed($kat))->assertOk();
+
+        $this->postJson('/api/shifts/assign', ['user_id' => $doulaId], $this->authed($ben))->assertOk();
+
+        // exactly one cover runs at a time, and a stale ask would render as a
+        // phantom incoming card beside it
+        $this->assertSame(1, Shift::where('state', 'active')->count());
+        $this->assertSame(0, Shift::where('state', 'requested')->count());
+        $this->assertSame($doulaId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+    }
+
+    public function test_assign_rejects_someone_outside_the_household(): void
+    {
+        [$ben] = $this->threeMemberHousehold();
+
+        $this->postJson('/api/shifts/assign', ['user_id' => 99999], $this->authed($ben))->assertStatus(422);
+
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+    }
+
+    public function test_a_caregiver_cannot_assign_a_cover(): void
+    {
+        // covering is volunteering — any member may accept. Assigning writes
+        // duty onto someone else's name, which is household-shaping.
+        [, $kat, $doula] = $this->threeMemberHousehold();
+        $katId = $this->getJson('/api/state', $this->authed($kat))->json('user.id');
+
+        $this->postJson('/api/shifts/assign', ['user_id' => $katId], $this->authed($doula))->assertStatus(403);
+
+        $this->assertNull($this->getJson('/api/state', $this->authed($kat))->json('onDutyUserId'));
+    }
+
+    public function test_removing_the_cover_holder_returns_duty_to_nobody(): void
+    {
+        [$ben, , $doula] = $this->threeMemberHousehold();
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($doula))->assertOk();
+        $this->postJson('/api/household/remove-member', ['user_id' => $doulaId], $this->authed($ben))->assertOk();
+
+        // not the remover: pressing the button doesn't put you in charge
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
     }
 
     public function test_state_requires_auth(): void
@@ -808,15 +954,16 @@ class BabylogApiTest extends TestCase
         $fake = $this->fakePush();
         $this->artisan('babylog:reminders')->assertSuccessful();
 
-        // both parents got exactly one ping each: holder asked to hand back,
-        // partner told the shift is up (decision locked: ping BOTH)
+        // both parents got exactly one ping each: holder warned their cover is
+        // up, partner told the same (decision locked: ping BOTH)
         $this->assertCount(2, $fake->sent);
         $holderPing = collect($fake->sent)->firstWhere('user_id', $katId);
         $partnerPing = collect($fake->sent)->firstWhere('user_id', $benId);
-        $this->assertSame('Shift over — hand back?', $holderPing['title']);
-        $this->assertSame('Katrina’s shift is up', $partnerPing['title']);
+        $this->assertSame('Your cover is up', $holderPing['title']);
+        $this->assertSame('Katrina’s cover is up', $partnerPing['title']);
 
-        // the marker is set, and nothing about the shift state changed by itself
+        // the marker is set, and the warn on its own changes nothing — the
+        // cover is still hers until the grace period runs out
         $this->assertNotNull(Shift::sole()->until_notified_at);
         $state = $this->getJson('/api/state', $this->authed($ben))->json();
         $this->assertSame($katId, $state['onDutyUserId']);
@@ -825,6 +972,72 @@ class BabylogApiTest extends TestCase
         // the command runs every minute — a second tick must not ping again
         $this->artisan('babylog:reminders')->assertSuccessful();
         $this->assertCount(2, $fake->sent);
+    }
+
+    public function test_a_cover_ends_itself_once_the_grace_period_is_up(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code])->json('token');
+
+        // "until" is already half an hour past — well beyond the grace window
+        $this->postJson('/api/shifts/accept', [
+            'plan' => [], 'until' => 'Until 6 AM', 'until_at' => now()->getTimestampMs() - 30 * 60000,
+        ], $this->authed($kat))->assertOk();
+
+        $this->fakePush();
+        $this->artisan('babylog:reminders')->assertSuccessful();
+
+        // "Grandma until 4" has to end at 4 without anyone acting at 4
+        $state = $this->getJson('/api/state', $this->authed($ben))->json();
+        $this->assertNull($state['onDutyUserId']);
+        $this->assertSame('completed', $state['shift']['state']);
+        $this->assertSame('until', $state['shift']['ended_by']);
+    }
+
+    public function test_the_grace_period_ends_a_cover_even_inside_quiet_hours(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $code = $this->postJson('/api/invite', ['email' => 'katrina@example.com'], $this->authed($ben))->json('code');
+        $kat = $this->postJson('/api/register', ['name' => 'Katrina', 'email' => 'katrina@example.com', 'password' => 'password123', 'invite' => $code])->json('token');
+
+        // quiet hours covering the whole clock, for both of them
+        foreach ([$ben, $kat] as $tok) {
+            $this->postJson('/api/notify-prefs', [
+                'quiet' => true, 'quietStart' => '00:00', 'quietEnd' => '23:59',
+            ], $this->authed($tok))->assertOk();
+        }
+
+        $this->postJson('/api/shifts/accept', [
+            'plan' => [], 'until' => 'Until 6 AM', 'until_at' => now()->getTimestampMs() - 30 * 60000,
+        ], $this->authed($kat))->assertOk();
+
+        $fake = $this->fakePush();
+        $this->artisan('babylog:reminders')->assertSuccessful();
+
+        // quiet hours silence the pushes, never the state change — otherwise a
+        // cover that expires at 2am stays open until morning
+        $this->assertCount(0, $fake->sent);
+        $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
+        $this->assertSame('completed', Shift::sole()->state);
+    }
+
+    public function test_an_expiring_cover_does_not_stomp_duty_that_already_moved(): void
+    {
+        [$ben, $kat, $doula] = $this->threeMemberHousehold();
+        $doulaId = $this->getJson('/api/state', $this->authed($doula))->json('user.id');
+
+        $this->postJson('/api/shifts/accept', [
+            'plan' => [], 'until' => 'Until 6 AM', 'until_at' => now()->getTimestampMs() - 30 * 60000,
+        ], $this->authed($kat))->assertOk();
+        // Ben puts the doula on before Katrina's window is swept up
+        $this->postJson('/api/shifts/assign', ['user_id' => $doulaId], $this->authed($ben))->assertOk();
+
+        $this->fakePush();
+        $this->artisan('babylog:reminders')->assertSuccessful();
+
+        // Katrina's row is tidied away, but the doula keeps the baby
+        $this->assertSame($doulaId, $this->getJson('/api/state', $this->authed($ben))->json('onDutyUserId'));
     }
 
     public function test_until_ping_waits_for_the_until_time(): void
@@ -1070,6 +1283,8 @@ class BabylogApiTest extends TestCase
         '/api/settings' => ['unit' => 'ml'],
         '/api/invite' => ['email' => 'mole@example.com'],
         '/api/invite/revoke' => ['email' => 'katrina@example.com'],
+        // a caregiver covers; only a parent puts somebody else on cover
+        '/api/shifts/assign' => ['user_id' => 1],
         '/api/household/remove-member' => ['user_id' => 1],
     ];
 
@@ -1483,15 +1698,15 @@ class BabylogApiTest extends TestCase
     public function test_you_cannot_accept_your_own_handoff_request(): void
     {
         [$ben] = $this->threeMemberHousehold();
-        $benId = $this->getJson('/api/state', $this->authed($ben))->json('user.id');
 
         $this->postJson('/api/shifts/request', ['note' => 'so tired'], $this->authed($ben))->assertOk();
         $this->postJson('/api/shifts/accept', ['plan' => []], $this->authed($ben))->assertStatus(422);
 
-        // the ask is still open for someone else, duty unmoved
+        // the ask is still open for someone else, and nobody has been quietly
+        // crowned in the meantime
         $state = $this->getJson('/api/state', $this->authed($ben))->json();
         $this->assertSame('requested', $state['shift']['state']);
-        $this->assertSame($benId, $state['onDutyUserId']);
+        $this->assertNull($state['onDutyUserId']);
     }
 }
 

@@ -50,7 +50,7 @@ All tools operate on the token's household — there is no household parameter a
 |---|---|---|---|
 | `list-children` | `children:read` | — | The children (id, name, birthdate, age label, archived); first is the primary child |
 | `list-entries` | `entries:read` | `baby_id?`, `types?`, `since?`, `until?` (ISO 8601), `limit?` (default 50, max 200) | Entries, newest first, tombstones excluded, author names resolved |
-| `get-household-status` | `profile:read` | — | Members and roles, who's on duty, the children, the latest shift, every running timer with elapsed time |
+| `get-household-status` | `profile:read` | — | Members and roles, who's covering (null when nobody is), the children, the latest cover, every running timer with elapsed time |
 | `get-daily-summary` | `entries:read` | `date?` (YYYY-MM-DD), `tz?` (IANA), `baby_id?` | One day rolled up server-side: bottle count and oz, nursing sessions, pumping sessions and oz, diapers by kind, sleep minutes, tummy time minutes, baths, meds |
 | `log-entry` | `entries:write` | `type`, `time?` (ISO 8601, default now), `detail?`, `baby_id?` | Logs an entry (defaults: now, the primary child); attributed to the token's user |
 | `update-entry` | `entries:write` | `id`, then any of `type`/`time`/`detail`/`baby_id` | Partial update, original author preserved; unknown or foreign id is a loud error |

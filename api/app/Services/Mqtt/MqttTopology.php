@@ -256,6 +256,11 @@ class MqttTopology
         ];
     }
 
+    /**
+     * `nobody` is the resting state, not an error: it means no one has taken
+     * cover and the grown-ups are sharing. Kept as a wire identifier (like
+     * `nurse` / `wet`) so HA templates and dashboards don't have to change.
+     */
     public function onDutyStateMessages(): array
     {
         $onDuty = $this->household->users->firstWhere('id', $this->household->on_duty_user_id);

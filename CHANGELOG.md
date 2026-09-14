@@ -4,6 +4,29 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.4.0 — 2026-09-14
+
+Nobody is on duty unless somebody is actually covering.
+
+### Added
+
+- **Covers replace shifts, and nobody covering is the resting state.** The app used to insist exactly one grown-up was responsible: duty was seeded to the founding account at registration and every exit reassigned it to *someone*, so it was never unset. Two parents at home read a rota they didn't have. A **cover** is now something you switch on when that stops being true — one of you takes the night, or a grandparent sits for an afternoon — and a household that hasn't started one simply has nobody covering. New households begin there, and every ending returns there. Existing households are migrated on upgrade: stale covers left `active` by the old "no self-serve end" bug are closed first, then duty is cleared for anyone who isn't genuinely mid-cover. A household where someone *is* covering right now keeps its holder — this resets a default, it doesn't interrupt anybody's afternoon.
+- **A parent can put someone on cover directly.** "Gran is covering until 4" starts on the spot, with the plan and a note, and no acceptance step — by the time you've reached for the phone she's already holding the baby, and asking a question whose answer is obviously yes is ceremony. Asking still exists for the trade that genuinely waits on a yes; the compose sheet offers both and its button says which one you're about to do. Assigning is parent-only: covering is volunteering, which any member may do, but writing duty onto somebody else's name is household-shaping.
+- **A cover can be ended.** One you started yourself previously had no exit at all — hand-back needs a person to hand *to* — so its row sat open forever and no summary was ever produced for it. "End my cover" closes it and returns duty to nobody. A parent can also close one somebody forgot to end, which is the grandma-left-at-four case.
+- **A named "until" now ends the cover, not just the conversation.** It warns both people when the time passes, then closes the cover a quarter of an hour later and hands duty back to nobody. "Grandma until 4" has to end at 4 without anyone acting at 4. Quiet hours silence the warning but never the ending — a cover that expires at 2am must not still be open in the morning.
+
+### Changed
+
+- **A running cover has one ending, not two rival verbs.** "Hand back to Sam now" and "Ask Sam to take over" sat side by side naming the same person with nothing saying which one waited — the worst confusion this app has shipped. The running-cover sheet now has a single **End my cover**, plus a neutral "Hand it to someone else" link into the compose sheet where the button spells out whether it starts now or waits. No two controls name the same person; a test pins that.
+- **"Only while I'm on duty" became "Mute while someone else is covering"**, which is what it always did — reminders were only ever suppressed when *another* member held duty, so with nobody covering they reach everybody.
+- The vocabulary moved from shift / handoff / on-duty to **cover** throughout the app and its push copy, in all 15 languages. **The wire didn't**: `/shifts/*`, `onDutyUserId`, the notification preference keys and the Home Assistant `on_duty` sensor keep their old names, because installed phones hit the new server before their own code updates and published dashboards key on that entity. `nobody` on the sensor now means "the grown-ups are sharing" rather than "shouldn't happen".
+
+### Fixed
+
+- Picking who to hand a cover to drew the wrong face. The compose sheet's you→them graphic was wired to the legacy "partner", so choosing the caregiver still showed your co-parent above their name.
+- Removing a member who held duty no longer puts the person who removed them in charge; duty returns to nobody.
+- The server catalog check only ever spot-checked a single string, so a vocabulary sweep could have shipped with half the languages missing their new push copy. It now compares every key, and every `:placeholder` inside it, against the English reference.
+
 ## 1.3.0 — 2026-09-14
 
 History stops being a fixed screen and starts reflecting the household reading it.

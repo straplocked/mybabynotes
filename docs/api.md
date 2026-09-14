@@ -15,9 +15,9 @@ Lockdown rules, in order:
 2. Email matches a pending row in the `invites` table → the `invite` code is **required** and must match (hashed comparison); wrong/missing code → 422. Household already full (`babylog.max_household_users`, default 6 via `BABYLOG_MAX_USERS`) → 422. On success the invite row is deleted (single-use) and the new user gets **the invite's role** (`parent` or `caregiver`).
 3. No invite match: allowed only if this is the **first account** on the instance, or `BABYLOG_OPEN_REGISTRATION=true`; otherwise 422 "invite-only". These accounts are always parents.
 
-Returns `201 { "token": "…", "joinedPartner": bool }`. The first user of a household starts on duty. Emails are lowercased. Password min 8, `invite` optional ≤20 chars (non-alphanumerics stripped, uppercased).
+Returns `201 { "token": "…", "joinedPartner": bool }`. A new household starts with **nobody covering** (`on_duty_user_id` null) — duty only exists while someone has actually taken a cover. Emails are lowercased. Password min 8, `invite` optional ≤20 chars (non-alphanumerics stripped, uppercased).
 
-**Roles**: a `parent` has full control; a `caregiver` may log entries, run timers, and request/accept/hand back shifts, but the household-shaping endpoints (`/baby`, `/children`, `/settings`, `/invite`, `/invite/revoke`, `/household/remove-member`) return **403**.
+**Roles**: a `parent` has full control; a `caregiver` may log entries, run timers, and request/accept/end/hand back covers, but the household-shaping endpoints (`/baby`, `/children`, `/settings`, `/invite`, `/invite/revoke`, `/household/remove-member`, `/shifts/assign`) return **403**. Ending *someone else's* cover is parent-only too.
 
 ### `POST /login` — throttle 10/min
 `{ email, password }` → `200 { token }`. Wrong credentials → 422 with a deliberately vague message.
@@ -34,7 +34,7 @@ Revokes the current token.
 ## Account — all auth + throttle 120/min
 
 ### `POST /account/profile`
-`{ name (≤100) }` → `{ ok, name }`, broadcasts an `account` poke (the name shows up in duty chips and handoffs).
+`{ name (≤100) }` → `{ ok, name }`, broadcasts an `account` poke (the name shows up on covers and asks).
 
 ### `POST /account/email`
 `{ email, password }` — requires the current password; wrong password or already-used email → 422. Returns `{ ok, email }`.
@@ -90,7 +90,7 @@ The single polling/converge endpoint.
   "partner": { "id": 2, "name": "Katrina" },        // LEGACY: first other member, or null
   "invitePending": "granny@example.com",             // LEGACY: first pending invite's email, or null
   "baby":    { "name": "Wren", "age": "2–8 wks", "birthdate": "2026-07-20" },  // LEGACY: the primary child, or null
-  "onDutyUserId": 1,
+  "onDutyUserId": 1,                                 // null when nobody is covering
   "settings": { "tracking": {"diapers": false}, "dismissed": ["meds"], "widgets": ["feeds","sleep"],
                 "charts": ["feeds","sleep"], "unit": "oz", "theme": {"accent":"plum","bg":"mist"},
                 "medName": "Vitamin D" },                                                        // or null
@@ -98,6 +98,7 @@ The single polling/converge endpoint.
                "user_id": 2, "note": "…", "plan": [{"id":"p1","type":"bottle","at":1750000000000}],
                "until": "Until 6 AM", "until_at": 1750000000000, "until_notified_at": null,
                "requested_at": 0, "started_at": 0, "ended_at": 0,
+               "ended_by": "holder|parent|until|handback|assign|removed",
                "handback_note": "…" },               // latest row, or null
   "timer":   { "id": "uuid", "type": "nurse", "started_at": 0, "user_id": 1,
                "baby_id": 10 },                      // LEGACY singular: the caller's newest running timer (else the household's), or null
@@ -138,7 +139,7 @@ Batch upsert from the client outbox (≤ 500 per call).
 `{ email }` — deletes the pending invite; its code stops opening doors immediately. Returns `{ ok }`, broadcasts a poke.
 
 ### `POST /household/remove-member` — parents only
-`{ user_id }` — removes a member (a departing caregiver, usually). Their tokens and push subscriptions are deleted (every session 401s), duty falls back to the caller if the target held it, their requested/active shifts are cancelled — but their entries keep their `user_id` so history still says who did what. Removing yourself → 422. Returns `{ ok }`, broadcasts a poke.
+`{ user_id }` — removes a member (a departing caregiver, usually). Their tokens and push subscriptions are deleted (every session 401s); if the target was covering, duty returns to **nobody** (pressing the button doesn't put the remover in charge), and their requested/active shifts are cancelled — but their entries keep their `user_id` so history still says who did what. Removing yourself → 422. Returns `{ ok }`, broadcasts a poke.
 
 ### `POST /settings` — parents only
 ```json
@@ -179,9 +180,13 @@ The server does **not** write the merged entry — same rule as every other stop
 
 **Any member may stop any timer**, not just the one who started it — a nap outlives the handoff that happens mid-nap, and requiring the starter stranded whoever came on duty. The session still belongs to the person who ran it: the stopping client passes the timer's `user_id` as the logged entry's author (see [`POST /entries`](#post-entries)), so a feed stays credited to whoever did it. The nurse *side* is remembered per-device against the timer id, so stopping someone else's nursing timer falls back to the default side rather than their pick.
 
-## Shifts — all auth + throttle 120/min
+## Covers — all auth + throttle 120/min
 
-Shifts are household-level (who has the kids), not per child. Any member — parent or caregiver — can take part.
+Covers are household-level (who has the kids), not per child. **`on_duty_user_id` is null whenever nobody is covering** — the resting state for a household whose grown-ups are both home — and every ending except `handback` returns it there.
+
+The UI calls these *covers*; the wire keeps `shift`, `/shifts/*` and `onDutyUserId` so installed PWAs keep working. Any member — parent or caregiver — can request, accept, plan, end their own, and hand back. **`assign`, and ending someone else's cover, are parent-only.**
+
+`shifts.ended_by` records which exit closed a row: `holder | parent | until | handback | assign | removed`.
 
 ### `POST /shifts/request`
 `{ note?, plan?: [{id,type,at}] (≤20), until?, until_at?, target_id? }` — any member (on duty or not — there's no ownership check) asks the household to take over. The ask **carries what the asker is proposing**: the plan (same `numeric` → int coercion on `at` as `/shifts/accept`), the window, and a note. `target_id` addresses it to one member and narrows the push to them; null (or an id outside the household, or your own) fans it out to every other member. Addressed or not, anyone may answer it. Asking again while a request is pending **refreshes it and re-pings** (a deliberate nudge, not a no-op).
@@ -192,8 +197,14 @@ Shifts are household-level (who has the kids), not per child. Any member — par
 ### `POST /shifts/plan`
 `{ plan: [...] }` — replaces the plan on the caller's active shift (no-op if none). Same `numeric` → int coercion on `at`.
 
+### `POST /shifts/assign` (parent-only)
+`{ user_id, plan?: [{id,type,at}] (≤20), note?, until?, until_at? }` — put another member on cover **starting now**, with no acceptance step: by the time you reach for the phone, the handover already happened in the kitchen. Sets `on_duty_user_id` to them, records the caller as `requester_id`, pushes them the plan and note. Supersedes any running cover (`ended_by=assign`) and cancels any pending ask, so exactly one cover is active. `user_id` outside the household → 422; a caregiver calling it → 403. Returns the shift.
+
+### `POST /shifts/end`
+`{ note? }` — completes the active cover and returns duty to **nobody**. This is the exit a cover you started yourself never had. The holder may always end their own (`ended_by=holder`); a **parent** may also end one someone forgot to close (`ended_by=parent`); a caregiver ending someone else's → 403. With no active row it still succeeds and clears duty, which is how a household carrying seeded duty from before covers existed gets back to shared. Cancels any still-pending ask. Returns the shift (or null).
+
 ### `POST /shifts/handback`
-`{ note? }` — completes the caller's active shift, stores `handback_note`, and returns duty to **the shift's stored `requester_id`** — whoever asked for the cover gets it back, parent or caregiver alike. A self-started shift (or one whose requester was removed) falls back to another **parent** first, then any other member, then the caller: duty must not land on a night carer just because their account is older. Cancels any still-pending request. Returns the shift. Clients render the report from synced entries between `started_at`/`ended_at`.
+`{ note? }` — completes the caller's active shift, stores `handback_note`, and returns duty to **the shift's stored `requester_id`** — whoever asked for the cover gets it back, parent or caregiver alike. A self-started shift (or one whose requester was removed) falls back to another **parent** first, then any other member, then the caller: duty must not land on a night carer just because their account is older. **That fallback chain is the old-client contract and is deliberately frozen** — installed PWAs POST `{note}` here and expect duty to land on a person. The current client ends covers through `/shifts/end` and passes them on through `/shifts/assign`, so it never depends on it. Cancels any still-pending request. Returns the shift. Clients render the report from synced entries between `started_at`/`ended_at`.
 
 ## Websockets
 
