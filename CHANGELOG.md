@@ -4,6 +4,26 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.3.0 — 2026-09-14
+
+History stops being a fixed screen and starts reflecting the household reading it.
+
+### Added
+
+- **History draws the charts you care about.** History had exactly two bar charts, both hardcoded: feeds per day, and diapers per day for anyone who tracks diapers. A **History charts** picker in Settings — beside the Now-cards one, parents only — now chooses from feeds, sleep, diapers, pump, tummy time, bath and meds. Nobody's screen changes until they choose: an empty pick still draws feeds and diapers, exactly what History always drew. A chart can't outlive the tracker it depends on. Sleep is the one chart that isn't a count — it totals hours, so three naps read as "2h" where a row count would have said "3" — and a nap counts toward the day it *started*, which is the same day its drill-down opens.
+- **History names the nap your days keep agreeing on.** A card reads, for example, "Naps around 12:05 PM most days · On 5 of the last 7 days Riley went down between 11:58 AM and 12:20 PM, for about 2h." It clusters nap *start* times within ±45 minutes across the last 7 days, one nap per day, and needs three separate days before it says anything at all. Only the strongest cluster renders, and the length clause is dropped when the cluster's naps don't agree on one — 25m one day and 3h the next has no typical. Overnight sleep is left out on purpose: it's the most regular sleep there is and would win the card every time. No honest pattern, no card.
+- **History says when the feeds tightened, and when they went back.** A 7-day average hides exactly the thing worth noticing — 4h that became 2h reads as "roughly every 3h". A card now reports the change instead, comparing the last 24h against a 72h–7d baseline on medians so one late feed is not a trend. Tighter by 30% and half an hour names cluster feeding as a likely, normal reason; coming back within 15% of the baseline after a genuinely tighter spell says so too. Never both, and nothing at all on a steady week.
+
+### Changed
+
+- **History's header counts what you picked.** It used to insist on "48 feeds · 33 diapers logged" over a screen you had deliberately swapped diapers out of. It now tallies whatever charts the household chose, with sleep in hours like its chart.
+- **Resume rides the most recent sleep, not the newest entry.** Stopping a sleep timer, feeding the baby, then wanting to put them back down for the same nap used to lose the Resume button at exactly the moment it was needed. It now survives whatever has been logged since, and ends on the clock instead: once the baby has been awake longer than the upper bound of their age-typical wake window, the next sleep is a new nap. A newer sleep still takes the button over, a running sleep timer still blocks it, and an unsynced row still can't be resumed.
+- Sum bar charts round to one decimal. "10h 32m" needs about 52px where seven bar labels leave about 40px, so every sleep label wrapped to two lines and shortened every bar to pay for it. The exact figure is one tap away in the day view.
+
+### Fixed
+
+- The Hindi nap-pattern line no longer assumes the baby is a boy. "सोए" agrees with the child, so the sentence picked a gender the app never knows; Hindi now makes the nap the subject and agrees with झपकी, which is what the other gendered-language catalogs (ur/mr/bn/ru) already did.
+
 ## 1.2.1 — 2026-09-11
 
 **1.2.0 carried this same app code but never published.** Its release build stalled in the

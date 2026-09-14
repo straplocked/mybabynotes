@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+- **History reflects the household reading it.** A new **History charts** picker in Settings chooses
+  which bar charts History draws — feeds, sleep, diapers, pump, tummy time, bath, meds — with sleep
+  counted in hours rather than rows. Until you pick, the screen is unchanged.
+- **Two new cards.** History now names the nap your days keep agreeing on ("Naps around 12:05 PM most
+  days"), and says when the feeds tightened — cluster feeding, and the return to normal — instead of
+  hiding both inside a 7-day average. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#130--2026-09-14).
+- Resume now survives a feed logged mid-nap, so settling the baby back down still rewrites one row
+  instead of stacking a second.
+- Nothing to configure, and nothing changes about the add-on's own container.
+
 ## 1.2.1
 
 - **Resume a sleep.** A baby who stirs for a few minutes and settles again used to cost two rows —
