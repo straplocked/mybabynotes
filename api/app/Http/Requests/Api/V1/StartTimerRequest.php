@@ -14,6 +14,8 @@ class StartTimerRequest extends FormRequest
         return [
             'type' => ['required', 'in:nurse,pump,sleep,tummy'],
             'baby_id' => ['sometimes', 'nullable', 'integer'],
+            // Backdate the start (epoch ms), for a timer started after the baby already went down. Clamped to now at the latest and a day back at most.
+            'started_at' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ];
     }
 }

@@ -4,6 +4,20 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.5.0 — 2026-09-15
+
+Fixing a sleep that was timed late no longer means re-entering it.
+
+### Added
+
+- **Start a timer "15m ago".** The timer usually gets started after the baby is already down, so the timer sheet now keeps the time row: −5/−15/−1h, or tap the time, and the timer runs from then. It works for nursing, pumping, sleep, and tummy time. The start can't be in the future and reaches back a day at most.
+- **A sleep's end time is editable on its own.** Sleep and tummy time entries show "Ended 6:10 AM" under the start. Picking it keeps the start and changes the duration, which fixes a timer that ran on after the baby woke.
+- **Integrations can backdate timers too.** `PUT /api/v1/timer` accepts `started_at` (epoch ms), the MCP `start-timer` tool takes `minutes_ago` or `started_at`, and the MQTT `timer_start` command takes either, so a Home Assistant automation can start a sleep timer from ten minutes back. The internal `POST /timer/start` takes `started_at` as well. All of them clamp to now and a day back.
+
+### Changed
+
+- **Moving a sleep's start keeps its wake-up.** Picking an earlier start on a sleep or tummy time entry used to keep the duration and slide the end along with it, so correcting a late start took two edits. Now the end stays where it was and the duration grows or shrinks to fit, including across midnight. The −5/−15/−1h nudges do the same when editing, so "−15" means it began fifteen minutes earlier. A start that would stretch the session past 14 hours is read as moving the nap instead, and keeps its duration.
+
 ## 1.4.0 — 2026-09-14
 
 Nobody is on duty unless somebody is actually covering.

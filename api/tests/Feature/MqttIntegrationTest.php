@@ -300,6 +300,16 @@ class MqttIntegrationTest extends TestCase
 
         app(MqttCommandHandler::class)->handle($household->fresh(), json_encode(['action' => 'timer_stop']));
         $this->assertSame([], $household->fresh()->runningTimers());
+
+        // an automation can backdate the start: minutes_ago, clamped to a day
+        $before = now()->getTimestampMs();
+        app(MqttCommandHandler::class)->handle($household->fresh(),
+            json_encode(['action' => 'timer_start', 'type' => 'sleep', 'minutes_ago' => 10]));
+        $startedAt = $household->fresh()->runningTimers()[0]['started_at'];
+        $this->assertEqualsWithDelta($before - 10 * 60000, $startedAt, 2000);
+        app(MqttCommandHandler::class)->handle($household->fresh(),
+            json_encode(['action' => 'timer_start', 'type' => 'tummy', 'minutes_ago' => 99999]));
+        $this->assertGreaterThanOrEqual($before - 86400000, $household->fresh()->runningTimers()[1]['started_at']);
     }
 
     // ── listener ───────────────────────────────────────────────────────────

@@ -116,10 +116,10 @@ A timer the app **resumed** (a sleep picked back up after a stir) carries an ext
 ### `PUT /v1/timer` — `timer:write`
 
 ```json
-{ "type": "nurse", "baby_id": 10 }
+{ "type": "sleep", "baby_id": 10, "started_at": 1789400000000 }
 ```
 
-Starts a timer. `type` ∈ `nurse|pump|sleep|tummy`. Starting an identical session you already have running (same type, child, and starter) returns the running timer instead of a duplicate. Other members get their usual timer push.
+Starts a timer. `type` ∈ `nurse|pump|sleep|tummy`. `started_at` (optional, epoch ms) backdates the start, for a timer started after the baby already went down: a future value clamps to now, and anything older than 24 hours clamps to a day back. Omitted, the timer starts at the server's now. Starting an identical session you already have running (same type, child, and starter) returns the running timer instead of a duplicate. Other members get their usual timer push.
 
 ### `DELETE /v1/timer` — `timer:write`
 

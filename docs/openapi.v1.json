@@ -867,6 +867,14 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "started_at": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Backdate the start (epoch ms), for a timer started after the baby already went down. Clamped to now at the latest and a day back at most.",
+                        "minimum": 0
                     }
                 },
                 "required": [

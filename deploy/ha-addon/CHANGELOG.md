@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0
+
+- **Start a timer "15m ago".** The timer sheet can backdate the start with −5/−15/−1h or a picked
+  time, for when the baby went down before anyone reached the phone.
+- **Fixing a sleep's start keeps the wake-up.** An earlier start makes the sleep longer instead of
+  shifting it, and the end time is now editable on its own.
+- **Automations can backdate timers.** The MQTT `timer_start` command accepts `minutes_ago` (or an
+  epoch-ms `started_at`) — see the [Home Assistant guide](https://github.com/straplocked/mybabynotes/blob/main/docs/home-assistant.md#example-a-timer-started-late).
+  The buttons still start timers now. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#150--2026-09-15).
+
 ## 1.4.0
 
 - **Shifts became covers, and nobody is on duty by default.** The app no longer insists one grown-up

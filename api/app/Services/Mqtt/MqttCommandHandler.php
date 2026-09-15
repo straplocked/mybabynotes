@@ -47,6 +47,8 @@ class MqttCommandHandler
                     $actor,
                     in_array($cmd['type'] ?? '', ['nurse', 'pump', 'sleep', 'tummy'], true) ? $cmd['type'] : 'sleep',
                     $babyId,
+                    null,
+                    $this->startedAt($cmd),
                 ),
                 // timer_id picks one of several running timers; without it the
                 // stop takes the household's newest — the one the HA sensor shows
@@ -61,6 +63,20 @@ class MqttCommandHandler
         } catch (\Throwable $e) {
             Log::warning("MQTT command failed for household {$household->id}: {$e->getMessage()}");
         }
+    }
+
+    /**
+     * A timer_start may backdate itself — `minutes_ago` for an automation
+     * ("she went down 10 minutes before anyone pressed the button"), or
+     * `started_at` in epoch ms. TimerService clamps either to now / a day back.
+     */
+    private function startedAt(array $cmd): ?int
+    {
+        if (isset($cmd['minutes_ago']) && is_numeric($cmd['minutes_ago'])) {
+            return now()->getTimestampMs() - max(0, (int) $cmd['minutes_ago']) * 60000;
+        }
+
+        return isset($cmd['started_at']) && is_numeric($cmd['started_at']) ? (int) $cmd['started_at'] : null;
     }
 
     private function log(User $actor, array $cmd, ?int $babyId): void

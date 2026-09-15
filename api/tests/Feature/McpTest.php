@@ -209,6 +209,18 @@ class McpTest extends TestCase
         $this->assertIsNumeric($tummy->detail);
     }
 
+    public function test_start_timer_backdates_by_minutes_ago(): void
+    {
+        [$ben, , $wrenId] = $this->household();
+        Sanctum::actingAs($ben, ['mcp', 'timer:write']);
+        $before = now()->getTimestampMs();
+
+        BabylogServer::tool(StartTimer::class, ['type' => 'sleep', 'baby_id' => $wrenId, 'minutes_ago' => 25])->assertOk();
+        $startedAt = $ben->household->fresh()->runningTimers()[0]['started_at'];
+        $this->assertLessThanOrEqual($before - 25 * 60000 + 2000, $startedAt);
+        $this->assertGreaterThanOrEqual($before - 25 * 60000 - 2000, $startedAt);
+    }
+
     public function test_concurrent_timers_stop_by_id(): void
     {
         [$ben, , $wrenId] = $this->household();

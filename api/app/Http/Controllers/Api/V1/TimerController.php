@@ -39,6 +39,8 @@ class TimerController extends Controller
             $request->user(),
             $data['type'],
             isset($data['baby_id']) ? (int) $data['baby_id'] : null,
+            null,
+            isset($data['started_at']) ? (int) $data['started_at'] : null,
         );
 
         return response()->json(['timer' => $timer]);

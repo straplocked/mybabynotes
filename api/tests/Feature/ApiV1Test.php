@@ -223,6 +223,22 @@ class ApiV1Test extends TestCase
         $this->assertSame(0, Entry::query()->count());
     }
 
+    public function test_a_timer_can_start_backdated(): void
+    {
+        [$app, $pat, $wrenId] = $this->parentWithPat();
+        $at = now()->getTimestampMs() - 20 * 60000;
+
+        $timer = $this->putJson('/api/v1/timer', ['type' => 'sleep', 'baby_id' => $wrenId, 'started_at' => $at], $this->authed($pat))
+            ->assertOk()->json('timer');
+        $this->assertSame($at, $timer['started_at']);
+        $this->assertSame($at, $this->getJson('/api/state?since=0', $this->authed($app))->json('timers.0.started_at'));
+
+        // never in the future
+        $later = $this->putJson('/api/v1/timer', ['type' => 'nurse', 'started_at' => now()->getTimestampMs() + 3600000], $this->authed($pat))->json('timer');
+        $this->assertLessThanOrEqual(now()->getTimestampMs(), $later['started_at']);
+        $this->putJson('/api/v1/timer', ['type' => 'pump', 'started_at' => 'earlier'], $this->authed($pat))->assertStatus(422);
+    }
+
     public function test_concurrent_timers_are_listed_and_stopped_by_id(): void
     {
         [, $pat, $wrenId] = $this->parentWithPat();

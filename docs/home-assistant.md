@@ -108,6 +108,18 @@ action:
       message: "It's been 3+ hours since Wren's last feeding."
 ```
 
+### Example: a timer started late
+
+The buttons start timers *now*. An automation can publish to the command topic (`babylog/<household>/cmd`) itself and backdate the start with `minutes_ago` (or an epoch-ms `started_at`), clamped to at most a day back:
+
+```yaml
+action:
+  - service: mqtt.publish
+    data:
+      topic: babylog/1/cmd
+      payload: '{"action": "timer_start", "type": "sleep", "baby_id": 10, "minutes_ago": 15}'
+```
+
 (The app's own feed-gap push reminders — [architecture.md](architecture.md#notifications) — are smarter about rhythm; this is for when you want HA in the loop: lights, speakers, presence.)
 
 ### Troubleshooting
