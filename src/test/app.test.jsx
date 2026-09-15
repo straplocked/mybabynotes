@@ -382,13 +382,15 @@ describe('logging a past sleep across midnight', () => {
     expect(box.pushed.entries[0].t - 30 * 60_000).toBe(at(0, 5)) // today
   })
 
-  it('a time later than now still means last night', async () => {
+  it('a time later than now still means last night — and the wake-up stays put', async () => {
     const { user, box } = await openPastSleep(at(0, 20))
     fireEvent.change(timeInput(), { target: { value: '23:50' } })
     expect(screen.getByText('Yesterday')).toBeInTheDocument()
     await user.click(screen.getByText(/Save sleep/))
     await waitFor(() => expect(box.pushed).toBeTruthy())
-    expect(box.pushed.entries[0].t - 45 * 60_000).toBe(at(23, 50) - 86400000)
+    // down at 11:50 PM, up now: the start moved, the end didn't
+    expect(box.pushed.entries[0].t).toBe(at(0, 20))
+    expect(box.pushed.entries[0].detail).toBe('30')
   })
 
   it('a picked start stays put when the duration changes — the wake-up moves instead', async () => {
@@ -411,6 +413,76 @@ describe('logging a past sleep across midnight', () => {
     await user.click(screen.getByText(/Save sleep/))
     await waitFor(() => expect(box.pushed).toBeTruthy())
     expect(box.pushed.entries[0].t).toBe(at(15, 0)) // ended now
+  })
+
+  // the timer usually gets started after the baby's already down: the sleep
+  // it stopped on ended when it said, it just began earlier
+  const openNapEdit = async (clock, entry) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(clock)
+    const user = userEvent.setup()
+    seedSignedIn({ entries: [{ id: 'e-nap', deleted: false, by: 1, babyId: null, type: 'sleep', ...entry }] })
+    const box = {}
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /entries'] = opts => { box.pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    renderApp()
+    await user.click(screen.getByText('Sleep'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    return { user, box }
+  }
+  const endInput = () => screen.getByLabelText('End time')
+
+  it('editing a late-started night back to its real start keeps the wake-up', async () => {
+    // the timer ran 9:40 PM → 6:10 AM; the baby actually went down at 7:30 PM
+    const { user, box } = await openNapEdit(at(7, 0), { t: at(6, 10), detail: 'Night · 510m' })
+    expect(timeInput().value).toBe('21:40')
+    fireEvent.change(timeInput(), { target: { value: '19:30' } })
+    expect(timeInput().value).toBe('19:30')
+    expect(screen.getByText('Ended 6:10 AM')).toBeInTheDocument()
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(6, 10))
+    expect(box.pushed.entries[0].detail).toBe('Night · 640m') // 10h 40m
+  })
+
+  it('a start moved inside a nap that crossed midnight stays on the same night', async () => {
+    const { user, box } = await openNapEdit(at(2, 0), { t: at(1, 0), detail: 90 }) // 11:30 PM → 1:00 AM
+    fireEvent.change(timeInput(), { target: { value: '00:15' } })
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(1, 0))
+    expect(box.pushed.entries[0].detail).toBe('45')
+  })
+
+  it('a start nowhere near the wake-up moves the nap instead of stretching it', async () => {
+    // 1:00 → 1:45 PM moved to 3:00 PM: a 22h45m sleep is not what was meant
+    const { user, box } = await openNapEdit(at(18, 0), { t: at(13, 45), detail: 45 })
+    fireEvent.change(timeInput(), { target: { value: '15:00' } })
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(15, 45))
+    expect(box.pushed.entries[0].detail).toBe('45')
+  })
+
+  it('on a nap edit, −15 means it began fifteen minutes earlier, same wake-up', async () => {
+    const { user, box } = await openNapEdit(at(15, 0), { t: at(13, 0), detail: 60 }) // 12:00 → 1:00 PM
+    await user.click(screen.getByText('−15'))
+    expect(timeInput().value).toBe('11:45')
+    expect(screen.getByText('Ended 1:00 PM')).toBeInTheDocument()
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(13, 0))
+    expect(box.pushed.entries[0].detail).toBe('75')
+  })
+
+  it('picking the end keeps the start — the fix for a timer left running', async () => {
+    const { user, box } = await openNapEdit(at(15, 0), { t: at(14, 30), detail: 'Nap · 150m' }) // 12:00 → 2:30 PM
+    fireEvent.change(endInput(), { target: { value: '13:10' } })
+    expect(timeInput().value).toBe('12:00')
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(13, 10))
+    expect(box.pushed.entries[0].detail).toBe('Nap · 70m')
   })
 
   it('editing a nap keeps the start the row showed while its duration changes', async () => {

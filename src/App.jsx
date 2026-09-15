@@ -1432,6 +1432,11 @@ export default class App extends React.Component {
     const side = type === 'nurse' ? (this.state.detail || this.defaultDetail('nurse')) : null
     // the sheet's child chip (when >1 child) decides who this session is for
     const babyId = this.state.sheetChildId ?? this.selChildId()
+    // the sheet's time row backdates the start — the timer usually gets
+    // started after the baby's already down. Untouched, it starts now and the
+    // request carries no started_at at all.
+    const startedAt = this.timerStart()
+    const backdated = startedAt < Date.now() - 30000
     // client-generated id, entry-style — the optimistic row IS the server timer,
     // so a reconcile mid-flight can't duplicate it
     const id = uuid()
@@ -1439,10 +1444,10 @@ export default class App extends React.Component {
     this.closeSheet() // animated close that also consumes the {blSheet} history entry
     this.setState(s => ({
       manualDur: false,
-      activeTimers: [...s.activeTimers, { id, type, started_at: Date.now(), user_id: s.me?.id, baby_id: babyId }],
+      activeTimers: [...s.activeTimers, { id, type, started_at: startedAt, user_id: s.me?.id, baby_id: babyId }].sort((a, b) => (a.started_at || 0) - (b.started_at || 0)),
       timerSides: side ? { ...s.timerSides, [id]: side } : s.timerSides,
     }))
-    api.timerStart(type, babyId, id)
+    api.timerStart(type, babyId, id, backdated ? startedAt : null)
       .then(r => this.setState(s => {
         // the server may hand back an already-running identical session
         // (double-tap) — adopt its copy either way, carrying the side across
@@ -1821,6 +1826,18 @@ export default class App extends React.Component {
     return this.anchorsStart() ? a + this.stampShift() : a
   }
   shownStamp() { return this.stamp() - this.stampShift() }
+  // the timer path: the sheet's time row is when the session STARTED, with no
+  // duration to shift by — and a start can't be in the future
+  timerStart() {
+    const { pickedT, offset } = this.state
+    if (pickedT == null && !offset) return Date.now()
+    return Math.min(Date.now(), pickedT ?? this._base + offset * 60000)
+  }
+  // whether the sheet is on its live-timer path (vs logging a past session)
+  timing() {
+    const s = this.state
+    return ['nurse', 'pump', 'sleep', 'tummy'].includes(s.sel) && !s.editId && !s.manualDur
+  }
   // the gap between the wire stamp and the shown start: 0 for everything except
   // a sleep/tummy sheet, where it's the duration currently on the scrub
   stampShift(k) {
@@ -2102,7 +2119,16 @@ export default class App extends React.Component {
     else if (d.field === 'detail2') this.setState(s => ({ detail2: s.detail2 === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
     else this.setState({ detail: d.base, scrubDrag: null })
   }
-  nudge = n => () => this.setState({ offset: n, pickedT: null, dayPicked: false })
+  nudge = n => () => {
+    // on a span being edited the nudges walk the start off the row's own start
+    // (−15 = it began 15m earlier) and, like a picked start, leave the end be
+    if (this.state.editId && SPANS.includes(this.state.sel)) {
+      const mins = Math.round((this.stamp() - (this._base + n * 60000)) / 60000)
+      if (mins >= 1) this.setState({ offset: n, pickedT: null, detail: mins })
+      return
+    }
+    this.setState({ offset: n, pickedT: null, dayPicked: false })
+  }
   pickTime = e => {
     const [h, m] = e.target.value.split(':').map(Number)
     if (Number.isNaN(h) || Number.isNaN(m)) return
@@ -2112,10 +2138,37 @@ export default class App extends React.Component {
     // Reading the day off what the sheet SHOWS was a trap: a 45m nap opened at
     // 12:20am shows 11:35 PM yesterday, so 12:05 AM landed on yesterday
     // 12:05 AM — a full day early, and nowhere near the top of the log
-    const d = new Date(this.dayPicked() ? this.shownStamp() : Date.now()); d.setHours(h, m, 0, 0)
+    // A span's END holds still when its start moves. The usual reason to fix
+    // a sleep's start is a timer started late: the wake-up it stopped on was
+    // real, so an earlier start means a longer sleep, not a shifted one. The
+    // start lands on the latest h:m before that end (9:40 PM → 6:10 AM moved
+    // to 7:30 PM is last evening, 12:15 AM inside a 11:30 PM nap is today).
+    // Only when that reads as an implausibly long session is the parent moving
+    // the nap somewhere else — then the duration stays and the start goes.
+    if (SPANS.includes(this.state.sel) && !this.timing()) {
+      const end = this.stamp()
+      const d = new Date(end); d.setHours(h, m, 0, 0)
+      let start = d.getTime()
+      if (start >= end) start -= DAY
+      const mins = Math.round((end - start) / 60000)
+      if (mins >= 1 && mins <= 14 * 60) return this.setState({ pickedT: start, offset: 0, detail: mins })
+    }
+    const d = new Date(this.dayPicked() ? (this.timing() ? this.timerStart() : this.shownStamp()) : Date.now()); d.setHours(h, m, 0, 0)
     let t = d.getTime()
     if (t > Date.now() + 60000) t -= DAY
     this.setState({ pickedT: t, offset: 0 })
+  }
+  // a span's end, picked directly: the start holds and the duration becomes
+  // the gap — the first h:m after the start, so a night crosses midnight on
+  // its own. The fix for a timer that ran on after the baby woke.
+  pickEnd = e => {
+    const [h, m] = e.target.value.split(':').map(Number)
+    if (Number.isNaN(h) || Number.isNaN(m)) return
+    const start = this.shownStamp()
+    const d = new Date(start); d.setHours(h, m, 0, 0)
+    let end = d.getTime()
+    if (end <= start) end += DAY
+    this.setState({ pickedT: start, offset: 0, detail: Math.max(1, Math.round((end - start) / 60000)) })
   }
   // ── the day, one tap deeper ────────────────────────────────────────────────
   // Backfilling used to stop at the day boundary: the nudges reach an hour back
@@ -2272,11 +2325,13 @@ export default class App extends React.Component {
     const live = this.live()
     const st = T(s.sel || 'bottle')
     const step = Number(this.props.timeStep ?? 5) || 5
-    const stampT = s.sheet ? this.stamp() : Date.now()
+    const timing = s.sheet && this.timing()
+    const stampT = s.sheet ? (timing ? this.timerStart() : this.stamp()) : Date.now()
     // what the sheet PRINTS: a sleep/tummy sheet reads out the session's start,
     // not the wire stamp (its end), so "45m earlier" describes when the nap
-    // began — the same top-down reading as the rows it will join
-    const shownT = s.sheet ? this.shownStamp() : stampT
+    // began — the same top-down reading as the rows it will join. On the timer
+    // path it's the start the timer will run from.
+    const shownT = s.sheet && !timing ? this.shownStamp() : stampT
     const backMin = s.sheet ? Math.max(0, Math.round((this._base - shownT) / 60000)) : 0
     const dayBack = s.sheet ? this.dayOf(shownT) : '' // '' on today, else 'Yesterday' / '{n} days ago'
 
@@ -2758,10 +2813,15 @@ export default class App extends React.Component {
       // a stamp on another day says so up front — "11:40 PM" alone is a trap at
       // 3am, when the day is the thing you're most likely to have wrong
       sheetKicker: s.editId ? t('Editing entry') + (dayBack ? ' · ' + dayBack : '')
+        : timerFirst ? (backMin < 1 ? t('Started now') : t('Started {dur} ago', { dur: this.dur(backMin) })) + (dayBack ? ' · ' + dayBack : '')
         : dayBack || (backMin < 1 ? t('stamped now') : t('{dur} earlier', { dur: this.dur(backMin) })),
       stampTime: this.clock(shownT),
       stampHM: String(new Date(shownT).getHours()).padStart(2, '0') + ':' + String(new Date(shownT).getMinutes()).padStart(2, '0'),
       pickTime: this.pickTime,
+      // a span's other end, pickable on its own (hidden while timing — no end yet)
+      endTime: SPANS.includes(st.key) && !timerFirst && stampT > shownT ? t('Ended {time}', { time: this.clock(stampT) }) : null,
+      endHM: String(new Date(stampT).getHours()).padStart(2, '0') + ':' + String(new Date(stampT).getMinutes()).padStart(2, '0'),
+      pickEnd: this.pickEnd,
       showPicker: e => { try { e.currentTarget.showPicker() } catch { /* older browsers fall back to focus */ } },
       nudges, types,
       // Advanced: hidden on the timer path (a live timer starts now, so there's
@@ -2777,7 +2837,7 @@ export default class App extends React.Component {
       hasDetail: !!kind && !timerFirst, detailLabel: t(kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
       hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : kind2 === 'nap' ? 'Nap or night' : 'Duration'), detail2Options,
       scrubMove: this.scrubMove, scrubEnd: this.scrubEnd,
-      showStamp: !timerFirst,
+      showStamp: true,
       timerFirst,
       startTimerLabel: t(st.key === 'nurse' ? 'Start nursing' : st.key === 'sleep' ? 'Start sleep timer' : st.key === 'tummy' ? 'Start tummy time' : 'Start pumping'),
       startTimer: () => this.startTimer(st.key),
@@ -4530,6 +4590,7 @@ export default class App extends React.Component {
 
                 {v.showStamp && (
                 <div style={S('display:flex;align-items:flex-end;justify-content:space-between;padding:0 4px 12px')}>
+                  <div style={S('display:flex;flex-direction:column;gap:2px')}>
                   <label style={S('position:relative;display:flex;flex-direction:column;gap:3px;cursor:pointer')}>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474")}>{v.sheetKicker}</div>
                     <div style={S('display:flex;align-items:baseline;gap:7px')}>
@@ -4538,6 +4599,14 @@ export default class App extends React.Component {
                     </div>
                     <input type="time" value={v.stampHM} onChange={v.pickTime} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
                   </label>
+                  {v.endTime && (
+                    <label style={S('position:relative;display:flex;align-items:center;gap:4px;cursor:pointer')}>
+                      <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:13px;color:#6E6659;letter-spacing:-0.01em")}>{v.endTime}</div>
+                      <Sym style={{ fontSize: 13, color: 'var(--faint)' }}>edit</Sym>
+                      <input type="time" aria-label={t('End time')} value={v.endHM} onChange={v.pickEnd} onClick={v.showPicker} style={S('position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer')} />
+                    </label>
+                  )}
+                  </div>
                   <div style={S('display:flex;gap:6px;padding-bottom:6px')}>
                     {v.nudges.map((n, i) => (
                       <button key={i} type="button" onClick={n.onTap} style={S(`background:${n.bg};border:1px solid ${n.border};border-radius:999px;padding:7px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:${n.fg};cursor:pointer;letter-spacing:-0.01em`)}>{n.label}</button>

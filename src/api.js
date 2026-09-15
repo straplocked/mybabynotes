@@ -64,7 +64,8 @@ export const api = {
   mqttTest: b => call('/integrations/mqtt/test', { method: 'POST', body: b }), // {ok, message?} — a 200 either way
   pushEntries: entries => call('/entries', { method: 'POST', body: { entries } }),
   // baby_id absent → primary child; id is our client-generated timer id (entry-style)
-  timerStart: (type, babyId, id) => call('/timer/start', { method: 'POST', body: { type, ...(babyId != null ? { baby_id: babyId } : {}), ...(id ? { id } : {}) } }),
+  // startedAt (ms) backdates a timer started after the baby already went down
+  timerStart: (type, babyId, id, startedAt) => call('/timer/start', { method: 'POST', body: { type, ...(babyId != null ? { baby_id: babyId } : {}), ...(id ? { id } : {}), ...(startedAt != null ? { started_at: startedAt } : {}) } }),
   // re-open a sleep that already ended (the stir-and-settle case): the timer
   // comes back backdated to where that entry began and carries `resumes`, so
   // stopping it rewrites that entry instead of stacking a second nap

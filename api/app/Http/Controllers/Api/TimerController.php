@@ -18,13 +18,17 @@ use Illuminate\Http\Request;
  */
 class TimerController extends Controller
 {
-    /** Start a timer. `id` is the client-generated id, entry-style. */
+    /**
+     * Start a timer. `id` is the client-generated id, entry-style; `started_at`
+     * (ms) backdates it for a timer started after the baby already went down.
+     */
     public function start(Request $request, TimerService $timers): JsonResponse
     {
         $data = $request->validate([
             'type' => ['required', 'in:nurse,pump,sleep,tummy'],
             'baby_id' => ['nullable', 'integer'],
             'id' => ['sometimes', 'string', 'max:64'],
+            'started_at' => ['sometimes', 'integer', 'min:0'],
         ]);
 
         $timer = $timers->start(
@@ -32,6 +36,7 @@ class TimerController extends Controller
             $data['type'],
             isset($data['baby_id']) ? (int) $data['baby_id'] : null,
             $data['id'] ?? null,
+            isset($data['started_at']) ? (int) $data['started_at'] : null,
         );
 
         return response()->json(['ok' => true, 'timer' => $timer]);

@@ -700,6 +700,26 @@ class BabylogApiTest extends TestCase
         $this->assertNull($this->getJson('/api/state', $this->authed($ben))->json('timer'));
     }
 
+    public function test_timer_start_backdates_within_a_day_and_never_into_the_future(): void
+    {
+        $ben = $this->register('Ben', 'ben@example.com')->json('token');
+        $now = now()->getTimestampMs();
+
+        // "started 20m ago" — the baby went down before anyone reached the phone
+        $sleep = $this->postJson('/api/timer/start', ['type' => 'sleep', 'started_at' => $now - 20 * 60000], $this->authed($ben))->assertOk()->json('timer');
+        $this->assertSame($now - 20 * 60000, $sleep['started_at']);
+        $this->assertSame($sleep['started_at'], $this->getJson('/api/state', $this->authed($ben))->json('timers.0.started_at'));
+
+        // a future start clamps to now; a start older than a day clamps to a day back
+        $nurse = $this->postJson('/api/timer/start', ['type' => 'nurse', 'started_at' => $now + 3600000], $this->authed($ben))->json('timer');
+        $this->assertLessThanOrEqual(now()->getTimestampMs(), $nurse['started_at']);
+        $this->assertGreaterThanOrEqual($now, $nurse['started_at']);
+        $tummy = $this->postJson('/api/timer/start', ['type' => 'tummy', 'started_at' => $now - 3 * 86400000], $this->authed($ben))->json('timer');
+        $this->assertGreaterThanOrEqual($now - 86400000, $tummy['started_at']);
+
+        $this->postJson('/api/timer/start', ['type' => 'pump', 'started_at' => 'soon'], $this->authed($ben))->assertStatus(422);
+    }
+
     public function test_timer_rejects_unknown_type(): void
     {
         $ben = $this->register('Ben', 'ben@example.com')->json('token');

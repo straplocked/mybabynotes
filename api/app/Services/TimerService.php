@@ -35,11 +35,16 @@ class TimerService
      * $id lets the PWA supply its client-generated id (entry-style), so its
      * optimistic row and the server copy are the same timer.
      *
+     * $startedAt backdates the session: the timer usually gets started after
+     * the baby has already gone down, and "started 20m ago" beats fixing the
+     * entry afterwards. It can't be in the future, and reaches back a day at
+     * most — past that it's a log entry, not a running timer.
+     *
      * @return array{id: string, type: string, started_at: int, user_id: int, baby_id: int|null}
      */
-    public function start(User $user, string $type, ?int $babyId = null, ?string $id = null): array
+    public function start(User $user, string $type, ?int $babyId = null, ?string $id = null, ?int $startedAt = null): array
     {
-        return $this->begin($user, $type, $babyId, $id, null);
+        return $this->begin($user, $type, $babyId, $id, null, $startedAt);
     }
 
     /**
@@ -71,7 +76,7 @@ class TimerService
     /**
      * @return array{id: string, type: string, started_at: int, user_id: int, baby_id: int|null}
      */
-    private function begin(User $user, string $type, ?int $babyId, ?string $id, ?Entry $resume): array
+    private function begin(User $user, string $type, ?int $babyId, ?string $id, ?Entry $resume, ?int $backdate = null): array
     {
         $household = $user->household;
         // the timer's child must be one of ours — a foreign id is dropped, and
@@ -91,6 +96,9 @@ class TimerService
             }
         }
         $startedAt = now()->getTimestampMs();
+        if ($backdate !== null) {
+            $startedAt = max($startedAt - 86400000, min($startedAt, $backdate));
+        }
         if ($resume !== null) {
             // the re-opened session restarts where it began: a span entry stamps
             // the END of the sleep and carries its length in the detail, so the

@@ -271,7 +271,35 @@ describe('multi-timer rows', () => {
 
     expect(startBody.type).toBe('nurse')
     expect(startBody.id).toBeTruthy() // client-generated, entry-style
+    expect(startBody).not.toHaveProperty('started_at') // untouched = starts now, server's clock
     expect(await screen.findByText('Nursing · You')).toBeInTheDocument()
+  })
+
+  // the timer usually gets started after the baby's already down
+  it('a sleep timer started "15m ago" runs from then, on the card and on the wire', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let startBody
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/start'] = opts => {
+      startBody = JSON.parse(opts.body)
+      return okJson({ ok: true, timer: { id: startBody.id, type: startBody.type, started_at: startBody.started_at, user_id: 1, baby_id: null } })
+    }
+    renderApp()
+
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    expect(screen.getByText('Started now')).toBeInTheDocument()
+    const t0 = Date.now()
+    await user.click(screen.getByText('−15'))
+    expect(screen.getByText('Started 15m ago')).toBeInTheDocument()
+    await user.click(screen.getByText('Start sleep timer'))
+
+    expect(startBody.type).toBe('sleep')
+    expect(Math.abs(startBody.started_at - (t0 - 15 * 60_000))).toBeLessThan(5000)
+    expect(await screen.findByText('Sleep · You')).toBeInTheDocument()
+    expect(screen.getAllByText(/^15:0\d$/).length).toBeGreaterThan(0) // the stopwatch already reads 15 minutes
   })
 })
 
