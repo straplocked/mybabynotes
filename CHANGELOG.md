@@ -4,6 +4,12 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.5.1 — 2026-09-21
+
+### Changed
+
+- **Drag the timer's start.** On the timer sheet the −5/−15/−1h chips now scrub like the duration chips: drag one up to walk the start further back (5-minute steps, then coarser, out to 12h), and "Started 25m ago" follows your finger. A tap still picks the chip as before, and a custom start stays on the row as its own chip.
+
 ## 1.5.0 — 2026-09-15
 
 Fixing a sleep that was timed late no longer means re-entering it.

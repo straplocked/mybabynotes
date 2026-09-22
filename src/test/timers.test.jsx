@@ -6,7 +6,7 @@
 // 'top', 'today', or 'both' (default). Timers started by someone else never
 // offer a Stop anywhere.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../echo.js', () => ({
@@ -300,6 +300,34 @@ describe('multi-timer rows', () => {
     expect(Math.abs(startBody.started_at - (t0 - 15 * 60_000))).toBeLessThan(5000)
     expect(await screen.findByText('Sleep · You')).toBeInTheDocument()
     expect(screen.getAllByText(/^15:0\d$/).length).toBeGreaterThan(0) // the stopwatch already reads 15 minutes
+  })
+
+  // the nudges scrub like the duration chips: drag up to walk the start back
+  it('dragging a nudge up walks the timer start further back', async () => {
+    const user = userEvent.setup()
+    seedSignedIn()
+    let startBody
+    routes['GET /state'] = () => okJson(stateFixture())
+    routes['POST /timer/start'] = opts => {
+      startBody = JSON.parse(opts.body)
+      return okJson({ ok: true, timer: { id: startBody.id, type: startBody.type, started_at: startBody.started_at, user_id: 1, baby_id: null } })
+    }
+    renderApp()
+
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    await user.click(screen.getByText('Sleep'))
+    const t0 = Date.now()
+    const chip = screen.getByText('−15')
+    fireEvent.pointerDown(chip, { clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(chip, { clientY: 272, pointerId: 1 }) // two rungs up: 15 → 25
+    expect(screen.getByText('Started 25m ago')).toBeInTheDocument() // the kicker follows the finger
+    fireEvent.pointerUp(chip, { clientY: 272, pointerId: 1 })
+    expect(screen.getByText('−25')).toBeInTheDocument() // the custom start sorts in as its own chip
+    expect(screen.getByText('−15')).toBeInTheDocument()
+    await user.click(screen.getByText('Start sleep timer'))
+
+    expect(Math.abs(startBody.started_at - (t0 - 25 * 60_000))).toBeLessThan(5000)
   })
 })
 

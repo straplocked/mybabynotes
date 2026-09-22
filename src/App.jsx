@@ -124,6 +124,10 @@ const DUR_LADDER = (() => {
   for (let v = 180; v <= 720; v += 30) a.push(v)
   return a
 })()
+// how long ago a live timer started: the timer sheet's nudges scrub along this
+// — minutes first, then quarter hours, then halves out to 12h (the server
+// clamps a start to a day back anyway)
+const AGO_LADDER = [0, ...DUR_LADDER]
 // ounces run in halves — the same 0.5 steps the old chip row offered, just scrubbable
 const OZ_LADDER = Array.from({ length: 24 }, (_, i) => (i + 1) / 2)
 // ml runs in 10s and spans the same range as the oz ladder (~⅓–12 oz)
@@ -142,6 +146,7 @@ const SCRUB = {
   mins: { presets: [10, 20, 30],      ladder: DUR_LADDER },
   oz:   { presets: [3, 4, 5],         ladder: OZ_LADDER },
   ml:   { presets: [90, 120, 150],    ladder: ML_LADDER }, // the oz presets' conventional twins
+  ago:  { presets: [],                ladder: AGO_LADDER }, // the timer's nudges bring their own
 }
 const ladderIdx = (ladder, v) => {
   let best = 0
@@ -1829,7 +1834,9 @@ export default class App extends React.Component {
   // the timer path: the sheet's time row is when the session STARTED, with no
   // duration to shift by — and a start can't be in the future
   timerStart() {
-    const { pickedT, offset } = this.state
+    const { pickedT, scrubDrag } = this.state
+    // mid-drag on the nudges, the start follows the finger
+    const offset = scrubDrag?.field === 'ago' ? -scrubDrag.val : this.state.offset
     if (pickedT == null && !offset) return Date.now()
     return Math.min(Date.now(), pickedT ?? this._base + offset * 60000)
   }
@@ -2115,7 +2122,9 @@ export default class App extends React.Component {
     this._scrub = null
     if (!d) return
     const val = d.moved ? this.state.scrubDrag?.val : null
-    if (val != null) this.setState({ [d.field]: val, scrubDrag: null })
+    // the timer's start: a drag lands on how far back it walked, a tap on the chip
+    if (d.field === 'ago') this.setState({ offset: -(val ?? d.base), pickedT: null, dayPicked: false, scrubDrag: null })
+    else if (val != null) this.setState({ [d.field]: val, scrubDrag: null })
     else if (d.field === 'detail2') this.setState(s => ({ detail2: s.detail2 === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
     else this.setState({ detail: d.base, scrubDrag: null })
   }
@@ -2505,8 +2514,19 @@ export default class App extends React.Component {
       return { label: t(ty.label), icon: ty.icon, color: ty.color, on, tint: on ? 0.13 : 0.045, onTap: this.pick(ty.key) }
     })
 
-    const nudges = [{ n: 0, label: t('now') }, { n: -step, label: '−' + step }, { n: -step * 3, label: '−' + step * 3 }, { n: -60, label: '−1h' }]
-      .map(d => ({ label: d.label, onTap: this.nudge(d.n), ...this.chip(s.pickedT == null && s.offset === d.n, OLIVE) }))
+    const agoLabel = m => m === 0 ? t('now') : m === 60 ? '−1h' : '−' + (m < 60 ? m : this.dur(m))
+    const nudgeMins = [0, step, step * 3, 60]
+    // on the timer path the nudges scrub like the duration chips — drag up to
+    // walk the start further back, and a custom start sorts in as its own chip
+    const agoCur = s.pickedT == null ? -s.offset : null
+    const agoDrag = s.scrubDrag?.field === 'ago' ? s.scrubDrag : null
+    const nudges = timing
+      ? [...new Set([...nudgeMins, ...(agoCur != null ? [agoCur] : [])])].sort((a, b) => a - b).map(m => {
+        const dragging = !!agoDrag && agoDrag.base === m
+        const on = dragging || (!agoDrag && agoCur === m)
+        return { label: agoLabel(dragging ? agoDrag.val : m), scrub: true, on, onDown: this.scrubStart('ago', 'ago', m), ...this.chip(on, OLIVE) }
+      })
+      : nudgeMins.map(m => ({ label: agoLabel(m), onTap: this.nudge(-m), ...this.chip(s.pickedT == null && s.offset === -m, OLIVE) }))
 
     // the day control behind Advanced: today, yesterday, and the calendar for
     // anything older. Every chip reads the day the sheet is SHOWING, so a nap
@@ -4608,7 +4628,13 @@ export default class App extends React.Component {
                   )}
                   </div>
                   <div style={S('display:flex;gap:6px;padding-bottom:6px')}>
-                    {v.nudges.map((n, i) => (
+                    {v.nudges.map((n, i) => n.scrub ? (
+                      <button key={i} type="button" onPointerDown={n.onDown} onPointerMove={v.scrubMove} onPointerUp={v.scrubEnd} onPointerCancel={v.scrubEnd}
+                        style={S(`display:flex;align-items:center;gap:2px;background:${n.bg};border:1px solid ${n.border};border-radius:999px;padding:7px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:${n.fg};cursor:ns-resize;touch-action:none;user-select:none;letter-spacing:-0.01em`)}>
+                        {n.label}
+                        {n.on && <Sym style={{ fontSize: 11, color: n.fg, opacity: 0.7 }}>unfold_more</Sym>}
+                      </button>
+                    ) : (
                       <button key={i} type="button" onClick={n.onTap} style={S(`background:${n.bg};border:1px solid ${n.border};border-radius:999px;padding:7px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:${n.fg};cursor:pointer;letter-spacing:-0.01em`)}>{n.label}</button>
                     ))}
                   </div>

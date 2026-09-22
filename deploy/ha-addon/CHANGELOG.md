@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1
+
+- **Drag the timer's start.** The timer sheet's −5/−15/−1h chips scrub like the duration chips —
+  drag up to start the timer further back. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#151--2026-09-21).
+
 ## 1.5.0
 
 - **Start a timer "15m ago".** The timer sheet can backdate the start with −5/−15/−1h or a picked
