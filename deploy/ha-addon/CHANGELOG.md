@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2
+
+- **Every time nudge drags.** The −5/−15/−1h chips scrub on the log sheet and when editing, not
+  only on the timer sheet. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#152--2026-09-27).
+
 ## 1.5.1
 
 - **Drag the timer's start.** The timer sheet's −5/−15/−1h chips scrub like the duration chips —

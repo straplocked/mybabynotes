@@ -4,6 +4,12 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.5.2 — 2026-09-27
+
+### Fixed
+
+- **Every −5/−15/−1h chip drags now, not just the timer's.** 1.5.1 made the time nudges scrubbable only on the timer sheet; logging a past feed, diaper, or sleep, or editing an entry, still gave you tap-only chips that ignored a swipe. They all scrub the same way now: drag up to reach further back, and the "25m earlier" line follows your finger. On an edited sleep the wake-up still holds while the start moves.
+
 ## 1.5.1 — 2026-09-21
 
 ### Changed

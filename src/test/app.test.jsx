@@ -475,6 +475,22 @@ describe('logging a past sleep across midnight', () => {
     expect(box.pushed.entries[0].detail).toBe('75')
   })
 
+  // the nudges scrub on an edit too, not only when starting a timer
+  it('on a nap edit, dragging −15 up to −25 walks the start back and keeps the wake-up', async () => {
+    const { user, box } = await openNapEdit(at(15, 0), { t: at(13, 0), detail: 60 }) // 12:00 → 1:00 PM
+    const chip = screen.getByText('−15')
+    fireEvent.pointerDown(chip, { clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(chip, { clientY: 272, pointerId: 1 }) // two rungs up: 15 → 25
+    expect(screen.getByText('−25')).toBeInTheDocument() // the chip shows the live value
+    fireEvent.pointerUp(chip, { clientY: 272, pointerId: 1 })
+    expect(timeInput().value).toBe('11:35')
+    expect(screen.getByText('Ended 1:00 PM')).toBeInTheDocument()
+    await user.click(screen.getByText(/Update sleep/))
+    await waitFor(() => expect(box.pushed).toBeTruthy())
+    expect(box.pushed.entries[0].t).toBe(at(13, 0))
+    expect(box.pushed.entries[0].detail).toBe('85')
+  })
+
   it('picking the end keeps the start — the fix for a timer left running', async () => {
     const { user, box } = await openNapEdit(at(15, 0), { t: at(14, 30), detail: 'Nap · 150m' }) // 12:00 → 2:30 PM
     fireEvent.change(endInput(), { target: { value: '13:10' } })
@@ -644,6 +660,23 @@ describe('the log sheet’s day control', () => {
     await user.click(screen.getByText('Advanced'))
     expect(dateInput()).not.toBeNull()
     expect(screen.getByText('Day')).toBeInTheDocument()
+  })
+
+  // a past log's nudges scrub like the timer's: drag up to reach further back
+  it('dragging a nudge up on a bottle stamps it further back', async () => {
+    let pushed
+    const user = await openSheet()
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+    const t0 = Date.now()
+    const chip = screen.getByText('−15')
+    fireEvent.pointerDown(chip, { clientY: 300, pointerId: 1 })
+    fireEvent.pointerMove(chip, { clientY: 272, pointerId: 1 }) // two rungs up: 15 → 25
+    expect(screen.getByText('25m earlier')).toBeInTheDocument() // the kicker follows the finger
+    fireEvent.pointerUp(chip, { clientY: 272, pointerId: 1 })
+    expect(screen.getByText('−25')).toBeInTheDocument() // the custom offset sorts in as its own chip
+    await user.click(screen.getByText(/Save bottle/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(Math.abs(pushed.entries[0].t - (t0 - 25 * 60_000))).toBeLessThan(5000)
   })
 
   it('logging yesterday keeps the time of day and moves the stamp a day back', async () => {

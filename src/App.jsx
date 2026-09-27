@@ -1827,18 +1827,24 @@ export default class App extends React.Component {
   //    time they just typed
   anchorsStart() { return this.state.pickedT != null || !!this.state.editId }
   stamp() {
-    const a = this.state.pickedT ?? this._base + this.state.offset * 60000
+    const a = this.state.pickedT ?? this._base + this.agoOffset() * 60000
     return this.anchorsStart() ? a + this.stampShift() : a
   }
   shownStamp() { return this.stamp() - this.stampShift() }
   // the timer path: the sheet's time row is when the session STARTED, with no
   // duration to shift by — and a start can't be in the future
   timerStart() {
-    const { pickedT, scrubDrag } = this.state
-    // mid-drag on the nudges, the start follows the finger
-    const offset = scrubDrag?.field === 'ago' ? -scrubDrag.val : this.state.offset
+    const { pickedT } = this.state
+    const offset = this.agoOffset()
     if (pickedT == null && !offset) return Date.now()
     return Math.min(Date.now(), pickedT ?? this._base + offset * 60000)
+  }
+  // mid-drag on the nudges the stamp follows the finger — except on a span
+  // being edited, where a nudge moves the start and holds the end, so a live
+  // preview through the offset would slide the whole nap instead
+  agoOffset() {
+    const { scrubDrag, offset, editId, sel } = this.state
+    return scrubDrag?.field === 'ago' && !(editId && SPANS.includes(sel)) ? -scrubDrag.val : offset
   }
   // whether the sheet is on its live-timer path (vs logging a past session)
   timing() {
@@ -2122,8 +2128,13 @@ export default class App extends React.Component {
     this._scrub = null
     if (!d) return
     const val = d.moved ? this.state.scrubDrag?.val : null
-    // the timer's start: a drag lands on how far back it walked, a tap on the chip
-    if (d.field === 'ago') this.setState({ offset: -(val ?? d.base), pickedT: null, dayPicked: false, scrubDrag: null })
+    // the nudges: a drag lands on how far back it walked, a tap on the chip —
+    // and off the timer path it lands through nudge(), so an edited span keeps its end
+    if (d.field === 'ago') {
+      const n = -(val ?? d.base)
+      if (this.timing()) this.setState({ offset: n, pickedT: null, dayPicked: false, scrubDrag: null })
+      else this.setState({ scrubDrag: null }, this.nudge(n))
+    }
     else if (val != null) this.setState({ [d.field]: val, scrubDrag: null })
     else if (d.field === 'detail2') this.setState(s => ({ detail2: s.detail2 === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
     else this.setState({ detail: d.base, scrubDrag: null })
@@ -2516,17 +2527,16 @@ export default class App extends React.Component {
 
     const agoLabel = m => m === 0 ? t('now') : m === 60 ? '−1h' : '−' + (m < 60 ? m : this.dur(m))
     const nudgeMins = [0, step, step * 3, 60]
-    // on the timer path the nudges scrub like the duration chips — drag up to
-    // walk the start further back, and a custom start sorts in as its own chip
+    // the nudges scrub like the duration chips on every path — timer, past
+    // log, edit — drag up to walk the stamp further back, and a custom offset
+    // sorts in as its own chip
     const agoCur = s.pickedT == null ? -s.offset : null
     const agoDrag = s.scrubDrag?.field === 'ago' ? s.scrubDrag : null
-    const nudges = timing
-      ? [...new Set([...nudgeMins, ...(agoCur != null ? [agoCur] : [])])].sort((a, b) => a - b).map(m => {
-        const dragging = !!agoDrag && agoDrag.base === m
-        const on = dragging || (!agoDrag && agoCur === m)
-        return { label: agoLabel(dragging ? agoDrag.val : m), scrub: true, on, onDown: this.scrubStart('ago', 'ago', m), ...this.chip(on, OLIVE) }
-      })
-      : nudgeMins.map(m => ({ label: agoLabel(m), onTap: this.nudge(-m), ...this.chip(s.pickedT == null && s.offset === -m, OLIVE) }))
+    const nudges = [...new Set([...nudgeMins, ...(agoCur != null ? [agoCur] : [])])].sort((a, b) => a - b).map(m => {
+      const dragging = !!agoDrag && agoDrag.base === m
+      const on = dragging || (!agoDrag && agoCur === m)
+      return { label: agoLabel(dragging ? agoDrag.val : m), scrub: true, on, onDown: this.scrubStart('ago', 'ago', m), ...this.chip(on, OLIVE) }
+    })
 
     // the day control behind Advanced: today, yesterday, and the calendar for
     // anything older. Every chip reads the day the sheet is SHOWING, so a nap
@@ -4628,14 +4638,12 @@ export default class App extends React.Component {
                   )}
                   </div>
                   <div style={S('display:flex;gap:6px;padding-bottom:6px')}>
-                    {v.nudges.map((n, i) => n.scrub ? (
+                    {v.nudges.map((n, i) => (
                       <button key={i} type="button" onPointerDown={n.onDown} onPointerMove={v.scrubMove} onPointerUp={v.scrubEnd} onPointerCancel={v.scrubEnd}
                         style={S(`display:flex;align-items:center;gap:2px;background:${n.bg};border:1px solid ${n.border};border-radius:999px;padding:7px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:${n.fg};cursor:ns-resize;touch-action:none;user-select:none;letter-spacing:-0.01em`)}>
                         {n.label}
                         {n.on && <Sym style={{ fontSize: 11, color: n.fg, opacity: 0.7 }}>unfold_more</Sym>}
                       </button>
-                    ) : (
-                      <button key={i} type="button" onClick={n.onTap} style={S(`background:${n.bg};border:1px solid ${n.border};border-radius:999px;padding:7px 11px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:${n.fg};cursor:pointer;letter-spacing:-0.01em`)}>{n.label}</button>
                     ))}
                   </div>
                 </div>
