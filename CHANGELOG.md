@@ -4,6 +4,12 @@ User-visible changes to the app, the API, and the images, newest first. The Home
 keeps its own log in [deploy/ha-addon/CHANGELOG.md](deploy/ha-addon/CHANGELOG.md), because Home
 Assistant renders that one in the add-on store.
 
+## 1.5.3 — 2026-09-28
+
+### Fixed
+
+- **Icons show as icons again.** On some phones every icon showed as its name ("local_drink", "pacifier"…), clipped to a few letters. The service worker was fetching Google Fonts itself, and the site's Content-Security-Policy, which also applies to the worker, blocked those requests. It has been that way since 1.1.0; phones only noticed once their pre-1.1.0 font cache was cleared. The worker now leaves the fonts to the browser. Open the app once online to pick up the fix.
+
 ## 1.5.2 — 2026-09-27
 
 ### Fixed

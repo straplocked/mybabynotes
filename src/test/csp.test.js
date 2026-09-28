@@ -87,4 +87,16 @@ describe('Content-Security-Policy', () => {
     expect(dirs['worker-src']).toBe("'self'")
     expect(dirs['script-src']).not.toContain('unsafe')
   })
+
+  // nginx sends this policy on /sw.js too, and inside a service worker fetch()
+  // answers to connect-src — not style-src/font-src. A worker that re-fetches
+  // a host connect-src doesn't allow gets every request blocked: that's how
+  // the icon font silently stopped loading (ligature names instead of glyphs).
+  it.each(NGINX)("%s's connect-src allows every third-party host sw.js fetches", file => {
+    const policy = policyOf(cspLines(read(file))[0])
+    const connect = policy.split(';').map(d => d.trim()).find(d => d.startsWith('connect-src '))
+    const code = read('public/sw.js').split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    const hosts = [...code.matchAll(/['"`](?:https?:\/\/)?([a-z0-9-]+(?:\.[a-z0-9-]+)+\.[a-z]{2,})['"`/]/g)].map(m => m[1])
+    for (const h of hosts) expect(connect, `sw.js reaches ${h}`).toContain(h)
+  })
 })

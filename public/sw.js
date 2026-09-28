@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Chris Carvache
 /* mybabynotes service worker — local-first app shell.
    Navigations: network-first, cache fallback (3am logging never waits on signal).
-   Assets + fonts: cache-first with background fill. */
+   Same-origin assets: cache-first with background fill. Cross-origin (Google
+   Fonts) is left to the browser — see the fetch handler. */
 // bumping these purges old caches on activate — v1 served unhashed files
 // (manifest included) cache-first forever, so installs kept minting stale;
 // v4: the base-path-relative build changed asset URL shapes
@@ -10,8 +11,10 @@
 // there still hold the pre-transparency bitmaps under the old unhashed URLs,
 // and serving one of those to the current stylesheet paints a light slab over
 // dark mode — so those entries have to go, not just age out.
-const SHELL = 'babylog-shell-v5'
-const RUNTIME = 'babylog-rt-v5'
+// v6: the worker stopped caching Google Fonts (its CSP blocked the fetches);
+// drop whatever font entries older runtime caches still hold.
+const SHELL = 'babylog-shell-v6'
+const RUNTIME = 'babylog-rt-v6'
 
 // '/'-rooted paths below are deliberate: this worker only ever registers at
 // the origin root (main.jsx skips registration under HA ingress, where the
@@ -71,14 +74,16 @@ self.addEventListener('fetch', e => {
   // both must always come from the network, never a cache
   if (url.pathname === '/manifest.webmanifest' || url.pathname === '/sw.js') return
 
-  const cacheable = url.origin === location.origin
-    || url.hostname === 'fonts.googleapis.com'
-    || url.hostname === 'fonts.gstatic.com'
-  if (!cacheable) return
+  // same-origin only. Google Fonts used to be cached here too, but nginx sends
+  // this worker the site CSP, and inside a worker fetch() answers to
+  // connect-src ('self') — so every font request it re-fetched was blocked and
+  // the icons fell back to their ligature names. Left alone, the page loads
+  // them itself under style-src/font-src, and the HTTP cache keeps them.
+  if (url.origin !== location.origin) return
 
-  // content-hashed files can be trusted forever; everything else (art, icons,
-  // font css) serves stale and revalidates in the background
-  const hashed = url.pathname.startsWith('/assets/') || url.hostname === 'fonts.gstatic.com'
+  // content-hashed files can be trusted forever; everything else (art, icons)
+  // serves stale and revalidates in the background
+  const hashed = url.pathname.startsWith('/assets/')
   e.respondWith(
     caches.match(e.request).then(hit => {
       if (hit && hashed) return hit

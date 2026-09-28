@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3
+
+- **Icons show as icons again.** The icon font stopped loading on some devices, which showed icon
+  names as text. See the app's
+  [CHANGELOG](https://github.com/straplocked/mybabynotes/blob/main/CHANGELOG.md#153--2026-09-28).
+
 ## 1.5.2
 
 - **Every time nudge drags.** The −5/−15/−1h chips scrub on the log sheet and when editing, not
