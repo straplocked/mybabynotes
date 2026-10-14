@@ -48,7 +48,7 @@ COPY api/ .
 RUN composer dump-autoload --optimize --no-dev
 
 # ---- Runtime ----
-FROM php:8.4-fpm-alpine
+FROM php:8.5-fpm-alpine
 # gmp speeds up the Web Push EC crypto (pure-PHP fallback works but is slow).
 # libpq is the pdo_pgsql runtime and is named explicitly so the `apk del` of
 # the -dev packages can't take it with it as an orphan. The appliance stays
