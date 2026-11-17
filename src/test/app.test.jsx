@@ -5,7 +5,7 @@
 // The server is a route-table fetch mock speaking /state's real shape;
 // realtime is stubbed out (tests poke sync() the way Echo would: not at all).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../echo.js', () => ({
@@ -739,6 +739,118 @@ describe('the log sheet’s day control', () => {
     expect(dateInput().value).toBe(dayKey(then))
     // and the stamp says which day, rather than a bare time two days adrift
     expect(screen.getByText('Editing entry · 2 days ago')).toBeInTheDocument()
+  })
+})
+
+// "a pill selection for amount of formula offered/prepared and the other is
+// how much they ate" — the wire keeps what was EATEN as the lead number so
+// every total (and every older client) still reads it; prepared rides along
+// as a trailing "N prepared" token.
+describe('bottle: prepared vs. ate', () => {
+  const openSheet = async (seed = {}) => {
+    const user = userEvent.setup()
+    seedSignedIn(seed)
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+    await user.click(screen.getByText('add'))
+    await waitFor(() => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res))))
+    return user
+  }
+  // the chip with this label in the row headed by `row`
+  const chipIn = (row, label) => within(screen.getByText(row).parentElement).getByText(label)
+  const tap = el => { fireEvent.pointerDown(el, { clientY: 300, pointerId: 1 }); fireEvent.pointerUp(el, { clientY: 300, pointerId: 1 }) }
+
+  it('logs what was prepared and what was eaten as two pill rows', async () => {
+    let pushed
+    const user = await openSheet()
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+
+    tap(chipIn('Prepared', '5 oz'))
+    tap(chipIn('Ate', '3 oz'))
+    await user.click(chipIn('Milk', 'Formula'))
+    expect(screen.getByText(/Save bottle 3 of 5 oz/)).toBeInTheDocument()
+
+    await user.click(screen.getByText(/Save bottle/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].detail).toBe('3 formula · 5 prepared')
+  })
+
+  it('won’t save a bottle that ate more than was prepared', async () => {
+    let pushed = null
+    const user = await openSheet()
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+
+    tap(chipIn('Prepared', '3 oz'))
+    tap(chipIn('Ate', '5 oz'))
+    const btn = screen.getByText('Ate is more than prepared').closest('button')
+    expect(btn).toBeDisabled()
+    await user.click(btn)
+    expect(screen.getByText('Ate is more than prepared')).toBeInTheDocument() // sheet still open
+
+    // bring Ate back under Prepared and it saves
+    tap(chipIn('Ate', '3 oz'))
+    await user.click(screen.getByText(/Save bottle 3 of 3 oz/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].detail).toBe('3 · 3 prepared')
+  })
+
+  it('leaves Prepared off by default, and tapping the lit chip clears it', async () => {
+    let pushed
+    const user = await openSheet()
+    routes['POST /entries'] = opts => { pushed = JSON.parse(opts.body); return okJson({ ok: true }) }
+
+    tap(chipIn('Prepared', '4 oz'))
+    expect(screen.getByText(/Save bottle 4 of 4 oz/)).toBeInTheDocument()
+    tap(chipIn('Prepared', '4 oz'))
+    expect(screen.getByText(/Save bottle 4 oz/)).toBeInTheDocument()
+
+    await user.click(screen.getByText(/Save bottle/))
+    await waitFor(() => expect(pushed).toBeTruthy())
+    expect(pushed.entries[0].detail).toBe('4')
+  })
+
+  // History's oz/day stays what was EATEN; the prepared figure rides beside it as a pill
+  const openHistoryWith = async entries => {
+    const user = userEvent.setup()
+    seedSignedIn({ entries })
+    routes['GET /state'] = () => okJson(stateFixture())
+    renderApp()
+    await user.click(await screen.findByText('History'))
+    await screen.findByText('Last 7 days')
+    return within(screen.getByText('oz / day').parentElement)
+  }
+  const b = (id, detail) => ({ id, type: 'bottle', t: Date.now() - 60_000, detail, deleted: false, by: 1, babyId: null })
+
+  it('History keeps oz / day to what was eaten and adds a prepared-per-day pill', async () => {
+    // 14 of 28, plus a 7 logged without a prepared amount (counts as finished)
+    // one day of log, so the averages divide by 1 — not by a 7-day week nobody logged
+    const tile = await openHistoryWith([b('b1', '14 formula · 28 prepared'), b('b2', '7')])
+    expect(tile.getByText('21')).toBeInTheDocument()               // 14 + 7 eaten
+    expect(tile.getByText('oz eaten')).toBeInTheDocument()         // an amount, not a bottle count
+    expect(tile.getByText('35 oz prepared')).toBeInTheDocument()   // 28 + 7 prepared
+  })
+
+  it('History shows no prepared pill when no bottle this week logged one', async () => {
+    const tile = await openHistoryWith([b('b1', '14'), b('b2', '7')])
+    expect(tile.getByText('21')).toBeInTheDocument()
+    expect(tile.queryByText(/prepared/)).not.toBeInTheDocument()
+  })
+
+  it('History averages over the days actually logged, up to a week', async () => {
+    // two days of log: 46 oz eaten is 23 a day, not 46 / 7 ≈ 7 (what read as a bottle count)
+    const yday = Date.now() - 86_400_000
+    const tile = await openHistoryWith([
+      { ...b('y1', '22'), t: yday }, b('b1', '12'), b('b2', '12'),
+    ])
+    expect(tile.getByText('23')).toBeInTheDocument()
+  })
+
+  it('reads a logged bottle back as "ate of prepared" and repeats the prepared amount next time', async () => {
+    const user = await openSheet({ entries: [{ id: 'b1', type: 'bottle', t: Date.now() - 3600_000, detail: '3 formula · 5 prepared', deleted: false, by: 1, babyId: null }] })
+    expect(screen.getByText('3 of 5 oz · formula')).toBeInTheDocument() // the log row
+    await user.click(screen.getAllByText('Bottle').map(n => n.closest('button')).find(b => b.textContent === 'local_drinkBottle'))
+    // the new sheet seeds both rows (and the milk) from the last bottle
+    expect(screen.getByText(/Save bottle 3 of 5 oz · formula/)).toBeInTheDocument()
   })
 })
 

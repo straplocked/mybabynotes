@@ -255,18 +255,21 @@ function loadSaved() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY)) || null } catch { return null }
 }
 const numify = d => (typeof d === 'string' && /^\d+(\.\d+)?$/.test(d)) ? Number(d) : d
-// detail strings can carry extras: bottle "4 breastmilk", nurse "Left · 30m",
+// detail strings can carry extras: bottle "4 breastmilk" (or "3 formula · 4 prepared"
+// — the lead number is always what was EATEN, so every total keeps reading it), nurse "Left · 30m",
 // pump "3 · 15m", tagged sleep "Nap · 45m" (untagged stays bare minutes)
 const dSplit = d => {
   d = d == null ? '' : String(d)
   const lead = /^([\d.]+)\s*(m\b)?/.exec(d)
   const mm = /(\d+)\s*m\b/.exec(d)
+  const pp = /([\d.]+)\s*prepared\b/i.exec(d)
   return {
-    n: lead && lead[1] && !lead[2] ? Number(lead[1]) : null,
+    n: lead && lead[1] && !lead[2] && !(pp && pp.index === 0) ? Number(lead[1]) : null,
     mins: mm ? Number(mm[1]) : null,
     side: /left/i.test(d) ? 'Left' : /right/i.test(d) ? 'Right' : /both/i.test(d) ? 'Both' : null,
     milk: /breast/i.test(d) ? 'breastmilk' : /formula/i.test(d) ? 'formula' : null,
     when: /nap/i.test(d) ? 'Nap' : /night/i.test(d) ? 'Night' : null,
+    prepared: pp ? Number(pp[1]) : null,
   }
 }
 // sleep/tummy minutes, whichever way the wire spells them: bare leading number
@@ -1106,8 +1109,10 @@ export default class App extends React.Component {
   amountKey() { return this.unit() === 'ml' ? 'ml' : 'oz' }
   fmtDetail(d) {
     // wire strings stay canonical ('Left', 'breastmilk') — translate on the way out
-    const { n, mins, side, milk, when } = dSplit(d), p = []
-    if (n != null) p.push(this.amt(n) + ' ' + this.unit())
+    const { n, mins, side, milk, when, prepared } = dSplit(d), p = []
+    if (n != null && prepared != null) p.push(t('{ate} of {prepared} {unit}', { ate: this.amt(n), prepared: this.amt(prepared), unit: this.unit() }))
+    else if (n != null) p.push(this.amt(n) + ' ' + this.unit())
+    else if (prepared != null) p.push(t('{amount} prepared', { amount: this.amt(prepared) + ' ' + this.unit() }))
     if (milk) p.push(t(milk))
     if (side) p.push(t(side))
     if (when) p.push(t(when))
@@ -1866,7 +1871,7 @@ export default class App extends React.Component {
     this._base = Date.now()
     const k = this.predict()
     // the sheet's child chip row starts on whoever the pills are showing
-    this.mountSheet({ editId: null, sel: k, offset: 0, pickedT: null, dayPicked: false, detail: k ? this.defaultDetail(k) : null, detail2: k ? this.defaultDetail2(k) : null, manualDur: false, sheetChildId: this.selChildId() })
+    this.mountSheet({ editId: null, sel: k, offset: 0, pickedT: null, dayPicked: false, detail: k ? this.defaultDetail(k) : null, detail2: k ? this.defaultDetail2(k) : null, detail3: k ? this.defaultDetail3(k) : null, manualDur: false, sheetChildId: this.selChildId() })
   }
   defaultDetail(k) {
     const d = T(k).detail
@@ -1877,6 +1882,12 @@ export default class App extends React.Component {
   }
   defaultDetail2(k) {
     if (k === 'bottle') { const l = this.lastOf(['bottle']); return l ? dSplit(l.detail).milk : null }
+    return null
+  }
+  // the bottle's "Prepared" row: repeats the last bottle's, or stays off for
+  // households that only ever log what was eaten
+  defaultDetail3(k) {
+    if (k === 'bottle') { const l = this.lastOf(['bottle']); return l ? this.amt(dSplit(l.detail).prepared) : null }
     return null
   }
   // ── provider export: CSV through the native share sheet (download fallback) ─
@@ -1901,7 +1912,8 @@ export default class App extends React.Component {
         type: t(T(e.type).label),
         oz: ['bottle', 'pump'].includes(e.type) ? d.n : null,
         mins: ['sleep', 'tummy'].includes(e.type) ? sleepMins(e.detail) : d.mins,
-        note: [d.side && t(d.side), d.milk && t(d.milk), d.when && t(d.when)].filter(Boolean).join(' · '),
+        note: [d.side && t(d.side), d.milk && t(d.milk), d.when && t(d.when),
+          d.prepared != null && t('{amount} prepared', { amount: this.amt(d.prepared) + ' ' + this.unit() })].filter(Boolean).join(' · '),
         by: who[e.by] || '',
       }
     })
@@ -1985,21 +1997,26 @@ export default class App extends React.Component {
     this.bumpToast()
   }
 
-  // detail state ↔ wire string: primary (amount/side/duration) in `detail`, extra (milk/minutes) in `detail2`
+  // detail state ↔ wire string: primary (amount/side/duration) in `detail`, extra (milk/minutes) in `detail2`,
+  // and a bottle's amount prepared in `detail3` (`detail` is then what was eaten).
   // Amounts sit in the display unit while the sheet is open; the wire string is ALWAYS oz.
   composeDetail(k) {
-    let a = this.state.detail
+    let a = this.state.detail, c = this.state.detail3
     const b = this.state.detail2
     if ((k === 'bottle' || k === 'pump') && a != null && a !== '' && this.unit() === 'ml') a = mlToOz(Number(a) || 0)
-    if (k === 'bottle') return [a, b].filter(x => x != null && x !== '').join(' ') || null
+    if (k === 'bottle') {
+      if (c != null && c !== '' && this.unit() === 'ml') c = mlToOz(Number(c) || 0)
+      const head = [a, b].filter(x => x != null && x !== '').join(' ')
+      return [head, c != null && c !== '' ? c + ' prepared' : null].filter(Boolean).join(' · ') || null
+    }
     if (k === 'nurse' || k === 'pump') return [a, b != null ? b + 'm' : null].filter(x => x != null && x !== '').join(' · ') || null
     // tagged sleep reads like nurse ("Nap · 45m"); untagged keeps the legacy bare minutes
     if (k === 'sleep') return b != null && a != null && a !== '' ? b + ' · ' + a + 'm' : a
     return a
   }
   decompose(type, d) {
-    const { n, mins, side, milk, when } = dSplit(d)
-    if (type === 'bottle') return { detail: this.amt(n), detail2: milk }
+    const { n, mins, side, milk, when, prepared } = dSplit(d)
+    if (type === 'bottle') return { detail: this.amt(n), detail2: milk, detail3: this.amt(prepared) }
     if (type === 'nurse') return { detail: side, detail2: mins }
     if (type === 'pump') return { detail: this.amt(n), detail2: mins }
     if (type === 'sleep') return { detail: mins ?? n, detail2: when }
@@ -2016,7 +2033,7 @@ export default class App extends React.Component {
     }
     // sheetAuthorId defaults to null on every open — only a timer stop passes
     // one, and a stale value must never re-credit the next thing logged here
-    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: !!this.state.advancedDefault, sheetAuthorId: null, ...fields })
+    this.setState({ sheet: true, sheetLeaving: false, sheetIn: reduceMotion(), sheetTall: false, sheetDragY: 0, sheetDragging: false, advanced: !!this.state.advancedDefault, sheetAuthorId: null, detail3: null, ...fields })
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.state.sheet) this.setState({ sheetIn: true })
     }))
@@ -2104,7 +2121,7 @@ export default class App extends React.Component {
       },
     }
   }
-  pick = k => () => this.setState(s => ({ sel: k, detail: s.sel === k ? s.detail : this.defaultDetail(k), detail2: s.sel === k ? s.detail2 : this.defaultDetail2(k) }))
+  pick = k => () => this.setState(s => ({ sel: k, detail: s.sel === k ? s.detail : this.defaultDetail(k), detail2: s.sel === k ? s.detail2 : this.defaultDetail2(k), detail3: s.sel === k ? s.detail3 : this.defaultDetail3(k) }))
   // ── chip scrub: tap picks the preset, drag up/down dials a custom value ────
   // shared by durations and ounces — `key` picks the ladder the drag walks
   scrubStart = (field, key, base) => e => {
@@ -2136,7 +2153,7 @@ export default class App extends React.Component {
       else this.setState({ scrubDrag: null }, this.nudge(n))
     }
     else if (val != null) this.setState({ [d.field]: val, scrubDrag: null })
-    else if (d.field === 'detail2') this.setState(s => ({ detail2: s.detail2 === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
+    else if (d.field === 'detail2' || d.field === 'detail3') this.setState(s => ({ [d.field]: s[d.field] === d.base ? null : d.base, scrubDrag: null })) // tap toggles, as before
     else this.setState({ detail: d.base, scrubDrag: null })
   }
   nudge = n => () => {
@@ -2212,8 +2229,15 @@ export default class App extends React.Component {
     this.setDay(new Date(y, m - 1, d))
   }
 
+  // a bottle can't be eaten past what was prepared — the sheet greys Save out
+  // and says why; this is the same check, so no other path can slip one through
+  ateOverPrepared(key) {
+    const { detail, detail3 } = this.state
+    return key === 'bottle' && detail3 != null && detail3 !== '' && detail != null && detail !== '' && Number(detail) > Number(detail3)
+  }
   save = () => {
     const key = this.state.sel || this.predict() || 'bottle'
+    if (this.ateOverPrepared(key)) return
     const at = this.stamp(), detail = this.composeDetail(key)
     // the wire stamp is unchanged; the toast names the time the log now shows,
     // which for a sleep/tummy session is where it started (read before
@@ -2578,7 +2602,12 @@ export default class App extends React.Component {
       : kind2 === 'nap' ? [{ v: 'Nap', label: t('Nap') }, { v: 'Night', label: t('Night') }] : []
     const detail2Options = kind2 === 'mins' ? scrubChips('detail2', 'mins')
       : opts2.map(o => ({ label: o.label, onTap: () => this.setState(x => ({ detail2: x.detail2 === o.v ? null : o.v })), ...this.chip(s.detail2 === o.v, st.color) }))
-    const detailStr = (kind === 'amount' ? (s.detail != null ? ' ' + s.detail + ' ' + this.unit() : '') : kind === 'side' ? ' ' + (s.detail ? t(s.detail) : '') : kind === 'dur' ? ' ' + this.dur(s.detail) : '')
+    // a bottle's third row: how much was prepared/offered (optional — tap the lit chip to clear it)
+    const hasPrepared = st.key === 'bottle'
+    const detail3Options = hasPrepared ? scrubChips('detail3', this.amountKey()) : []
+    const detailStr = (kind === 'amount' ? (s.detail != null ? ' ' + (hasPrepared && s.detail3 != null
+      ? t('{ate} of {prepared} {unit}', { ate: s.detail, prepared: s.detail3, unit: this.unit() })
+      : s.detail + ' ' + this.unit()) : '') : kind === 'side' ? ' ' + (s.detail ? t(s.detail) : '') : kind === 'dur' ? ' ' + this.dur(s.detail) : '')
       + (s.detail2 != null ? (kind2 === 'milk' ? ' · ' + t(s.detail2 === 'formula' ? 'formula' : 'breast milk') : kind2 === 'nap' ? ' · ' + t(s.detail2) : ' · ' + this.dur(s.detail2)) : '')
 
     // nursing/pump/sleep/tummy default to the live timer; a manual toggle logs a past session
@@ -2597,6 +2626,12 @@ export default class App extends React.Component {
     const week = live.filter(e => e.t >= midnight.getTime() - 6 * DAY)
     const feedsWk = week.filter(e => FEEDS.includes(e.type))
     const ozWk = week.filter(e => e.type === 'bottle').reduce((a, e) => a + (dSplit(e.detail).n || 0), 0)
+    // what was PREPARED, beside the eaten figure above (which stays consumption
+    // only). A bottle logged without a prepared amount counts as prepared =
+    // eaten, so it adds no phantom leftover; no prepared amounts all week, no pill.
+    const prepBottles = week.filter(e => e.type === 'bottle')
+    const prepWk = prepBottles.some(e => dSplit(e.detail).prepared != null)
+      ? prepBottles.reduce((a, e) => { const d = dSplit(e.detail); return a + Math.max(d.prepared ?? 0, d.n ?? 0) }, 0) : null
     const naps = week.filter(e => e.type === 'sleep')
     // wake window: one sleep's end (t) to the next sleep's start (t − duration)
     const sleepsAsc = [...naps].sort((a, b) => a.t - b.t)
@@ -2614,12 +2649,20 @@ export default class App extends React.Component {
     for (let i = 1; i < starts.length; i++) gaps.push((starts[i] - starts[i - 1]) / 60000)
     const avgGap = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0
     const longest = gaps.length ? Math.max(...gaps) : 0
+    // the per-day averages divide by the days the log actually covers, capped
+    // at the 7-day window — a household two days in used to see its total
+    // spread over a week it hadn't logged (46 oz over 2 days read as "7 oz/day")
+    const firstT = live.reduce((m, e) => Math.min(m, startOf(e)), Infinity)
+    const firstDay = new Date(firstT); firstDay.setHours(0, 0, 0, 0)
+    const wkDays = Number.isFinite(firstT) ? Math.max(1, Math.min(7, Math.round((midnight.getTime() - firstDay.getTime()) / DAY) + 1)) : 7
     const stats = [
-      { label: t('Feeds / day'), value: (feedsWk.length / 7).toFixed(1), unit: t('avg') },
-      { label: t('{unit} / day', { unit: this.unit() }), value: Math.round(this.amt(ozWk / 7)), unit: t('bottles only') },
-      ...(this.trackOn('diapers') ? [{ label: t('Diapers / day'), value: (week.filter(e => DIAPERS.includes(e.type)).length / 7).toFixed(1), unit: t('avg') }] : []),
+      { label: t('Feeds / day'), value: (feedsWk.length / wkDays).toFixed(1), unit: t('avg') },
+      // eaten, labelled as an amount so the big number can't read as a bottle count
+      { label: t('{unit} / day', { unit: this.unit() }), value: Math.round(this.amt(ozWk / wkDays)), unit: t('{unit} eaten', { unit: this.unit() }),
+        pill: prepWk != null ? t('{amount} prepared', { amount: Math.round(this.amt(prepWk / wkDays)) + ' ' + this.unit() }) : null },
+      ...(this.trackOn('diapers') ? [{ label: t('Diapers / day'), value: (week.filter(e => DIAPERS.includes(e.type)).length / wkDays).toFixed(1), unit: t('avg') }] : []),
       ...(this.trackOn('sleep') ? [
-        { label: t('Sleep logged'), value: this.dur(Math.round(naps.reduce((a, e) => a + (sleepMins(e.detail) || 0), 0) / 7)), unit: t('/ day') },
+        { label: t('Sleep logged'), value: this.dur(Math.round(naps.reduce((a, e) => a + (sleepMins(e.detail) || 0), 0) / wkDays)), unit: t('/ day') },
         { label: t('Wake window'), value: avgWake ? this.dur(avgWake) : '—', unit: t('avg') },
       ] : []),
     ]
@@ -2864,7 +2907,8 @@ export default class App extends React.Component {
       // where it ends, which is the half the sheet never prints
       stampFull: new Date(shownT).toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' })
         + ' · ' + this.clock(shownT) + (stampT > shownT ? ' → ' + this.clock(stampT) : ''),
-      hasDetail: !!kind && !timerFirst, detailLabel: t(kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
+      hasDetail: !!kind && !timerFirst, detailLabel: t(st.key === 'bottle' ? 'Ate' : kind === 'amount' ? 'Amount' : kind === 'side' ? 'Side' : 'Duration'), detailOptions,
+      hasDetail3: hasPrepared && !timerFirst, detail3Label: t('Prepared'), detail3Options,
       hasDetail2: !!kind2 && !timerFirst, detail2Label: t(kind2 === 'milk' ? 'Milk' : kind2 === 'nap' ? 'Nap or night' : 'Duration'), detail2Options,
       scrubMove: this.scrubMove, scrubEnd: this.scrubEnd,
       showStamp: true,
@@ -2894,7 +2938,9 @@ export default class App extends React.Component {
           stop: () => this.stopTimer(tm.id),
         }
       }),
-      saveLabel: t(s.editId ? 'Update {thing}' : 'Save {thing}', { thing: lower(t(st.label)) }) + detailStr,
+      saveBlocked: this.ateOverPrepared(st.key),
+      saveLabel: this.ateOverPrepared(st.key) ? t('Ate is more than prepared')
+        : t(s.editId ? 'Update {thing}' : 'Save {thing}', { thing: lower(t(st.label)) }) + detailStr,
       editing: !!s.editId, toast: !!s.toast, toastText: s.toast || '', toastLeaving: s.toastLeaving, canUndo: !!s.undoAction,
       openSheet: this.openSheet, closeSheet: this.closeSheet, save: this.save, undo: this.undo, remove: this.remove,
 
@@ -3836,6 +3882,9 @@ export default class App extends React.Component {
                       <div style={S("font-family:'Nunito',sans-serif;font-size:24px;font-weight:700;letter-spacing:-0.04em")}>{st.value}</div>
                       <div style={S('font-size:11px;color:#8C8474')}>{st.unit}</div>
                     </div>
+                    {st.pill && (
+                      <div style={S("align-self:flex-start;background:rgba(38,35,29,0.05);border:1px solid rgba(38,35,29,0.08);border-radius:999px;padding:3px 9px;font-family:'Nunito',sans-serif;font-weight:600;font-size:11px;color:#6E6659")}>{st.pill}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -4671,8 +4720,21 @@ export default class App extends React.Component {
                   ))}
                 </div>
 
-                {v.hasDetail && (
+                {v.hasDetail3 && (
                   <div style={S('display:flex;align-items:center;gap:8px;padding:14px 2px 0;overflow:auto')}>
+                    <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0;padding-right:2px")}>{v.detail3Label}</div>
+                    {v.detail3Options.map((d, i) => (
+                      <button key={i} type="button" onPointerDown={d.onDown} onPointerMove={v.scrubMove} onPointerUp={v.scrubEnd} onPointerCancel={v.scrubEnd}
+                        style={S(`flex-shrink:0;display:flex;align-items:center;gap:3px;background:${d.bg};border:1px solid ${d.border};border-radius:999px;padding:8px 13px;font-family:'Nunito',sans-serif;font-weight:600;font-size:12px;color:${d.fg};cursor:ns-resize;touch-action:pan-x;user-select:none`)}>
+                        {d.label}
+                        {d.on && <Sym style={{ fontSize: 12, color: d.fg, opacity: 0.7 }}>unfold_more</Sym>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {v.hasDetail && (
+                  <div style={S(`display:flex;align-items:center;gap:8px;padding:${v.hasDetail3 ? 10 : 14}px 2px 0;overflow:auto`)}>
                     <div style={S("font-family:'Nunito',sans-serif;font-weight:600;font-size:11.5px;color:#8C8474;flex-shrink:0;padding-right:2px")}>{v.detailLabel}</div>
                     {v.detailOptions.map((d, i) => d.scrub ? (
                       <button key={i} type="button" onPointerDown={d.onDown} onPointerMove={v.scrubMove} onPointerUp={v.scrubEnd} onPointerCancel={v.scrubEnd}
@@ -4727,8 +4789,8 @@ export default class App extends React.Component {
                     <div style={S('font-size:17px;font-weight:600;color:#FCFBF6;letter-spacing:-0.01em')}>{v.startTimerLabel}</div>
                   </button>
                 ) : (
-                  <button type="button" onClick={v.save} className="hov-olive" style={S('margin-top:16px;width:100%;height:66px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3)')}>
-                    <Sym style={{ fontSize: 23, color: 'var(--on-accent)' }}>check</Sym>
+                  <button type="button" onClick={v.save} disabled={v.saveBlocked} className={v.saveBlocked ? undefined : 'hov-olive'} style={S(`margin-top:16px;width:100%;height:66px;background:var(--accent);border:none;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:${v.saveBlocked ? 'not-allowed' : 'pointer'};font-family:inherit;box-shadow:0 6px 18px rgba(var(--accent-rgb),0.3);opacity:${v.saveBlocked ? 0.45 : 1}`)}>
+                    <Sym style={{ fontSize: 23, color: 'var(--on-accent)' }}>{v.saveBlocked ? 'block' : 'check'}</Sym>
                     <div style={S('font-size:17px;font-weight:600;color:#FCFBF6;letter-spacing:-0.01em')}>{v.saveLabel}</div>
                   </button>
                 )}
